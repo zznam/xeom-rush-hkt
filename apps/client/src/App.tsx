@@ -1,12 +1,13 @@
 import React, {useState} from "react";
 import {GameCanvas} from "./components/GameCanvas";
 
+const defaultServerUrl = import.meta.env.VITE_WS_URL || "ws://localhost:3002";
+
 export const App: React.FC = () => {
   const [username, setUsername] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Default server url connects locally. In production, we'll swap to public hostname.
-  const [serverUrl, setServerUrl] = useState("ws://localhost:3002");
+  const [serverUrl, setServerUrl] = useState(defaultServerUrl);
 
   const handleStartGame = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +66,7 @@ export const App: React.FC = () => {
               id="serverUrl"
               type="text"
               required
-              placeholder="ws://localhost:3002"
+              placeholder={defaultServerUrl}
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               className="form-input"
