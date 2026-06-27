@@ -74,6 +74,10 @@ export class GameWorld {
     return this.tickCount;
   }
 
+  public getPassengerMap(): Map<string, PassengerState> {
+    return this.passengers.getPassengerMap();
+  }
+
   /**
    * Main game tick update loop: runs at 20Hz (every 50ms)
    */

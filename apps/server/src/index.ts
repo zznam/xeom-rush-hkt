@@ -13,6 +13,7 @@ import {
   encodeSnapshot,
 } from '@xeom-rush/shared';
 import { GameWorld } from './world';
+import { BotManager } from './bot-ai';
 
 // --- Express App Setup ---
 const app = express();
@@ -24,6 +25,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 // Instantiate authoritative world state
 const world = new GameWorld();
+const botManager = new BotManager(world, world.getPhysics());
 
 // HTTP JSON Endpoints for Judges/Dashboard
 app.get('/api/health', (req, res) => {
@@ -43,6 +45,16 @@ app.get('/api/chunks', (req, res) => {
 app.get('/api/obstacles', (req, res) => {
   res.json({
     buildings: world.getPhysics().getBuildings(),
+  });
+});
+
+app.post('/api/spawn-bots', (req, res) => {
+  const count = Math.min(req.body?.count ?? 25, 100); // Cap at 100 bots per request
+  const spawnedIds = botManager.spawnBots(count);
+  console.log(`[Bot Spawn] Spawned ${spawnedIds.length} AI bots (total: ${botManager.getBotCount()})`);
+  res.json({
+    spawned: spawnedIds.length,
+    totalBots: botManager.getBotCount(),
   });
 });
 
@@ -122,10 +134,13 @@ setInterval(() => {
   const actualDt = (now - lastTickTime) / 1000;
   lastTickTime = now;
 
-  // 1. Tick the world simulation
+  // 1. Run bot AI (generates inputs for bot players)
+  botManager.tick();
+
+  // 2. Tick the world simulation
   world.tick(actualDt);
 
-  // 2. Broadcast filtered snapshots to each player based on their chunk position
+  // 3. Broadcast filtered snapshots to each player based on their chunk position
   for (const [playerId, playerSocket] of activeSockets.entries()) {
     if (playerSocket.ws.readyState === WebSocket.OPEN) {
       // Retrieve entities in player's 3x3 surrounding chunks

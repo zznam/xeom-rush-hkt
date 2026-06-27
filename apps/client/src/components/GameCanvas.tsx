@@ -214,49 +214,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     };
   }, [username, serverUrl, onDisconnect, showDebug]);
 
-  const handleSpawnBots = () => {
-    // We will spawn the bots by opening bot-connections locally right from this client.
-    // This is incredibly robust, easy, and runs natively on the client browser showing actual network throughput load!
-    // Let's write the virtual bot connection spawner right in this component to easily demo concurrency.
-    console.log('Spawning 25 virtual WebSocket bots from browser...');
-    for (let i = 0; i < 25; i++) {
-      setTimeout(() => {
-        const ws = new WebSocket(serverUrl);
-        ws.binaryType = 'arraybuffer';
-        let seq = 0;
-
-        ws.onopen = () => {
-          // Join message
-          const joinBuffer = encodeJoin(`🤖 Bot-${Math.floor(Math.random() * 1000)}`);
-          ws.send(joinBuffer);
-
-          // Pick a direction and hold it for 2-5 seconds before changing
-          let currentAngle = Math.random() * Math.PI * 2;
-          let ticksUntilDirectionChange = Math.floor(20 + Math.random() * 60); // 1-4 seconds at 20Hz
-
-          // Start movement tick loop at 20Hz
-          const interval = setInterval(() => {
-            if (ws.readyState !== WebSocket.OPEN) {
-              clearInterval(interval);
-              return;
-            }
-            seq++;
-
-            // Change direction periodically, not every tick
-            ticksUntilDirectionChange--;
-            if (ticksUntilDirectionChange <= 0) {
-              // Turn by a moderate amount (not fully random) for natural-looking movement
-              currentAngle += (Math.random() - 0.5) * Math.PI * 0.8;
-              ticksUntilDirectionChange = Math.floor(40 + Math.random() * 80); // 2-6 seconds
-            }
-
-            const dx = Math.cos(currentAngle);
-            const dy = Math.sin(currentAngle);
-            const inputBuffer = encodeInput(seq, dx, dy, currentAngle);
-            ws.send(inputBuffer);
-          }, 50); // 50ms = 20Hz to match server tick rate
-        };
-      }, i * 200); // Stagger joins to show neat connection updates
+  const handleSpawnBots = async () => {
+    // Spawn server-side AI bots that navigate, pick up passengers, and compete with players
+    const httpUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+    try {
+      const res = await fetch(`${httpUrl}/api/spawn-bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 25 }),
+      });
+      const data = await res.json();
+      console.log(`Spawned ${data.spawned} AI bots (total: ${data.totalBots})`);
+    } catch (err) {
+      console.error('Failed to spawn bots:', err);
     }
   };
 
