@@ -4,11 +4,15 @@ export class InputHandler {
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => {
-        this.keys[e.key.toLowerCase()] = true;
+        if (e.key) {
+          this.keys[e.key.toLowerCase()] = true;
+        }
       });
 
       window.addEventListener('keyup', (e) => {
-        this.keys[e.key.toLowerCase()] = false;
+        if (e.key) {
+          this.keys[e.key.toLowerCase()] = false;
+        }
       });
     }
   }

@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { GameCanvas } from './components/GameCanvas';
+import React, {useState} from "react";
+import {GameCanvas} from "./components/GameCanvas";
 
 export const App: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
-  
+
   // Default server url connects locally. In production, we'll swap to public hostname.
-  const [serverUrl, setServerUrl] = useState('ws://localhost:3001');
+  const [serverUrl, setServerUrl] = useState("ws://localhost:3002");
 
   const handleStartGame = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +34,9 @@ export const App: React.FC = () => {
       <div className="glass-panel login-card">
         <div className="brand-logo">
           <span className="logo-emoji">🛵</span>
-          <h1 className="logo-title font-extrabold gradient-text">XE ÔM RUSH</h1>
+          <h1 className="logo-title font-extrabold gradient-text">
+            XE ÔM RUSH
+          </h1>
           <p className="logo-subtitle">Real-time Autoritative Alley io Game</p>
         </div>
 
@@ -55,7 +57,7 @@ export const App: React.FC = () => {
             />
           </div>
 
-          <div className="form-group" style={{ marginTop: 12 }}>
+          <div className="form-group" style={{marginTop: 12}}>
             <label className="form-label" htmlFor="serverUrl">
               ĐỊA CHỈ SERVER (WEBSOCKET)
             </label>
@@ -63,7 +65,7 @@ export const App: React.FC = () => {
               id="serverUrl"
               type="text"
               required
-              placeholder="ws://localhost:3001"
+              placeholder="ws://localhost:3002"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               className="form-input"
@@ -78,9 +80,17 @@ export const App: React.FC = () => {
         <div className="rules-section">
           <h4>💡 HƯỚNG DẪN TRÒ CHƠI</h4>
           <ul>
-            <li>Lái xe ôm đón khách (chấm tròn xanh 🟢) trên đường hoặc tại <strong>Chợ Bến Thành</strong>.</li>
-            <li>Theo dõi vạch chỉ dẫn màu đỏ để đưa khách đến đích (chấm đỏ 🔴).</li>
-            <li>Nhận tiền thưởng <strong>VNĐ</strong> để thăng cấp trên bảng xếp hạng tài xế!</li>
+            <li>
+              Lái xe ôm đón khách (chấm tròn xanh 🟢) trên đường hoặc tại{" "}
+              <strong>Chợ Bến Thành</strong>.
+            </li>
+            <li>
+              Theo dõi vạch chỉ dẫn màu đỏ để đưa khách đến đích (chấm đỏ 🔴).
+            </li>
+            <li>
+              Nhận tiền thưởng <strong>VNĐ</strong> để thăng cấp trên bảng xếp
+              hạng tài xế!
+            </li>
           </ul>
         </div>
       </div>

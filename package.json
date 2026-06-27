@@ -7,7 +7,9 @@
     "build:shared": "pnpm --filter shared build",
     "build:server": "pnpm --filter server build",
     "build:client": "pnpm --filter client build",
-    "start:server": "pnpm --filter server start"
+    "start:server": "pnpm --filter server start",
+    "test": "pnpm --filter shared test && pnpm --filter server test",
+    "bench": "pnpm --filter shared bench"
   },
   "packageManager": "pnpm@10.28.2"
 }

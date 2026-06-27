@@ -76,10 +76,10 @@ wss.on('connection', (ws: WebSocket) => {
       if (msgType === EMessageType.JOIN) {
         if (joined) return;
         const username = decodeJoin(message);
-        
+
         // Add to game world
         world.addPlayer(playerId, username);
-        
+
         // Register socket
         activeSockets.set(playerId, { ws, playerId, username });
         joined = true;
@@ -139,7 +139,7 @@ setInterval(() => {
 }, TICK_INTERVAL_MS);
 
 // Start server
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 server.listen(PORT, () => {
   console.log(`🚀 Authoritative Server running on port ${PORT}`);
   console.log(`Tick rate: 20Hz (Interval: ${TICK_INTERVAL_MS}ms)`);

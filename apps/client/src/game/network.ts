@@ -22,20 +22,22 @@ export class GameNetwork {
   public connect(url: string, username: string, onConnect: () => void, onDisconnect: () => void): void {
     this.onConnectCallback = onConnect;
     this.onDisconnectCallback = onDisconnect;
-    this.ws = new WebSocket(url);
-    this.ws.binaryType = 'arraybuffer';
+    
+    const socket = new WebSocket(url);
+    this.ws = socket;
+    socket.binaryType = 'arraybuffer';
 
-    this.ws.onopen = () => {
-      // Send join message
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       const joinBuffer = encodeJoin(username);
-      this.ws?.send(joinBuffer);
+      socket.send(joinBuffer);
       this.onConnectCallback?.();
 
-      // Start ping loop for RTT measurement
       this.startPingLoop();
     };
 
-    this.ws.onmessage = (event: MessageEvent) => {
+    socket.onmessage = (event: MessageEvent) => {
+      if (this.ws !== socket) return;
       const buffer = event.data as ArrayBuffer;
       const view = new DataView(buffer);
       const msgType = view.getUint8(0);
@@ -47,7 +49,6 @@ export class GameNetwork {
         const snapshot = decodeSnapshot(buffer);
         this.onSnapshotCallbacks.forEach((cb) => cb(snapshot));
 
-        // Measure RTT (simple ping estimate using receipt of snapshot)
         if (this.pingSentTime > 0) {
           this.rtt = Date.now() - this.pingSentTime;
           this.pingSentTime = 0;
@@ -55,12 +56,15 @@ export class GameNetwork {
       }
     };
 
-    this.ws.onclose = () => {
-      this.onDisconnectCallback?.();
-      this.ws = null;
+    socket.onclose = () => {
+      if (this.ws === socket) {
+        this.onDisconnectCallback?.();
+        this.ws = null;
+      }
     };
 
-    this.ws.onerror = (err) => {
+    socket.onerror = (err) => {
+      if (this.ws !== socket) return;
       console.error('WebSocket Error:', err);
     };
   }
