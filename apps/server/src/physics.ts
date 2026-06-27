@@ -1,4 +1,4 @@
-import { MAP_SIZE } from '@xeom-rush/shared';
+import { MAP_SIZE, COLLISION_RADIUS } from '@xeom-rush/shared';
 
 export interface Rectangle {
   x: number; // min x
@@ -12,6 +12,25 @@ export class PhysicsEngine {
 
   constructor() {
     this.generateMapObstacles();
+  }
+
+  /**
+   * Checks if a point is inside or too close to any building.
+   * Uses COLLISION_RADIUS as padding so the position is reachable by players.
+   */
+  public isInsideBuilding(px: number, py: number): boolean {
+    const padding = COLLISION_RADIUS;
+    for (const rect of this.buildings) {
+      if (
+        px >= rect.x - padding &&
+        px <= rect.x + rect.width + padding &&
+        py >= rect.y - padding &&
+        py <= rect.y + rect.height + padding
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

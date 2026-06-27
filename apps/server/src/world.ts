@@ -14,7 +14,7 @@ export class GameWorld {
   constructor() {
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
-    this.passengers = new PassengerSpawner();
+    this.passengers = new PassengerSpawner(this.physics);
   }
 
   public addPlayer(id: string, username: string): void {

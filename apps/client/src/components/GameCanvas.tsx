@@ -23,6 +23,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const [localPlayer, setLocalPlayer] = useState<PlayerState | null>(null);
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [passengers, setPassengers] = useState<PassengerState[]>([]);
+  const passengersRef = useRef<PassengerState[]>([]);
   const [rtt, setRtt] = useState(0);
   const [tickRate, setTickRate] = useState(0);
   const [lastBytes, setLastBytes] = useState(0);
@@ -92,6 +93,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       interpolation.addSnapshot(snapshot.players);
 
       // 5. Update passengers list
+      passengersRef.current = snapshot.passengers;
       setPassengers(snapshot.passengers);
 
       // 6. Perform server reconciliation on local player state
@@ -180,7 +182,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         rendererRef.current.draw(
           localPlayerStateRef.current,
           otherPlayersInterpolated,
-          passengers,
+          passengersRef.current,
           showDebug
         );
       }
@@ -228,21 +230,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           const joinBuffer = encodeJoin(`🤖 Bot-${Math.floor(Math.random() * 1000)}`);
           ws.send(joinBuffer);
 
-          // Start random movement tick loop at 20Hz
+          // Pick a direction and hold it for 2-5 seconds before changing
+          let currentAngle = Math.random() * Math.PI * 2;
+          let ticksUntilDirectionChange = Math.floor(20 + Math.random() * 60); // 1-4 seconds at 20Hz
+
+          // Start movement tick loop at 20Hz
           const interval = setInterval(() => {
             if (ws.readyState !== WebSocket.OPEN) {
               clearInterval(interval);
               return;
             }
             seq++;
-            // Random walk direction
-            const angle = Math.random() * Math.PI * 2;
-            const dx = Math.cos(angle);
-            const dy = Math.sin(angle);
-            // Send input
-            const inputBuffer = encodeInput(seq, dx, dy, angle);
+
+            // Change direction periodically, not every tick
+            ticksUntilDirectionChange--;
+            if (ticksUntilDirectionChange <= 0) {
+              // Turn by a moderate amount (not fully random) for natural-looking movement
+              currentAngle += (Math.random() - 0.5) * Math.PI * 0.8;
+              ticksUntilDirectionChange = Math.floor(40 + Math.random() * 80); // 2-6 seconds
+            }
+
+            const dx = Math.cos(currentAngle);
+            const dy = Math.sin(currentAngle);
+            const inputBuffer = encodeInput(seq, dx, dy, currentAngle);
             ws.send(inputBuffer);
-          }, 100);
+          }, 50); // 50ms = 20Hz to match server tick rate
         };
       }, i * 200); // Stagger joins to show neat connection updates
     }

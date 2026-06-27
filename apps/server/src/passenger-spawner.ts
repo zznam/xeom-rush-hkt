@@ -1,10 +1,14 @@
-import { PassengerState, MAP_SIZE, MAX_PASSENGERS } from '@xeom-rush/shared';
+import { PassengerState, MAP_SIZE, MAX_PASSENGERS, COLLISION_RADIUS } from '@xeom-rush/shared';
+import { PhysicsEngine } from './physics';
 
 export class PassengerSpawner {
   private passengers: Map<string, PassengerState> = new Map();
   private nextId: number = 1;
+  private physics: PhysicsEngine;
 
-  constructor() {
+  constructor(physics: PhysicsEngine) {
+    this.physics = physics;
+
     // Populate initial batch
     for (let i = 0; i < MAX_PASSENGERS; i++) {
       this.spawnPassenger();
@@ -30,35 +34,57 @@ export class PassengerSpawner {
     }
   }
 
+  /**
+   * Generates a random position on a street (not inside any building).
+   * Retries up to maxAttempts to find a valid position.
+   */
+  private generateStreetPosition(nearCenter: boolean): { x: number; y: number } {
+    const maxAttempts = 50;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let x: number;
+      let y: number;
+
+      if (nearCenter) {
+        // Spawn near the middle market area (MAP_SIZE / 2)
+        const center = MAP_SIZE / 2;
+        x = center + (Math.random() - 0.5) * 300;
+        y = center + (Math.random() - 0.5) * 300;
+      } else {
+        // Random coordinates, keeping some padding from edges
+        x = 100 + Math.random() * (MAP_SIZE - 200);
+        y = 100 + Math.random() * (MAP_SIZE - 200);
+      }
+
+      // Validate position is not inside a building
+      if (!this.physics.isInsideBuilding(x, y)) {
+        return { x, y };
+      }
+    }
+
+    // Fallback: place at center market area (always open)
+    const center = MAP_SIZE / 2;
+    return {
+      x: center + (Math.random() - 0.5) * 100,
+      y: center + (Math.random() - 0.5) * 100,
+    };
+  }
+
   public spawnPassenger(): PassengerState {
     const id = `pass-${this.nextId++}`;
     
     // Choose spawn point: 30% chance near market hot-zones, 70% random
     const isMarket = Math.random() < 0.3;
-    let x = 0;
-    let y = 0;
+    const spawnPos = this.generateStreetPosition(isMarket);
 
-    if (isMarket) {
-      // Spawn near the middle market area (MAP_SIZE / 2)
-      const center = MAP_SIZE / 2;
-      x = center + (Math.random() - 0.5) * 300;
-      y = center + (Math.random() - 0.5) * 300;
-    } else {
-      // Random coordinates, keeping some padding from edges
-      x = 100 + Math.random() * (MAP_SIZE - 200);
-      y = 100 + Math.random() * (MAP_SIZE - 200);
-    }
-
-    // Set destination at least 1000 units away
-    let destX = 0;
-    let destY = 0;
+    // Set destination at least 1000 units away, also on a street
+    let destPos = { x: 0, y: 0 };
     let distance = 0;
     
     do {
-      destX = 100 + Math.random() * (MAP_SIZE - 200);
-      destY = 100 + Math.random() * (MAP_SIZE - 200);
-      const dx = destX - x;
-      const dy = destY - y;
+      destPos = this.generateStreetPosition(false);
+      const dx = destPos.x - spawnPos.x;
+      const dy = destPos.y - spawnPos.y;
       distance = Math.sqrt(dx * dx + dy * dy);
     } while (distance < 1000);
 
@@ -69,10 +95,10 @@ export class PassengerSpawner {
 
     const passenger: PassengerState = {
       id,
-      x,
-      y,
-      destX,
-      destY,
+      x: spawnPos.x,
+      y: spawnPos.y,
+      destX: destPos.x,
+      destY: destPos.y,
       reward,
       spawnedAt: Date.now(),
       isCarried: false,
