@@ -4,7 +4,7 @@ import { inputHandler } from '../game/input';
 import { prediction } from '../game/prediction';
 import { interpolation } from '../game/interpolation';
 import { GameRenderer } from '../game/renderer';
-import { type WorldSnapshot, type PlayerState, type PassengerState, type ConfigPayload, encodeJoin, encodeInput } from '@xeom-rush/shared';
+import { type WorldSnapshot, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type ConfigPayload } from '@xeom-rush/shared';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 
@@ -24,10 +24,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [passengers, setPassengers] = useState<PassengerState[]>([]);
   const passengersRef = useRef<PassengerState[]>([]);
+  const trafficLightsRef = useRef<TrafficLightState[]>([]);
+  const pedestriansRef = useRef<PedestrianState[]>([]);
   const [rtt, setRtt] = useState(0);
   const [tickRate, setTickRate] = useState(0);
   const [lastBytes, setLastBytes] = useState(0);
   const [showDebug, setShowDebug] = useState(true);
+  const [violationAlert, setViolationAlert] = useState<string | null>(null);
+  const previousViolationTickRef = useRef<number>(0);
 
   // Client-side prediction sequence counter
   const clientSeqRef = useRef(0);
@@ -66,7 +70,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     network.registerSnapshotCallback((snapshot: WorldSnapshot) => {
       // 1. Calculate received package size
       // We can approximate snapshot bytes size
-      const snapshotSize = 9 + snapshot.players.length * 40 + snapshot.passengers.length * 35; // approx
+      const snapshotSize = 13 + snapshot.players.length * 50 + snapshot.passengers.length * 35; // approx
       lastSnapSizeRef.current = snapshotSize;
       setLastBytes(snapshotSize);
 
@@ -94,6 +98,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
       // 5. Update passengers list
       passengersRef.current = snapshot.passengers;
+      trafficLightsRef.current = snapshot.trafficLights;
+      pedestriansRef.current = snapshot.pedestrians;
       setPassengers(snapshot.passengers);
 
       // 6. Perform server reconciliation on local player state
@@ -105,12 +111,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           localStateFromServer.lastProcessedSeq
         );
 
-        // Keep rest of states (score, passengerId) from server, update position from reconciliation
         const updatedLocalState: PlayerState = {
           ...localStateFromServer,
           x: reconciled.x,
           y: reconciled.y,
         };
+
+        if (
+          updatedLocalState.lastViolation &&
+          updatedLocalState.lastViolation.tick !== previousViolationTickRef.current
+        ) {
+          previousViolationTickRef.current = updatedLocalState.lastViolation.tick;
+          rendererRef.current?.triggerShake(15);
+          setViolationAlert(getViolationMessage(updatedLocalState.lastViolation));
+          setTimeout(() => setViolationAlert(null), 1200);
+        }
 
         localPlayerStateRef.current = updatedLocalState;
         setLocalPlayer(updatedLocalState);
@@ -183,6 +198,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           localPlayerStateRef.current,
           otherPlayersInterpolated,
           passengersRef.current,
+          trafficLightsRef.current,
+          pedestriansRef.current,
           showDebug
         );
       }
@@ -234,6 +251,43 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     <div ref={containerRef} style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
       
+      {/* Collision Alert Banner */}
+      {violationAlert && (
+        <div style={{
+          position: 'absolute',
+          top: '25%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(239, 68, 68, 0.95)',
+          border: '2.5px solid #ffffff',
+          borderRadius: '12px',
+          padding: '14px 28px',
+          color: '#ffffff',
+          fontFamily: "'Outfit', 'Inter', sans-serif",
+          fontWeight: 900,
+          fontSize: '24px',
+          boxShadow: '0 0 25px rgba(239, 68, 68, 0.7)',
+          pointerEvents: 'none',
+          zIndex: 999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          animation: 'bounceIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+        }}>
+          {violationAlert}
+        </div>
+      )}
+
+      {/* Embedded Animation Styles */}
+      <style>{`
+        @keyframes bounceIn {
+          0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+          50% { transform: translate(-50%, -50%) scale(1.1); }
+          70% { transform: translate(-50%, -50%) scale(0.9); }
+          100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+      `}</style>
+
       {/* HUD Layer */}
       <HUD localPlayer={localPlayer} players={players} passengers={passengers} />
 
@@ -251,3 +305,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     </div>
   );
 };
+
+function getViolationMessage(violation: NonNullable<PlayerState['lastViolation']>): string {
+  switch (violation.type) {
+    case 'red-light':
+      return '🚦 VƯỢT ĐÈN ĐỎ! PHẠT -2.000đ';
+    case 'pedestrian':
+      return '🚶 TÔNG NGƯỜI ĐI BỘ! MẤT HẾT TIỀN';
+    case 'driver-collision':
+      return '💥 VA CHẠM! PHẠT -1.000đ';
+    default:
+      return '⚠️ VI PHẠM!';
+  }
+}

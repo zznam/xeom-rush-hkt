@@ -20,6 +20,12 @@ interface Waypoint {
   y: number;
 }
 
+interface BotPersonality {
+  lawfulness: number;
+  riskTolerance: number;
+  aggression: number;
+}
+
 interface BotAgent {
   playerId: string;
   state: EBotState;
@@ -31,6 +37,11 @@ interface BotAgent {
   currentAngle: number;
   path: Waypoint[];
   pathIndex: number;
+  personality: BotPersonality;
+  routeJitterSeed: number;
+  laneOffset: number;
+  stopOffset: number;
+  avoidedRoundabouts: Map<string, number>;
 }
 
 export class BotManager {
@@ -65,6 +76,15 @@ export class BotManager {
         currentAngle: Math.random() * Math.PI * 2,
         path: [],
         pathIndex: 0,
+        personality: {
+          lawfulness: 0.65 + Math.random() * 0.3,
+          riskTolerance: 0.05 + Math.random() * 0.25,
+          aggression: 0.35 + Math.random() * 0.45,
+        },
+        routeJitterSeed: idx * 2654435761,
+        laneOffset: ((idx % 5) - 2) * 4,
+        stopOffset: (idx % 6) * 9,
+        avoidedRoundabouts: new Map(),
       });
 
       spawnedIds.push(playerId);
@@ -105,6 +125,7 @@ export class BotManager {
       // Handle stuck behavior to keep bots fluid and competing
       if (bot.stuckTicks > 40) {
         // Hard stuck: release target and seek another passenger
+        this.markNearbyRoundaboutAvoided(bot, player.x, player.y);
         if (bot.targetPassengerId) {
           this.targetedPassengerIds.delete(bot.targetPassengerId);
         }
@@ -117,7 +138,7 @@ export class BotManager {
         // Mildly stuck: recalculate path from current location to target
         const target = this.getTargetPosition(bot);
         if (target) {
-          bot.path = this.calculatePath(player.x, player.y, target.x, target.y);
+          bot.path = this.calculatePath(bot, player.x, player.y, target.x, target.y);
           bot.pathIndex = 0;
         }
       }
@@ -152,12 +173,12 @@ export class BotManager {
 
     switch (bot.state) {
       case EBotState.SEEKING_PASSENGER: {
-        const nearest = this.findNearestAvailablePassenger(player);
+        const nearest = this.findNearestAvailablePassenger(bot, player);
         if (nearest) {
           bot.targetPassengerId = nearest.id;
           bot.state = EBotState.NAVIGATING_TO_PICKUP;
           this.targetedPassengerIds.add(nearest.id);
-          bot.path = this.calculatePath(player.x, player.y, nearest.x, nearest.y);
+          bot.path = this.calculatePath(bot, player.x, player.y, nearest.x, nearest.y);
           bot.pathIndex = 0;
           bot.stuckTicks = 0;
         }
@@ -177,7 +198,7 @@ export class BotManager {
           // Path to destination
           const passenger = passengerMap.get(player.passengerId);
           if (passenger) {
-            bot.path = this.calculatePath(player.x, player.y, passenger.destX, passenger.destY);
+            bot.path = this.calculatePath(bot, player.x, player.y, passenger.destX, passenger.destY);
             bot.pathIndex = 0;
           } else {
             bot.path = [];
@@ -223,24 +244,30 @@ export class BotManager {
 
   // ── Target Selection ────────────────────────────────────────────
 
-  private findNearestAvailablePassenger(player: PlayerState): PassengerState | null {
+  private findNearestAvailablePassenger(bot: BotAgent, player: PlayerState): PassengerState | null {
     const passengerMap = this.world.getPassengerMap();
-    let nearest: PassengerState | null = null;
-    let nearestDist = Infinity;
+    let best: PassengerState | null = null;
+    let bestScore = -Infinity;
 
     for (const passenger of passengerMap.values()) {
       // Skip carried or already targeted by another bot
       if (passenger.isCarried) continue;
       if (this.targetedPassengerIds.has(passenger.id)) continue;
 
-      const dist = Math.hypot(passenger.x - player.x, passenger.y - player.y);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = passenger;
+      const pickupDist = Math.hypot(passenger.x - player.x, passenger.y - player.y);
+      const tripDist = Math.hypot(passenger.destX - passenger.x, passenger.destY - passenger.y);
+      const valueScore = passenger.reward / Math.max(400, pickupDist + tripDist * 0.6);
+      const nearbyBonus = pickupDist < 650 ? 4 : 0;
+      const crowdPenalty = this.countNearbyBots(passenger.x, passenger.y) * 2.2;
+      const preferenceNoise = (this.hash01(`${bot.routeJitterSeed}:${passenger.id}`) - 0.5) * 7;
+
+      if (valueScore + nearbyBonus + preferenceNoise - crowdPenalty > bestScore) {
+        bestScore = valueScore + nearbyBonus + preferenceNoise - crowdPenalty;
+        best = passenger;
       }
     }
 
-    return nearest;
+    return best;
   }
 
   // ── Input Generation ────────────────────────────────────────────
@@ -252,7 +279,7 @@ export class BotManager {
     if (bot.path.length === 0) {
       const target = this.getTargetPosition(bot);
       if (target) {
-        bot.path = this.calculatePath(player.x, player.y, target.x, target.y);
+        bot.path = this.calculatePath(bot, player.x, player.y, target.x, target.y);
         bot.pathIndex = 0;
       }
     }
@@ -272,16 +299,100 @@ export class BotManager {
       distToWaypoint = Math.hypot(currentWaypoint.x - player.x, currentWaypoint.y - player.y);
     }
 
-    // Steer directly towards current waypoint
-    const angle = Math.atan2(currentWaypoint.y - player.y, currentWaypoint.x - player.x);
-    bot.currentAngle = angle;
+    // Path direction vector
+    const pathAngle = Math.atan2(currentWaypoint.y - player.y, currentWaypoint.x - player.x);
+    let moveX = Math.cos(pathAngle);
+    let moveY = Math.sin(pathAngle);
+
+    // Dynamic driver-to-driver avoidance steering (separation)
+    const nearbyIds = this.world.getSpatialGrid().getNearbyEntities(player.x, player.y);
+    const avoidanceRadius = 105;
+    let avoidX = 0;
+    let avoidY = 0;
+    let avoidCount = 0;
+
+    for (const otherId of nearbyIds) {
+      if (otherId === bot.playerId) continue;
+      
+      // Avoid both human players and other AI bots
+      if (otherId.startsWith('player-') || otherId.startsWith('bot-')) {
+        const other = this.world.getPlayer(otherId);
+        if (other) {
+          const dx = player.x - other.x;
+          const dy = player.y - other.y;
+          const dist = Math.hypot(dx, dy);
+          
+          if (dist > 0 && dist < avoidanceRadius) {
+            // Repulsion strength is inversely proportional to distance (stronger when closer)
+            const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 42 ? 2.4 : 1);
+            avoidX += (dx / dist) * strength;
+            avoidY += (dy / dist) * strength;
+            avoidCount++;
+          }
+        }
+      }
+    }
+
+    if (avoidCount > 0) {
+      // Blend path angle with avoidance steering
+      const avoidWeight = Math.min(2.4, 1.1 + avoidCount * 0.18);
+      moveX += avoidX * avoidWeight;
+      moveY += avoidY * avoidWeight;
+    }
+
+    const roundaboutSteer = this.getRoundaboutTangentialSteer(player.x, player.y);
+    moveX += roundaboutSteer.x;
+    moveY += roundaboutSteer.y;
+
+    const city = this.world.getCityFeatures();
+    const mag = Math.hypot(moveX, moveY) || 1;
+    const headingX = moveX / mag;
+    const headingY = moveY / mag;
+
+    const pedestrianAvoidance = city.getPedestrianAvoidance(player.x, player.y, headingX, headingY);
+    if (pedestrianAvoidance.shouldBrake && bot.personality.aggression < 0.72) {
+      return {
+        seq: bot.inputSeq,
+        dx: 0,
+        dy: 0,
+        angle: bot.currentAngle,
+      };
+    }
+    moveX += pedestrianAvoidance.x * 1.8;
+    moveY += pedestrianAvoidance.y * 1.8;
+
+    const finalAngle = Math.atan2(moveY, moveX);
+    bot.currentAngle = finalAngle;
+
+    const trafficDecision = city.getTrafficDecisionAhead(
+      player.x,
+      player.y,
+      Math.cos(finalAngle),
+      Math.sin(finalAngle),
+    );
+    if (trafficDecision?.shouldStop && this.shouldBotObeyTrafficLight(bot, player)) {
+      const queueOffset = this.getTrafficQueueOffset(bot, Math.cos(finalAngle), Math.sin(finalAngle));
+      return {
+        seq: bot.inputSeq,
+        dx: queueOffset.dx,
+        dy: queueOffset.dy,
+        angle: finalAngle,
+      };
+    }
 
     return {
       seq: bot.inputSeq,
-      dx: Math.cos(angle),
-      dy: Math.sin(angle),
-      angle: angle,
+      dx: Math.cos(finalAngle),
+      dy: Math.sin(finalAngle),
+      angle: finalAngle,
     };
+  }
+
+  private shouldBotObeyTrafficLight(bot: BotAgent, player: PlayerState): boolean {
+    const passenger = player.passengerId ? this.world.getPassengerMap().get(player.passengerId) : null;
+    const highValueRide = (passenger?.reward ?? 0) >= 18000;
+    const runLightChance = highValueRide ? bot.personality.riskTolerance : bot.personality.riskTolerance * 0.35;
+    return Math.random() >= runLightChance || Math.random() < bot.personality.lawfulness;
   }
 
   private getTargetPosition(bot: BotAgent): Waypoint | null {
@@ -347,7 +458,7 @@ export class BotManager {
     return Math.hypot(ax - bx, ay - by);
   }
 
-  private calculatePath(fromX: number, fromY: number, toX: number, toY: number): Waypoint[] {
+  private calculatePath(bot: BotAgent, fromX: number, fromY: number, toX: number, toY: number): Waypoint[] {
     const start = this.getClosestNode(fromX, fromY);
     const end = this.getClosestNode(toX, toY);
 
@@ -355,7 +466,7 @@ export class BotManager {
     const endKey = `${end.ix},${end.iy}`;
 
     if (startKey === endKey) {
-      return [{ x: toX, y: toY }];
+      return [this.applyWaypointJitter(bot, { x: toX, y: toY })];
     }
 
     const openSet: GridNode[] = [start];
@@ -384,15 +495,15 @@ export class BotManager {
 
       if (currentKey === endKey) {
         // Reconstruct path
-        const path: Waypoint[] = [];
+        const nodePath: GridNode[] = [];
         let tempKey: string | undefined = currentKey;
         while (tempKey) {
           const [ixS, iyS] = tempKey.split(',').map(Number);
-          path.unshift({ x: STREET_LINES[ixS], y: STREET_LINES[iyS] });
+          nodePath.unshift({ ix: ixS, iy: iyS });
           tempKey = cameFrom.get(tempKey);
         }
-        // Add final destination coordinate
-        path.push({ x: toX, y: toY });
+        const path = this.expandRoundaboutWaypoints(bot, nodePath);
+        path.push(this.applyWaypointJitter(bot, { x: toX, y: toY }));
         return path;
       }
 
@@ -407,6 +518,9 @@ export class BotManager {
 
       for (const neighbor of neighbors) {
         const neighborKey = `${neighbor.ix},${neighbor.iy}`;
+        if (neighborKey !== endKey && this.isRoundaboutTemporarilyAvoided(bot, neighborKey)) {
+          continue;
+        }
         const tentativeGScore = (gScore.get(currentKey) ?? Infinity) + this.distance(current, neighbor);
 
         if (tentativeGScore < (gScore.get(neighborKey) ?? Infinity)) {
@@ -421,6 +535,140 @@ export class BotManager {
       }
     }
 
-    return [{ x: toX, y: toY }];
+    return [this.applyWaypointJitter(bot, { x: toX, y: toY })];
+  }
+
+  private expandRoundaboutWaypoints(bot: BotAgent, nodes: GridNode[]): Waypoint[] {
+    const path: Waypoint[] = [];
+    const city = this.world.getCityFeatures();
+
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const x = STREET_LINES[node.ix];
+      const y = STREET_LINES[node.iy];
+
+      if (!city.isRoundaboutAt(node.ix, node.iy)) {
+        path.push(this.applyWaypointJitter(bot, { x, y }));
+        continue;
+      }
+
+      const roundabout = city.roundabouts.find((r) => r.id === `roundabout-${node.ix}-${node.iy}`);
+      const prev = nodes[i - 1];
+      const next = nodes[i + 1];
+      if (!roundabout || !prev || !next) {
+        path.push(this.applyWaypointJitter(bot, { x, y }));
+        continue;
+      }
+
+      const ringRadius = roundabout.radius + 28 + bot.laneOffset;
+      let entryAngle = Math.atan2(STREET_LINES[prev.iy] - y, STREET_LINES[prev.ix] - x);
+      const exitAngle = Math.atan2(STREET_LINES[next.iy] - y, STREET_LINES[next.ix] - x);
+      entryAngle += bot.laneOffset * 0.015;
+
+      while (entryAngle <= exitAngle) {
+        entryAngle += Math.PI * 2;
+      }
+
+      const steps = Math.max(2, Math.ceil((entryAngle - exitAngle) / (Math.PI / 4)));
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        const angle = entryAngle + (exitAngle - entryAngle) * t;
+        path.push({
+          x: x + Math.cos(angle) * ringRadius,
+          y: y + Math.sin(angle) * ringRadius,
+        });
+      }
+    }
+
+    return path;
+  }
+
+  private countNearbyBots(x: number, y: number): number {
+    return this.world
+      .getSpatialGrid()
+      .getNearbyEntities(x, y)
+      .filter((id) => id.startsWith('bot-'))
+      .length;
+  }
+
+  private hash01(value: string): number {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 0xffffffff;
+  }
+
+  private applyWaypointJitter(bot: BotAgent, waypoint: Waypoint): Waypoint {
+    const jitterX = (this.hash01(`${bot.routeJitterSeed}:${waypoint.x}:x`) - 0.5) * 14 + bot.laneOffset;
+    const jitterY = (this.hash01(`${bot.routeJitterSeed}:${waypoint.y}:y`) - 0.5) * 14 - bot.laneOffset;
+    const candidate = {
+      x: waypoint.x + jitterX,
+      y: waypoint.y + jitterY,
+    };
+
+    if (this.physics.isInsideBuilding(candidate.x, candidate.y)) {
+      return waypoint;
+    }
+
+    return candidate;
+  }
+
+  private markNearbyRoundaboutAvoided(bot: BotAgent, x: number, y: number): void {
+    const roundabout = this.world
+      .getCityFeatures()
+      .roundabouts.find((r) => Math.hypot(r.x - x, r.y - y) < r.radius + 95);
+
+    if (!roundabout) return;
+
+    const ix = STREET_LINES.findIndex((line) => line === roundabout.x);
+    const iy = STREET_LINES.findIndex((line) => line === roundabout.y);
+    if (ix >= 0 && iy >= 0) {
+      bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 160);
+    }
+  }
+
+  private isRoundaboutTemporarilyAvoided(bot: BotAgent, key: string): boolean {
+    const until = bot.avoidedRoundabouts.get(key) ?? 0;
+    if (until <= this.world.getTick()) {
+      bot.avoidedRoundabouts.delete(key);
+      return false;
+    }
+
+    return true;
+  }
+
+  private getRoundaboutTangentialSteer(x: number, y: number): { x: number; y: number } {
+    const roundabout = this.world
+      .getCityFeatures()
+      .roundabouts.find((r) => Math.hypot(r.x - x, r.y - y) < r.radius + 120);
+
+    if (!roundabout) {
+      return { x: 0, y: 0 };
+    }
+
+    const dx = x - roundabout.x;
+    const dy = y - roundabout.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const targetRadius = roundabout.radius + 58;
+    const radialError = targetRadius - dist;
+
+    return {
+      x: (-dy / dist) * 0.75 + (dx / dist) * radialError * 0.012,
+      y: (dx / dist) * 0.75 + (dy / dist) * radialError * 0.012,
+    };
+  }
+
+  private getTrafficQueueOffset(bot: BotAgent, headingX: number, headingY: number): { dx: number; dy: number } {
+    if (bot.stopOffset <= 0) {
+      return { dx: 0, dy: 0 };
+    }
+
+    const sideSign = bot.laneOffset >= 0 ? 1 : -1;
+    return {
+      dx: -headingX * 0.12 + -headingY * sideSign * 0.08,
+      dy: -headingY * 0.12 + headingX * sideSign * 0.08,
+    };
   }
 }

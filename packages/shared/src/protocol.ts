@@ -1,4 +1,16 @@
-import { EMessageType, type InputPayload, type PlayerState, type PassengerState, type WorldSnapshot, type ConfigPayload } from './types';
+import { EMessageType, type InputPayload, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type WorldSnapshot, type ConfigPayload, type ViolationType } from './types';
+
+const VIOLATION_TYPE_TO_CODE: Record<ViolationType, number> = {
+  'red-light': 1,
+  pedestrian: 2,
+  'driver-collision': 3,
+};
+
+const VIOLATION_CODE_TO_TYPE: Record<number, ViolationType> = {
+  1: 'red-light',
+  2: 'pedestrian',
+  3: 'driver-collision',
+};
 
 // Helper to write string to DataView
 function writeString(view: DataView, offset: number, str: string): number {
@@ -80,24 +92,37 @@ export function decodeInput(buffer: ArrayBuffer): InputPayload {
 }
 
 // --- Snapshot Message (Server -> Client) ---
-export function encodeSnapshot(tick: number, players: PlayerState[], passengers: PassengerState[]): ArrayBuffer {
-  // Estimate length:
-  // type(1) + tick(4) + numPlayers(2) + numPassengers(2) = 9 bytes base
-  let size = 9;
+export function encodeSnapshot(
+  tick: number,
+  players: PlayerState[],
+  passengers: PassengerState[],
+  trafficLights: TrafficLightState[] = [],
+  pedestrians: PedestrianState[] = [],
+): ArrayBuffer {
+  // type(1) + tick(4) + numPlayers(2) + numPassengers(2) + numLights(2) + numPedestrians(2) = 13 bytes base
+  let size = 13;
   for (const p of players) {
-    size += 1 + p.id.length;        // ID length + string
-    size += 1 + p.username.length;  // Username length + string
-    size += 4 + 4 + 4 + 4 + 4;      // x, y, angle, score, lastSeq (5 x 4 bytes)
-    size += 1;                      // hasPassenger (1 byte)
-    if (p.passengerId) {
-      size += 1 + p.passengerId.length;
-    }
+    size += 1 + p.id.length;
+    size += 1 + p.username.length;
+    size += 4 + 4 + 4 + 4 + 4; // x, y, angle, score, lastSeq
+    size += 1; // hasPassenger flag
+    if (p.passengerId) size += 1 + p.passengerId.length;
+    size += 1; // hasViolation flag
+    if (p.lastViolation) size += 1 + 4 + 4; // type, amount, tick
   }
-
   for (const pa of passengers) {
-    size += 1 + pa.id.length;       // ID length + string
-    size += 4 + 4 + 4 + 4 + 4;      // x, y, destX, destY, reward (5 x 4 bytes)
-    size += 1;                      // isCarried (1 byte)
+    size += 1 + pa.id.length;
+    size += 4 + 4 + 4 + 4 + 4; // x, y, destX, destY, reward
+    size += 1; // isCarried
+  }
+  for (const tl of trafficLights) {
+    size += 1 + tl.id.length;
+    size += 4 + 4; // x, y
+    size += 1 + 1; // isRedNS, isYellow flags
+  }
+  for (const ped of pedestrians) {
+    size += 1 + ped.id.length;
+    size += 4 + 4 + 4; // x, y, angle
   }
 
   const buffer = new ArrayBuffer(size);
@@ -107,8 +132,10 @@ export function encodeSnapshot(tick: number, players: PlayerState[], passengers:
   view.setUint32(1, tick);
   view.setUint16(5, players.length);
   view.setUint16(7, passengers.length);
+  view.setUint16(9, trafficLights.length);
+  view.setUint16(11, pedestrians.length);
 
-  let offset = 9;
+  let offset = 13;
 
   // Serialize players
   for (const p of players) {
@@ -120,10 +147,20 @@ export function encodeSnapshot(tick: number, players: PlayerState[], passengers:
     view.setInt32(offset + 12, p.score);
     view.setUint32(offset + 16, p.lastProcessedSeq);
     offset += 20;
-
     if (p.passengerId) {
       view.setUint8(offset, 1);
       offset = writeString(view, offset + 1, p.passengerId);
+    } else {
+      view.setUint8(offset, 0);
+      offset += 1;
+    }
+
+    if (p.lastViolation) {
+      view.setUint8(offset, 1);
+      view.setUint8(offset + 1, VIOLATION_TYPE_TO_CODE[p.lastViolation.type] ?? 0);
+      view.setInt32(offset + 2, p.lastViolation.amount);
+      view.setUint32(offset + 6, p.lastViolation.tick);
+      offset += 10;
     } else {
       view.setUint8(offset, 0);
       offset += 1;
@@ -142,6 +179,25 @@ export function encodeSnapshot(tick: number, players: PlayerState[], passengers:
     offset += 21;
   }
 
+  // Serialize traffic lights
+  for (const tl of trafficLights) {
+    offset = writeString(view, offset, tl.id);
+    view.setFloat32(offset, tl.x);
+    view.setFloat32(offset + 4, tl.y);
+    view.setUint8(offset + 8, tl.isRedNS ? 1 : 0);
+    view.setUint8(offset + 9, tl.isYellow ? 1 : 0);
+    offset += 10;
+  }
+
+  // Serialize pedestrians
+  for (const ped of pedestrians) {
+    offset = writeString(view, offset, ped.id);
+    view.setFloat32(offset, ped.x);
+    view.setFloat32(offset + 4, ped.y);
+    view.setFloat32(offset + 8, ped.angle);
+    offset += 12;
+  }
+
   return buffer;
 }
 
@@ -150,10 +206,14 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
   const tick = view.getUint32(1);
   const numPlayers = view.getUint16(5);
   const numPassengers = view.getUint16(7);
+  const numTrafficLights = view.getUint16(9);
+  const numPedestrians = view.getUint16(11);
 
-  let offset = 9;
+  let offset = 13;
   const players: PlayerState[] = [];
   const passengers: PassengerState[] = [];
+  const trafficLights: TrafficLightState[] = [];
+  const pedestrians: PedestrianState[] = [];
 
   // Deserialize players
   for (let i = 0; i < numPlayers; i++) {
@@ -178,17 +238,23 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
       offset = nextOffset;
     }
 
-    players.push({
-      id,
-      username,
-      x,
-      y,
-      angle,
-      score,
-      lastProcessedSeq,
-      passengerId,
-      connected: true,
-    });
+    const hasViolation = view.getUint8(offset) === 1;
+    offset += 1;
+
+    const player: PlayerState = { id, username, x, y, angle, score, lastProcessedSeq, passengerId, connected: true };
+    if (hasViolation) {
+      const violationCode = view.getUint8(offset);
+      const amount = view.getInt32(offset + 1);
+      const violationTick = view.getUint32(offset + 5);
+      offset += 9;
+
+      const type = VIOLATION_CODE_TO_TYPE[violationCode];
+      if (type) {
+        player.lastViolation = { type, amount, tick: violationTick };
+      }
+    }
+
+    players.push(player);
   }
 
   // Deserialize passengers
@@ -204,17 +270,31 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
     const isCarried = view.getUint8(offset + 20) === 1;
     offset += 21;
 
-    passengers.push({
-      id,
-      x,
-      y,
-      destX,
-      destY,
-      reward,
-      spawnedAt: 0, // client doesn't need actual spawn time timestamp
-      isCarried,
-    });
+    passengers.push({ id, x, y, destX, destY, reward, spawnedAt: 0, isCarried });
   }
 
-  return { tick, players, passengers };
+  // Deserialize traffic lights
+  for (let i = 0; i < numTrafficLights; i++) {
+    const { value: id, nextOffset } = readString(view, offset);
+    offset = nextOffset;
+    const x = view.getFloat32(offset);
+    const y = view.getFloat32(offset + 4);
+    const isRedNS = view.getUint8(offset + 8) === 1;
+    const isYellow = view.getUint8(offset + 9) === 1;
+    offset += 10;
+    trafficLights.push({ id, x, y, isRedNS, isYellow });
+  }
+
+  // Deserialize pedestrians
+  for (let i = 0; i < numPedestrians; i++) {
+    const { value: id, nextOffset } = readString(view, offset);
+    offset = nextOffset;
+    const x = view.getFloat32(offset);
+    const y = view.getFloat32(offset + 4);
+    const angle = view.getFloat32(offset + 8);
+    offset += 12;
+    pedestrians.push({ id, x, y, angle });
+  }
+
+  return { tick, players, passengers, trafficLights, pedestrians };
 }

@@ -49,4 +49,14 @@ describe('Authoritative Physics Collision Resolver', () => {
     // Y movement should be fine since there is no building wall in y path here
     expect(intoBuilding.y).toBe(playerY);
   });
+
+  it('should block circular roundabout obstacles', () => {
+    const physics = new PhysicsEngine();
+    physics.addCircleObstacle(450, 450, 34);
+
+    const resolved = physics.resolveMove(350, 450, 450, 450, 15);
+
+    expect(Math.hypot(resolved.x - 450, resolved.y - 450)).toBeGreaterThanOrEqual(49);
+    expect(physics.isInsideBuilding(450, 450)).toBe(true);
+  });
 });

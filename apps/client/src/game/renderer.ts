@@ -1,19 +1,47 @@
-import { type PassengerState, MAP_SIZE, CHUNK_SIZE } from '@xeom-rush/shared';
+import { type PassengerState, type TrafficLightState, type PedestrianState, MAP_SIZE, CHUNK_SIZE } from '@xeom-rush/shared';
 import { prediction } from './prediction';
+
+const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
+const ROUNDABOUT_CHANCE = 0.12;
+const TRAFFIC_LIGHT_CHANCE = 0.30;
+const CROSSWALK_CHANCE = 0.40;
+const ROUNDABOUT_RADIUS = 34;
+
+interface StaticRoundabout {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+}
+
+interface StaticCrosswalk {
+  id: string;
+  x: number;
+  y: number;
+  direction: 'horizontal' | 'vertical';
+}
 
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private camera = { x: 2000, y: 2000 };
+  private shakeMagnitude: number = 0;
+  private staticRoundabouts: StaticRoundabout[] = [];
+  private staticCrosswalks: StaticCrosswalk[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
+    this.generateStaticCityFeatures();
   }
 
   public resize(width: number, height: number): void {
     this.canvas.width = width;
     this.canvas.height = height;
+  }
+
+  public triggerShake(magnitude: number = 10): void {
+    this.shakeMagnitude = magnitude;
   }
 
   /**
@@ -23,15 +51,26 @@ export class GameRenderer {
     localPlayer: { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null },
     otherPlayers: Map<string, { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }>,
     passengers: PassengerState[],
+    trafficLights: TrafficLightState[],
+    pedestrians: PedestrianState[],
     showDebug: boolean
   ): void {
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
 
+    // Apply camera shake if any
+    let shakeX = 0;
+    let shakeY = 0;
+    if (this.shakeMagnitude > 0.1) {
+      shakeX = (Math.random() - 0.5) * this.shakeMagnitude;
+      shakeY = (Math.random() - 0.5) * this.shakeMagnitude;
+      this.shakeMagnitude *= 0.9; // decay
+    }
+
     // 1. Center camera on player
-    this.camera.x = localPlayer.x;
-    this.camera.y = localPlayer.y;
+    this.camera.x = localPlayer.x + shakeX;
+    this.camera.y = localPlayer.y + shakeY;
 
     // 2. Clear screen
     ctx.fillStyle = '#1e293b'; // Slate 800 dark background
@@ -47,22 +86,255 @@ export class GameRenderer {
     // 4. Draw obstacles (buildings / alleys)
     this.drawBuildings(ctx);
 
-    // 5. Draw passengers
+    // 5. Draw city realism layer
+    this.drawCityFeatures(ctx, trafficLights, pedestrians);
+
+    // 6. Draw passengers
     this.drawPassengers(ctx, passengers, localPlayer.passengerId);
 
-    // 6. Draw other players
+    // 7. Draw other players
     for (const op of otherPlayers.values()) {
       this.drawMotorbike(ctx, op.x, op.y, op.angle, op.username, false, op.passengerId !== null);
     }
 
-    // 7. Draw local player
+    // 8. Draw local player
     this.drawMotorbike(ctx, localPlayer.x, localPlayer.y, localPlayer.angle, localPlayer.username, true, localPlayer.passengerId !== null);
 
-    // 8. Draw spatial chunk grid if debug is enabled
+    // 9. Draw spatial chunk grid if debug is enabled
     if (showDebug) {
       this.drawChunkGrid(ctx, localPlayer.x, localPlayer.y);
     }
 
+    ctx.restore();
+  }
+
+  private generateStaticCityFeatures(): void {
+    const rng = new SeededRng(42);
+
+    for (let xi = 0; xi < STREET_LINES.length; xi++) {
+      for (let yi = 0; yi < STREET_LINES.length; yi++) {
+        const cx = STREET_LINES[xi];
+        const cy = STREET_LINES[yi];
+        const inCenter = Math.abs(cx - MAP_SIZE / 2) < 400 && Math.abs(cy - MAP_SIZE / 2) < 400;
+        const nearEdge = cx < 150 || cy < 150 || cx > MAP_SIZE - 150 || cy > MAP_SIZE - 150;
+        if (inCenter || nearEdge) continue;
+
+        const roll = rng.next();
+        if (roll < ROUNDABOUT_CHANCE) {
+          this.staticRoundabouts.push({ id: `roundabout-${xi}-${yi}`, x: cx, y: cy, radius: ROUNDABOUT_RADIUS });
+        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE) {
+          rng.next();
+        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE + CROSSWALK_CHANCE) {
+          this.staticCrosswalks.push({
+            id: `cw-${xi}-${yi}`,
+            x: cx,
+            y: cy,
+            direction: rng.next() < 0.5 ? 'horizontal' : 'vertical',
+          });
+        }
+      }
+    }
+  }
+
+  private drawCityFeatures(
+    ctx: CanvasRenderingContext2D,
+    trafficLights: TrafficLightState[],
+    pedestrians: PedestrianState[],
+  ): void {
+    for (const crosswalk of this.staticCrosswalks) {
+      this.drawCrosswalk(ctx, crosswalk);
+    }
+
+    for (const roundabout of this.staticRoundabouts) {
+      this.drawRoundabout(ctx, roundabout);
+    }
+
+    for (const light of trafficLights) {
+      this.drawTrafficLight(ctx, light);
+    }
+
+    for (const pedestrian of pedestrians) {
+      this.drawPedestrian(ctx, pedestrian);
+    }
+  }
+
+  private drawCrosswalk(ctx: CanvasRenderingContext2D, crosswalk: StaticCrosswalk): void {
+    ctx.save();
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.82)';
+
+    const stripeCount = 7;
+    const stripeWidth = 10;
+    const stripeLength = 90;
+    const spacing = 16;
+    const start = -((stripeCount - 1) * spacing) / 2;
+
+    for (let i = 0; i < stripeCount; i++) {
+      const offset = start + i * spacing;
+      if (crosswalk.direction === 'horizontal') {
+        ctx.fillRect(crosswalk.x - stripeLength / 2, crosswalk.y + offset - stripeWidth / 2, stripeLength, stripeWidth);
+      } else {
+        ctx.fillRect(crosswalk.x + offset - stripeWidth / 2, crosswalk.y - stripeLength / 2, stripeWidth, stripeLength);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  private drawRoundabout(ctx: CanvasRenderingContext2D, roundabout: StaticRoundabout): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(roundabout.x, roundabout.y, roundabout.radius + 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(roundabout.x, roundabout.y, roundabout.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#15803d';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(roundabout.x, roundabout.y, roundabout.radius - 13, 0, Math.PI * 2);
+    ctx.fillStyle = '#16a34a';
+    ctx.fill();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 15px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⛲', roundabout.x, roundabout.y + 5);
+
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 9]);
+    ctx.beginPath();
+    ctx.arc(roundabout.x, roundabout.y, roundabout.radius + 27, 0.25, Math.PI * 1.75);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.75)';
+    ctx.font = '900 13px Inter, sans-serif';
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2 + Math.PI / 4;
+      const ax = roundabout.x + Math.cos(angle) * (roundabout.radius + 27);
+      const ay = roundabout.y + Math.sin(angle) * (roundabout.radius + 27);
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(angle + Math.PI / 2);
+      ctx.fillText('➜', 0, 0);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  private drawTrafficLight(ctx: CanvasRenderingContext2D, light: TrafficLightState): void {
+    const nsColor = light.isRedNS ? '#ef4444' : light.isYellow ? '#facc15' : '#22c55e';
+    const ewColor = !light.isRedNS ? '#ef4444' : light.isYellow ? '#facc15' : '#22c55e';
+
+    ctx.save();
+    this.drawStopLines(ctx, light.x, light.y);
+    this.drawSignalHead(ctx, light.x - 46, light.y - 46, nsColor, -Math.PI / 2);
+    this.drawSignalHead(ctx, light.x + 46, light.y + 46, nsColor, Math.PI / 2);
+    this.drawSignalHead(ctx, light.x + 46, light.y - 46, ewColor, 0);
+    this.drawSignalHead(ctx, light.x - 46, light.y + 46, ewColor, Math.PI);
+    ctx.restore();
+  }
+
+  private drawStopLines(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    const offset = 46;
+    const halfLength = 34;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.72)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - halfLength, y - offset);
+    ctx.lineTo(x + halfLength, y - offset);
+    ctx.moveTo(x - halfLength, y + offset);
+    ctx.lineTo(x + halfLength, y + offset);
+    ctx.moveTo(x - offset, y - halfLength);
+    ctx.lineTo(x - offset, y + halfLength);
+    ctx.moveTo(x + offset, y - halfLength);
+    ctx.lineTo(x + offset, y + halfLength);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawSignalHead(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, angle: number): void {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, 18);
+    glow.addColorStop(0, color);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#020617';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-8, -13, 16, 26, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, -6, 3, 0, Math.PI * 2);
+    ctx.fillStyle = color === '#ef4444' ? '#ef4444' : 'rgba(100, 116, 139, 0.55)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fillStyle = color === '#facc15' ? '#facc15' : 'rgba(100, 116, 139, 0.55)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, 6, 3, 0, Math.PI * 2);
+    ctx.fillStyle = color === '#22c55e' ? '#22c55e' : 'rgba(100, 116, 139, 0.55)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(0, -13);
+    ctx.strokeStyle = 'rgba(203, 213, 225, 0.65)';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, 17);
+    ctx.lineTo(5, 23);
+    ctx.lineTo(-5, 23);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawPedestrian(ctx: CanvasRenderingContext2D, pedestrian: PedestrianState): void {
+    const bob = Math.sin(Date.now() / 120 + pedestrian.x * 0.01) * 2;
+
+    ctx.save();
+    ctx.translate(pedestrian.x, pedestrian.y + bob);
+    ctx.rotate(pedestrian.angle);
+
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-7, -6);
+    ctx.lineTo(7, 6);
+    ctx.moveTo(-7, 6);
+    ctx.lineTo(7, -6);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+    ctx.strokeStyle = '#f8fafc';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(2, -2, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#2563eb';
+    ctx.fill();
     ctx.restore();
   }
 
@@ -298,5 +570,14 @@ export class GameRenderer {
       }
     }
     ctx.restore();
+  }
+}
+
+class SeededRng {
+  constructor(private seed: number) {}
+
+  public next(): number {
+    this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
+    return this.seed / 0xffffffff;
   }
 }

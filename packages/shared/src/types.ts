@@ -13,6 +13,15 @@ export interface PlayerState {
   lastProcessedSeq: number;
   passengerId: string | null; // Passenger being carried, if any
   connected: boolean;
+  lastViolation?: ViolationState;
+}
+
+export type ViolationType = 'red-light' | 'pedestrian' | 'driver-collision';
+
+export interface ViolationState {
+  type: ViolationType;
+  amount: number;
+  tick: number;
 }
 
 export interface PassengerState {
@@ -24,6 +33,21 @@ export interface PassengerState {
   reward: number;
   spawnedAt: number;
   isCarried: boolean;
+}
+
+export interface PedestrianState {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;
+}
+
+export interface TrafficLightState {
+  id: string;
+  x: number;
+  y: number;
+  isRedNS: boolean; // True if Red for North-South (and Green for East-West), false otherwise
+  isYellow: boolean; // True if in transition warning phase
 }
 
 export enum EMessageType {
@@ -57,4 +81,6 @@ export interface WorldSnapshot {
   tick: number;
   players: PlayerState[];
   passengers: PassengerState[];
+  trafficLights: TrafficLightState[];
+  pedestrians: PedestrianState[];
 }

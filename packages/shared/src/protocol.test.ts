@@ -9,7 +9,7 @@ import {
   encodeSnapshot,
   decodeSnapshot,
 } from './protocol';
-import { type PlayerState, type PassengerState } from './types';
+import { type PlayerState, type PassengerState, type PedestrianState, type TrafficLightState } from './types';
 
 describe('Binary Wire Protocol Encoder/Decoder', () => {
   it('should serialize and deserialize Join payload correctly', () => {
@@ -62,6 +62,11 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
         lastProcessedSeq: 42,
         passengerId: 'pass-8',
         connected: true,
+        lastViolation: {
+          type: 'red-light',
+          amount: 2000,
+          tick: 998,
+        },
       },
       {
         id: 'p2',
@@ -99,7 +104,7 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
       },
     ];
 
-    const buffer = encodeSnapshot(tick, players, passengers);
+    const buffer = encodeSnapshot(tick, players, passengers, [], []);
     const decoded = decodeSnapshot(buffer);
 
     expect(decoded.tick).toBe(tick);
@@ -116,10 +121,12 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     expect(decodedP1.score).toBe(players[0].score);
     expect(decodedP1.lastProcessedSeq).toBe(players[0].lastProcessedSeq);
     expect(decodedP1.passengerId).toBe(players[0].passengerId);
+    expect(decodedP1.lastViolation).toEqual(players[0].lastViolation);
 
     // Verify Player 2 (passengerId should be null)
     const decodedP2 = decoded.players[1];
     expect(decodedP2.passengerId).toBeNull();
+    expect(decodedP2.lastViolation).toBeUndefined();
 
     // Verify Passenger 2 (not carried)
     const decodedPass2 = decoded.passengers[1];
@@ -130,5 +137,34 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     expect(decodedPass2.destY).toBeCloseTo(passengers[1].destY, 1);
     expect(decodedPass2.reward).toBe(passengers[1].reward);
     expect(decodedPass2.isCarried).toBe(passengers[1].isCarried);
+
+    // Verify new fields are present and empty
+    expect(decoded.trafficLights).toEqual([]);
+    expect(decoded.pedestrians).toEqual([]);
+  });
+
+  it('should serialize and deserialize traffic lights and pedestrians in snapshots', () => {
+    const players: PlayerState[] = [];
+    const passengers: PassengerState[] = [];
+    const trafficLights: TrafficLightState[] = [
+      { id: 'tl-2-3', x: 850, y: 1250, isRedNS: true, isYellow: false },
+      { id: 'tl-3-4', x: 1250, y: 1650, isRedNS: false, isYellow: true },
+    ];
+    const pedestrians: PedestrianState[] = [
+      { id: 'ped-1', x: 900, y: 1200, angle: Math.PI / 2 },
+      { id: 'ped-2', x: 1300, y: 1600, angle: Math.PI },
+    ];
+
+    const buffer = encodeSnapshot(1001, players, passengers, trafficLights, pedestrians);
+    const decoded = decodeSnapshot(buffer);
+
+    expect(decoded.trafficLights).toHaveLength(trafficLights.length);
+    expect(decoded.trafficLights[0]).toEqual(trafficLights[0]);
+    expect(decoded.trafficLights[1]).toEqual(trafficLights[1]);
+    expect(decoded.pedestrians).toHaveLength(pedestrians.length);
+    expect(decoded.pedestrians[0].id).toBe(pedestrians[0].id);
+    expect(decoded.pedestrians[0].x).toBeCloseTo(pedestrians[0].x, 1);
+    expect(decoded.pedestrians[0].y).toBeCloseTo(pedestrians[0].y, 1);
+    expect(decoded.pedestrians[0].angle).toBeCloseTo(pedestrians[0].angle, 3);
   });
 });

@@ -1,19 +1,32 @@
-import { PlayerState, PassengerState, InputPayload, MOTORBIKE_SPEED, COLLISION_RADIUS } from '@xeom-rush/shared';
+import { PlayerState, PassengerState, InputPayload, MOTORBIKE_SPEED, COLLISION_RADIUS, CHUNK_SIZE, type TrafficLightState, type PedestrianState, type ViolationType } from '@xeom-rush/shared';
 import { SpatialGrid } from './spatial-grid';
 import { PhysicsEngine } from './physics';
 import { PassengerSpawner } from './passenger-spawner';
+import { CityFeatures } from './city-features';
+
+const DRIVER_COLLISION_PENALTY = 1000;
+const RED_LIGHT_PENALTY = 2000;
+const PEDESTRIAN_STUN_TICKS = 40;
+const PENALTY_COOLDOWN_TICKS = 20;
+const CITY_VISIBILITY_RADIUS = CHUNK_SIZE * 1.5;
 
 export class GameWorld {
   private players: Map<string, PlayerState> = new Map();
   private inputQueues: Map<string, InputPayload[]> = new Map();
   private spatialGrid: SpatialGrid;
   private physics: PhysicsEngine;
+  private cityFeatures: CityFeatures;
   private passengers: PassengerSpawner;
   private tickCount: number = 0;
+  private collisionCooldowns: Map<string, number> = new Map();
+  private redLightCooldowns: Map<string, number> = new Map();
+  private pedestrianCooldowns: Map<string, number> = new Map();
+  private stunnedUntilTicks: Map<string, number> = new Map();
 
   constructor() {
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
+    this.cityFeatures = new CityFeatures(this.physics);
     this.passengers = new PassengerSpawner(this.physics);
   }
 
@@ -48,6 +61,10 @@ export class GameWorld {
       this.players.delete(id);
       this.inputQueues.delete(id);
       this.spatialGrid.remove(id);
+      this.collisionCooldowns.delete(id);
+      this.redLightCooldowns.delete(id);
+      this.pedestrianCooldowns.delete(id);
+      this.stunnedUntilTicks.delete(id);
     }
   }
 
@@ -64,6 +81,10 @@ export class GameWorld {
 
   public getPhysics(): PhysicsEngine {
     return this.physics;
+  }
+
+  public getCityFeatures(): CityFeatures {
+    return this.cityFeatures;
   }
 
   public getSpatialGrid(): SpatialGrid {
@@ -83,10 +104,13 @@ export class GameWorld {
    */
   public tick(dt: number): void {
     this.tickCount++;
+    this.cityFeatures.tick(this.tickCount, dt);
 
     // 1. Process player movements
     for (const [playerId, player] of this.players.entries()) {
       const inputs = this.inputQueues.get(playerId) || [];
+      const prevX = player.x;
+      const prevY = player.y;
       
       let moveDx = 0;
       let moveDy = 0;
@@ -102,8 +126,11 @@ export class GameWorld {
         lastSeq = input.seq;
       }
 
+      const stunnedUntilTick = this.stunnedUntilTicks.get(playerId) ?? 0;
+      const isStunned = this.tickCount < stunnedUntilTick;
+
       // Calculate new position
-      if (moveDx !== 0 || moveDy !== 0) {
+      if (!isStunned && (moveDx !== 0 || moveDy !== 0)) {
         // Normalize vector
         const mag = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
         const ndx = moveDx / mag;
@@ -123,14 +150,74 @@ export class GameWorld {
         player.y = resolved.y;
       }
 
-      player.angle = lastAngle;
+      if (!isStunned) {
+        player.angle = lastAngle;
+      }
       player.lastProcessedSeq = lastSeq;
 
       // Update spatial index
       this.spatialGrid.update(player.id, player.x, player.y);
 
+      this.checkCityRuleInteractions(player, prevX, prevY);
+
       // Check actions: Pickup or Deliver
       this.checkPlayerInteractions(player);
+    }
+
+    // 1.5. Check player-to-player collisions
+    const playerIds = Array.from(this.players.keys());
+    for (let i = 0; i < playerIds.length; i++) {
+      for (let j = i + 1; j < playerIds.length; j++) {
+        const p1 = this.players.get(playerIds[i])!;
+        const p2 = this.players.get(playerIds[j])!;
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        const minDist = 30; // 15 + 15 radius of motorbikes
+
+        if (dist < minDist) {
+          // Push them apart
+          const overlap = minDist - dist;
+          const nx = dx / (dist || 1);
+          const ny = dy / (dist || 1);
+
+          const p1TargetX = p1.x - nx * (overlap / 2);
+          const p1TargetY = p1.y - ny * (overlap / 2);
+          const p2TargetX = p2.x + nx * (overlap / 2);
+          const p2TargetY = p2.y + ny * (overlap / 2);
+
+          // Resolve against buildings so players don't clip through walls
+          const p1Resolved = this.physics.resolveMove(p1.x, p1.y, p1TargetX, p1TargetY);
+          const p2Resolved = this.physics.resolveMove(p2.x, p2.y, p2TargetX, p2TargetY);
+
+          p1.x = p1Resolved.x;
+          p1.y = p1Resolved.y;
+          p2.x = p2Resolved.x;
+          p2.y = p2Resolved.y;
+
+          // Update spatial grid positions immediately
+          this.spatialGrid.update(p1.id, p1.x, p1.y);
+          this.spatialGrid.update(p2.id, p2.x, p2.y);
+
+          // Reduce balance (score) with a 20-tick (1-second) cooldown
+          const currentTick = this.tickCount;
+
+          const cooldown1 = this.collisionCooldowns.get(p1.id) || 0;
+          if (currentTick > cooldown1) {
+            p1.score = Math.max(0, p1.score - DRIVER_COLLISION_PENALTY);
+            this.recordViolation(p1, 'driver-collision', DRIVER_COLLISION_PENALTY);
+            this.collisionCooldowns.set(p1.id, currentTick + PENALTY_COOLDOWN_TICKS);
+          }
+
+          const cooldown2 = this.collisionCooldowns.get(p2.id) || 0;
+          if (currentTick > cooldown2) {
+            p2.score = Math.max(0, p2.score - DRIVER_COLLISION_PENALTY);
+            this.recordViolation(p2, 'driver-collision', DRIVER_COLLISION_PENALTY);
+            this.collisionCooldowns.set(p2.id, currentTick + PENALTY_COOLDOWN_TICKS);
+          }
+        }
+      }
     }
 
     // 2. Refresh spatial grid positions for passengers
@@ -203,13 +290,47 @@ export class GameWorld {
     }
   }
 
+  private checkCityRuleInteractions(player: PlayerState, prevX: number, prevY: number): void {
+    const currentTick = this.tickCount;
+
+    if (this.cityFeatures.checkRedLightViolation(player.x, player.y, prevX, prevY)) {
+      const cooldown = this.redLightCooldowns.get(player.id) || 0;
+      if (currentTick > cooldown) {
+        player.score = Math.max(0, player.score - RED_LIGHT_PENALTY);
+        this.recordViolation(player, 'red-light', RED_LIGHT_PENALTY);
+        this.redLightCooldowns.set(player.id, currentTick + PENALTY_COOLDOWN_TICKS);
+      }
+    }
+
+    const hitPedestrianId = this.cityFeatures.getHitPedestrianId(player.x, player.y);
+    if (hitPedestrianId) {
+      const cooldown = this.pedestrianCooldowns.get(player.id) || 0;
+      if (currentTick > cooldown) {
+        const amount = player.score;
+        player.score = 0;
+        this.cityFeatures.removePedestrian(hitPedestrianId);
+        this.recordViolation(player, 'pedestrian', amount);
+        this.pedestrianCooldowns.set(player.id, currentTick + PEDESTRIAN_STUN_TICKS);
+        this.stunnedUntilTicks.set(player.id, currentTick + PEDESTRIAN_STUN_TICKS);
+      }
+    }
+  }
+
+  private recordViolation(player: PlayerState, type: ViolationType, amount: number): void {
+    player.lastViolation = {
+      type,
+      amount,
+      tick: this.tickCount,
+    };
+  }
+
   /**
    * Returns filtered player states and passenger states visible to a target player based on chunking.
    */
-  public getVisibleSnapshotForPlayer(targetPlayerId: string): { players: PlayerState[]; passengers: PassengerState[] } {
+  public getVisibleSnapshotForPlayer(targetPlayerId: string): { players: PlayerState[]; passengers: PassengerState[]; trafficLights: TrafficLightState[]; pedestrians: PedestrianState[] } {
     const player = this.players.get(targetPlayerId);
     if (!player) {
-      return { players: [], passengers: [] };
+      return { players: [], passengers: [], trafficLights: [], pedestrians: [] };
     }
 
     const nearbyEntityIds = this.spatialGrid.getNearbyEntities(player.x, player.y);
@@ -247,6 +368,8 @@ export class GameWorld {
     return {
       players: visiblePlayers,
       passengers: visiblePassengers,
+      trafficLights: this.cityFeatures.getVisibleTrafficLights(player.x, player.y, CITY_VISIBILITY_RADIUS),
+      pedestrians: this.cityFeatures.getVisiblePedestrians(player.x, player.y, CITY_VISIBILITY_RADIUS),
     };
   }
 }

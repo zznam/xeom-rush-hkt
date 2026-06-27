@@ -48,6 +48,16 @@ app.get('/api/obstacles', (req, res) => {
   });
 });
 
+app.get('/api/city-features', (req, res) => {
+  const city = world.getCityFeatures();
+  res.json({
+    roundabouts: city.roundabouts,
+    crosswalks: city.crosswalks,
+    trafficLights: city.getTrafficLights(),
+    pedestrians: city.getPedestrians(),
+  });
+});
+
 app.post('/api/spawn-bots', (req, res) => {
   const count = Math.min(req.body?.count ?? 25, 100); // Cap at 100 bots per request
   const spawnedIds = botManager.spawnBots(count);
@@ -144,10 +154,10 @@ setInterval(() => {
   for (const [playerId, playerSocket] of activeSockets.entries()) {
     if (playerSocket.ws.readyState === WebSocket.OPEN) {
       // Retrieve entities in player's 3x3 surrounding chunks
-      const { players, passengers } = world.getVisibleSnapshotForPlayer(playerId);
+      const { players, passengers, trafficLights, pedestrians } = world.getVisibleSnapshotForPlayer(playerId);
 
       // Encode snapshot in custom binary format
-      const snapshotBuffer = encodeSnapshot(world.getTick(), players, passengers);
+      const snapshotBuffer = encodeSnapshot(world.getTick(), players, passengers, trafficLights, pedestrians);
       playerSocket.ws.send(snapshotBuffer);
     }
   }
