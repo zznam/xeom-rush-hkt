@@ -1,0 +1,99 @@
+import {
+  encodeJoin,
+  encodeInput,
+  decodeConfig,
+  decodeSnapshot,
+  type WorldSnapshot,
+  type ConfigPayload,
+} from '@xeom-rush/shared';
+
+export class GameNetwork {
+  private ws: WebSocket | null = null;
+  private onSnapshotCallbacks: ((snapshot: WorldSnapshot) => void)[] = [];
+  private onConfigCallbacks: ((config: ConfigPayload) => void)[] = [];
+  private onConnectCallback: (() => void) | null = null;
+  private onDisconnectCallback: (() => void) | null = null;
+
+  public rtt: number = 0;
+  private pingSentTime: number = 0;
+
+  constructor() {}
+
+  public connect(url: string, username: string, onConnect: () => void, onDisconnect: () => void): void {
+    this.onConnectCallback = onConnect;
+    this.onDisconnectCallback = onDisconnect;
+    this.ws = new WebSocket(url);
+    this.ws.binaryType = 'arraybuffer';
+
+    this.ws.onopen = () => {
+      // Send join message
+      const joinBuffer = encodeJoin(username);
+      this.ws?.send(joinBuffer);
+      this.onConnectCallback?.();
+
+      // Start ping loop for RTT measurement
+      this.startPingLoop();
+    };
+
+    this.ws.onmessage = (event: MessageEvent) => {
+      const buffer = event.data as ArrayBuffer;
+      const view = new DataView(buffer);
+      const msgType = view.getUint8(0);
+
+      if (msgType === 5) { // EMessageType.CONFIG
+        const config = decodeConfig(buffer);
+        this.onConfigCallbacks.forEach((cb) => cb(config));
+      } else if (msgType === 4) { // EMessageType.SNAPSHOT
+        const snapshot = decodeSnapshot(buffer);
+        this.onSnapshotCallbacks.forEach((cb) => cb(snapshot));
+
+        // Measure RTT (simple ping estimate using receipt of snapshot)
+        if (this.pingSentTime > 0) {
+          this.rtt = Date.now() - this.pingSentTime;
+          this.pingSentTime = 0;
+        }
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.onDisconnectCallback?.();
+      this.ws = null;
+    };
+
+    this.ws.onerror = (err) => {
+      console.error('WebSocket Error:', err);
+    };
+  }
+
+  private startPingLoop(): void {
+    setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.pingSentTime = Date.now();
+      }
+    }, 2000);
+  }
+
+  public sendInput(seq: number, dx: number, dy: number, angle: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const inputBuffer = encodeInput(seq, dx, dy, angle);
+      this.ws.send(inputBuffer);
+    }
+  }
+
+  public registerSnapshotCallback(cb: (snapshot: WorldSnapshot) => void): void {
+    this.onSnapshotCallbacks.push(cb);
+  }
+
+  public registerConfigCallback(cb: (config: ConfigPayload) => void): void {
+    this.onConfigCallbacks.push(cb);
+  }
+
+  public disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+}
+
+export const network = new GameNetwork();

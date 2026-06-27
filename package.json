@@ -1,0 +1,13 @@
+{
+  "name": "xeom-rush-monorepo",
+  "private": true,
+  "scripts": {
+    "dev:server": "pnpm --filter server dev",
+    "dev:client": "pnpm --filter client dev",
+    "build:shared": "pnpm --filter shared build",
+    "build:server": "pnpm --filter server build",
+    "build:client": "pnpm --filter client build",
+    "start:server": "pnpm --filter server start"
+  },
+  "packageManager": "pnpm@10.28.2"
+}
