@@ -13,7 +13,7 @@ import { type PlayerState, type PassengerState, type PedestrianState, type Traff
 
 describe('Binary Wire Protocol Encoder/Decoder', () => {
   it('should serialize and deserialize Join payload correctly', () => {
-    const username = 'AnXeOm99';
+    const username = 'AnhXeOm99';
     const buffer = encodeJoin(username);
     const decoded = decodeJoin(buffer);
     expect(decoded).toBe(username);

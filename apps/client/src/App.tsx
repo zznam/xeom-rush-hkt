@@ -51,7 +51,7 @@ export const App: React.FC = () => {
               type="text"
               required
               maxLength={15}
-              placeholder="Nhập tên tài xế ví dụ: AnXeOm..."
+              placeholder="Nhập tên tài xế ví dụ: AnhXeOm..."
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="form-input"
