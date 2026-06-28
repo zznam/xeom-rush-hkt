@@ -3,6 +3,12 @@ export interface Vector2D {
   y: number;
 }
 
+export enum EPassengerTier {
+  REGULAR = 0,
+  BUSINESS = 1,
+  VIP = 2,
+}
+
 export interface PlayerState {
   id: string;
   username: string;
@@ -33,6 +39,8 @@ export interface PassengerState {
   reward: number;
   spawnedAt: number;
   isCarried: boolean;
+  tier: EPassengerTier;
+  deadline: number; // Absolute server tick when passenger expires (0 = no deadline)
 }
 
 export interface PedestrianState {
@@ -83,4 +91,6 @@ export interface WorldSnapshot {
   passengers: PassengerState[];
   trafficLights: TrafficLightState[];
   pedestrians: PedestrianState[];
+  rushHour: boolean;
+  streaks: Record<string, number>; // playerId -> streak count
 }

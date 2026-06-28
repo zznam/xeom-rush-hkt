@@ -4,7 +4,17 @@ import { inputHandler } from '../game/input';
 import { prediction } from '../game/prediction';
 import { interpolation } from '../game/interpolation';
 import { GameRenderer } from '../game/renderer';
-import { type WorldSnapshot, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type ConfigPayload } from '@xeom-rush/shared';
+import { soundEngine } from '../game/sound-engine';
+import {
+  type WorldSnapshot,
+  type PlayerState,
+  type PassengerState,
+  type TrafficLightState,
+  type PedestrianState,
+  type ConfigPayload,
+  EPassengerTier,
+  MOTORBIKE_SPEED,
+} from '@xeom-rush/shared';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 
@@ -33,6 +43,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const [violationAlert, setViolationAlert] = useState<string | null>(null);
   const previousViolationTickRef = useRef<number>(0);
 
+  // Rush Hour state
+  const [rushHour, setRushHour] = useState(false);
+  const [rushHourTicksRemaining, setRushHourTicksRemaining] = useState(0);
+  const previousRushHourRef = useRef(false);
+  const rushHourStartedAtRef = useRef<number | null>(null); // ms timestamp when rush hour began client-side
+
+  // Streak state
+  const [myStreak, setMyStreak] = useState(0);
+
   // Client-side prediction sequence counter
   const clientSeqRef = useRef(0);
   // Latency metrics tracking
@@ -42,12 +61,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   // Maintain local player position in mutable ref for requestAnimationFrame speed
   const localPlayerStateRef = useRef<PlayerState | null>(null);
 
+  // Track previous passengerId to detect pickup/dropoff
+  const previousPassengerIdRef = useRef<string | null>(null);
+  // Track VIP passenger IDs we've already announced
+  const announcedVIPsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    
+
     // Create renderer
     const renderer = new GameRenderer(canvas);
     rendererRef.current = renderer;
@@ -57,6 +81,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     };
     handleResize();
     window.addEventListener('resize', handleResize);
+
+    // H key → honk
+    const handleHonk = (e: KeyboardEvent) => {
+      if (e.key === 'h' || e.key === 'H') {
+        soundEngine.playHonk();
+      }
+    };
+    window.addEventListener('keydown', handleHonk);
 
     // Track config variables from server
     let myPlayerId = '';
@@ -69,8 +101,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
     network.registerSnapshotCallback((snapshot: WorldSnapshot) => {
       // 1. Calculate received package size
-      // We can approximate snapshot bytes size
-      const snapshotSize = 13 + snapshot.players.length * 50 + snapshot.passengers.length * 35; // approx
+      const snapshotSize = 16 + snapshot.players.length * 55 + snapshot.passengers.length * 40; // approx
       lastSnapSizeRef.current = snapshotSize;
       setLastBytes(snapshotSize);
 
@@ -81,29 +112,71 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         snapshotTimesRef.current.shift();
       }
 
-      // 3. Separate local player from other players
-      const otherPlayersList: PlayerState[] = [];
+      // 3. Rush Hour state — play sting on transition
+      const wasRushHour = previousRushHourRef.current;
+      if (snapshot.rushHour && !wasRushHour) {
+        soundEngine.playRushHourSting();
+        rushHourStartedAtRef.current = Date.now();
+      }
+      if (!snapshot.rushHour) {
+        rushHourStartedAtRef.current = null;
+      }
+      previousRushHourRef.current = snapshot.rushHour;
+      setRushHour(snapshot.rushHour);
+
+      // Estimate rush hour ticks remaining from elapsed time
+      const RUSH_HOUR_DURATION_MS = 60_000; // 60 seconds
+      if (snapshot.rushHour && rushHourStartedAtRef.current !== null) {
+        const elapsed = Date.now() - rushHourStartedAtRef.current;
+        const remainingMs = Math.max(0, RUSH_HOUR_DURATION_MS - elapsed);
+        setRushHourTicksRemaining(Math.ceil(remainingMs / 50)); // 50ms per tick
+      } else {
+        setRushHourTicksRemaining(0);
+      }
+
+      // 4. Detect new VIP passengers and announce
+      for (const passenger of snapshot.passengers) {
+        if (passenger.tier === EPassengerTier.VIP && !announcedVIPsRef.current.has(passenger.id)) {
+          announcedVIPsRef.current.add(passenger.id);
+          soundEngine.playVIPAnnounce();
+          break; // Only one VIP announcement per tick
+        }
+      }
+
+      // 5. Separate local player from other players
       let localStateFromServer: PlayerState | null = null;
 
       for (const p of snapshot.players) {
         if (p.id === myPlayerId) {
           localStateFromServer = p;
-        } else {
-          otherPlayersList.push(p);
         }
       }
 
-      // 4. Feed other players to interpolation buffer
+      // 6. Feed other players to interpolation buffer
       interpolation.addSnapshot(snapshot.players);
 
-      // 5. Update passengers list
+      // 7. Update passengers list
       passengersRef.current = snapshot.passengers;
       trafficLightsRef.current = snapshot.trafficLights;
       pedestriansRef.current = snapshot.pedestrians;
       setPassengers(snapshot.passengers);
 
-      // 6. Perform server reconciliation on local player state
+      // 8. Perform server reconciliation on local player state
       if (localStateFromServer) {
+        // Detect pickup / dropoff for sound effects
+        const prevPassengerId = previousPassengerIdRef.current;
+        const currPassengerId = localStateFromServer.passengerId;
+
+        if (!prevPassengerId && currPassengerId) {
+          soundEngine.playPickup();
+        } else if (prevPassengerId && !currPassengerId) {
+          soundEngine.playDropoff();
+        }
+        previousPassengerIdRef.current = currPassengerId;
+
+        // Update streak from snapshot
+        setMyStreak(snapshot.streaks[myPlayerId] ?? 0);
+
         // Run prediction engine reconciliation
         const reconciled = prediction.reconcile(
           localStateFromServer.x,
@@ -140,6 +213,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       console.log('Connected to game server.');
     }, () => {
       console.log('Disconnected from game server.');
+      soundEngine.stopEngine();
       onDisconnect();
     });
 
@@ -153,10 +227,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
       // 1. Capture inputs and update local client prediction
       const input = inputHandler.getInputVector();
-      
+
       if (localPlayerStateRef.current) {
         clientSeqRef.current++;
-        
+
         // Save to pending buffer for later reconciliation
         prediction.addInput({
           seq: clientSeqRef.current,
@@ -182,6 +256,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
         // Send input payload to server
         network.sendInput(clientSeqRef.current, input.dx, input.dy, input.angle);
+
+        // Engine hum — pitch scales with movement speed
+        const isMoving = input.dx !== 0 || input.dy !== 0;
+        soundEngine.engineHum(isMoving ? MOTORBIKE_SPEED : MOTORBIKE_SPEED * 0.15, MOTORBIKE_SPEED);
 
         // Sync React HUD state periodically
         if (clientSeqRef.current % 5 === 0) {
@@ -223,11 +301,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     // Cleanup on unmount
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleHonk);
       cancelAnimationFrame(animationFrameId);
       network.disconnect();
       prediction.clear();
       interpolation.clear();
       inputHandler.clear();
+      soundEngine.stopEngine();
     };
   }, [username, serverUrl, onDisconnect, showDebug]);
 
@@ -250,7 +330,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   return (
     <div ref={containerRef} style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-      
+
       {/* Collision Alert Banner */}
       {violationAlert && (
         <div style={{
@@ -289,7 +369,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       `}</style>
 
       {/* HUD Layer */}
-      <HUD localPlayer={localPlayer} players={players} passengers={passengers} />
+      <HUD
+        localPlayer={localPlayer}
+        players={players}
+        passengers={passengers}
+        rushHour={rushHour}
+        rushHourTicksRemaining={rushHourTicksRemaining}
+        myStreak={myStreak}
+      />
 
       {/* Debug Telemetry Panel */}
       <DebugOverlay

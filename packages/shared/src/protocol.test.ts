@@ -9,7 +9,21 @@ import {
   encodeSnapshot,
   decodeSnapshot,
 } from './protocol';
-import { type PlayerState, type PassengerState, type PedestrianState, type TrafficLightState } from './types';
+import { EPassengerTier, type PlayerState, type PassengerState, type PedestrianState, type TrafficLightState } from './types';
+
+const makeBasePassenger = (overrides: Partial<PassengerState> = {}): PassengerState => ({
+  id: 'pass-1',
+  x: 1000,
+  y: 1000,
+  destX: 2000,
+  destY: 2000,
+  reward: 12000,
+  spawnedAt: 0,
+  isCarried: false,
+  tier: EPassengerTier.REGULAR,
+  deadline: 0,
+  ...overrides,
+});
 
 describe('Binary Wire Protocol Encoder/Decoder', () => {
   it('should serialize and deserialize Join payload correctly', () => {
@@ -82,26 +96,8 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     ];
 
     const passengers: PassengerState[] = [
-      {
-        id: 'pass-8',
-        x: 1500,
-        y: 2400,
-        destX: 3500,
-        destY: 3800,
-        reward: 25000,
-        spawnedAt: Date.now(),
-        isCarried: true,
-      },
-      {
-        id: 'pass-9',
-        x: 1000,
-        y: 1000,
-        destX: 2000,
-        destY: 2000,
-        reward: 12000,
-        spawnedAt: Date.now(),
-        isCarried: false,
-      },
+      makeBasePassenger({ id: 'pass-8', x: 1500, y: 2400, destX: 3500, destY: 3800, reward: 25000, isCarried: true }),
+      makeBasePassenger({ id: 'pass-9', x: 1000, y: 1000, destX: 2000, destY: 2000, reward: 12000 }),
     ];
 
     const buffer = encodeSnapshot(tick, players, passengers, [], []);
@@ -137,10 +133,12 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     expect(decodedPass2.destY).toBeCloseTo(passengers[1].destY, 1);
     expect(decodedPass2.reward).toBe(passengers[1].reward);
     expect(decodedPass2.isCarried).toBe(passengers[1].isCarried);
+    expect(decodedPass2.tier).toBe(EPassengerTier.REGULAR);
+    expect(decodedPass2.deadline).toBe(0);
 
-    // Verify new fields are present and empty
-    expect(decoded.trafficLights).toEqual([]);
-    expect(decoded.pedestrians).toEqual([]);
+    // Verify default rushHour + streaks
+    expect(decoded.rushHour).toBe(false);
+    expect(decoded.streaks).toEqual({});
   });
 
   it('should serialize and deserialize traffic lights and pedestrians in snapshots', () => {
@@ -166,5 +164,41 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     expect(decoded.pedestrians[0].x).toBeCloseTo(pedestrians[0].x, 1);
     expect(decoded.pedestrians[0].y).toBeCloseTo(pedestrians[0].y, 1);
     expect(decoded.pedestrians[0].angle).toBeCloseTo(pedestrians[0].angle, 3);
+  });
+
+  it('round-trips rushHour flag and streaks map correctly', () => {
+    const passengers: PassengerState[] = [];
+    const players: PlayerState[] = [];
+    const streaks: Record<string, number> = {
+      'player-1': 5,
+      'player-2': 3,
+      'player-3': 10,
+    };
+
+    const buffer = encodeSnapshot(500, players, passengers, [], [], true, streaks);
+    const decoded = decodeSnapshot(buffer);
+
+    expect(decoded.rushHour).toBe(true);
+    expect(decoded.streaks['player-1']).toBe(5);
+    expect(decoded.streaks['player-2']).toBe(3);
+    expect(decoded.streaks['player-3']).toBe(10);
+  });
+
+  it('round-trips passenger tier and deadline fields correctly', () => {
+    const passengers: PassengerState[] = [
+      makeBasePassenger({ id: 'pass-vip', tier: EPassengerTier.VIP, deadline: 9999 }),
+      makeBasePassenger({ id: 'pass-biz', tier: EPassengerTier.BUSINESS, deadline: 5000 }),
+      makeBasePassenger({ id: 'pass-reg', tier: EPassengerTier.REGULAR, deadline: 0 }),
+    ];
+
+    const buffer = encodeSnapshot(1, [], passengers);
+    const decoded = decodeSnapshot(buffer);
+
+    expect(decoded.passengers[0].tier).toBe(EPassengerTier.VIP);
+    expect(decoded.passengers[0].deadline).toBe(9999);
+    expect(decoded.passengers[1].tier).toBe(EPassengerTier.BUSINESS);
+    expect(decoded.passengers[1].deadline).toBe(5000);
+    expect(decoded.passengers[2].tier).toBe(EPassengerTier.REGULAR);
+    expect(decoded.passengers[2].deadline).toBe(0);
   });
 });

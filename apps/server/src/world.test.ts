@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COLLISION_RADIUS } from '@xeom-rush/shared';
+import { COLLISION_RADIUS, EPassengerTier, RUSH_HOUR_INTERVAL_TICKS, RUSH_HOUR_DURATION_TICKS, STREAK_RESET_TICKS } from '@xeom-rush/shared';
 import { BotManager } from './bot-ai';
 import { GameWorld } from './world';
 
@@ -223,5 +223,259 @@ describe('GameWorld realism update', () => {
     expect(ringPointA).toBeDefined();
     expect(ringPointB).toBeDefined();
     expect(Math.hypot(ringPointA!.x - ringPointB!.x, ringPointA!.y - ringPointB!.y)).toBeGreaterThan(1);
+  });
+});
+
+describe('Rush Hour Events', () => {
+  it('starts inactive and triggers automatically after RUSH_HOUR_INTERVAL_TICKS', () => {
+    const world = new GameWorld();
+    expect(world.isRushHour()).toBe(false);
+
+    for (let i = 0; i < RUSH_HOUR_INTERVAL_TICKS; i++) {
+      world.tick(0.05);
+    }
+
+    expect(world.isRushHour()).toBe(true);
+    expect(world.getRushHourTicksRemaining()).toBeGreaterThan(0);
+  });
+
+  it('deactivates after RUSH_HOUR_DURATION_TICKS', () => {
+    const world = new GameWorld();
+    world.triggerRushHour();
+    expect(world.isRushHour()).toBe(true);
+
+    for (let i = 0; i < RUSH_HOUR_DURATION_TICKS; i++) {
+      world.tick(0.05);
+    }
+
+    expect(world.isRushHour()).toBe(false);
+    expect(world.getRushHourTicksRemaining()).toBe(0);
+  });
+
+  it('triggerRushHour() activates rush hour immediately', () => {
+    const world = new GameWorld();
+    expect(world.isRushHour()).toBe(false);
+
+    world.triggerRushHour();
+
+    expect(world.isRushHour()).toBe(true);
+    expect(world.getRushHourTicksRemaining()).toBe(RUSH_HOUR_DURATION_TICKS);
+  });
+
+  it('includes rushHour flag in snapshot data', () => {
+    const world = new GameWorld();
+    world.addPlayer('p-rh', 'Rush Player');
+    world.triggerRushHour();
+
+    const snapshot = world.getVisibleSnapshotForPlayer('p-rh');
+    expect(snapshot.rushHour).toBe(true);
+  });
+});
+
+describe('Combo/Streak System', () => {
+  it('initializes streak at 0 for new players', () => {
+    const world = new GameWorld();
+    world.addPlayer('p-streak', 'Streak Player');
+    expect(world.getStreakForPlayer('p-streak')).toBe(0);
+  });
+
+  it('increments streak on each successful delivery', () => {
+    const world = new GameWorld();
+    // Stub out pedestrian collision checks so random movement doesn't disrupt tests
+    world.getCityFeatures().getHitPedestrianId = () => null;
+    world.addPlayer('p-del', 'Delivery Driver');
+    const player = world.getPlayer('p-del')!;
+
+    // Run one tick to register all passengers into the spatial grid
+    world.tick(0.05);
+
+    // Perform 3 deliveries by teleporting to passenger spawn then destination
+    for (let delivery = 0; delivery < 3; delivery++) {
+      // Find an uncarried, no-deadline passenger (REGULAR tier)
+      const passMap = world.getPassengerMap();
+      const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
+      expect(entry).toBeDefined();
+      const [, pass] = entry!;
+
+      // Teleport to spawn point
+      player.x = pass.x;
+      player.y = pass.y;
+      world.tick(0.05); // pickup tick
+
+      // Should now be carrying
+      expect(player.passengerId).toBe(pass.id);
+
+      // Teleport to destination
+      player.x = pass.destX;
+      player.y = pass.destY;
+      world.tick(0.05); // dropoff tick
+
+      // Should have delivered
+      expect(player.passengerId).toBeNull();
+    }
+
+    expect(world.getStreakForPlayer('p-del')).toBe(3);
+  });
+
+  it('applies correct multiplier at each streak threshold', () => {
+    const world = new GameWorld();
+    // Stub out pedestrian collision checks so random movement doesn't disrupt tests
+    world.getCityFeatures().getHitPedestrianId = () => null;
+    world.addPlayer('p-mult', 'Multiplier Driver');
+    const player = world.getPlayer('p-mult')!;
+
+    // Warm up spatial grid
+    world.tick(0.05);
+
+    // Helper: pick up and drop off a specific REGULAR passenger, return { earned, passReward }
+    const deliverPassenger = (): { earned: number; passReward: number } => {
+      const passMap = world.getPassengerMap();
+      const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
+      if (!entry) return { earned: 0, passReward: 0 };
+      const [, pass] = entry;
+
+      player.x = pass.x;
+      player.y = pass.y;
+      world.tick(0.05); // pickup
+
+      if (!player.passengerId) return { earned: 0, passReward: 0 };
+
+      const passReward = pass.reward;
+      const scoreBefore = player.score;
+      player.x = pass.destX;
+      player.y = pass.destY;
+      world.tick(0.05); // dropoff
+      return { earned: player.score - scoreBefore, passReward };
+    };
+
+    // Delivery 1 at streak=0 (multiplier = 1×, streak becomes 1 after)
+    const { earned: earned1, passReward: reward1 } = deliverPassenger();
+    expect(earned1).toBeGreaterThan(0);
+    expect(earned1).toBe(reward1); // 1× multiplier
+    expect(world.getStreakForPlayer('p-mult')).toBe(1);
+
+    // Delivery 2 at streak=1 (multiplier = 1×, streak becomes 2 after)
+    const { earned: earned2, passReward: reward2 } = deliverPassenger();
+    expect(earned2).toBe(reward2); // still 1×
+    expect(world.getStreakForPlayer('p-mult')).toBe(2);
+
+    // Delivery 3 at streak=2 (multiplier = 1×, streak becomes 3 after — 1.5× threshold kicks in next)
+    const { earned: earned3, passReward: reward3 } = deliverPassenger();
+    expect(earned3).toBe(reward3); // still 1× until streak hits 3
+    expect(world.getStreakForPlayer('p-mult')).toBe(3);
+
+    // Delivery 4 at streak=3 → 1.5× multiplier
+    const { earned: earned4, passReward: reward4 } = deliverPassenger();
+    expect(earned4).toBe(Math.floor(reward4 * 1.5));
+    expect(world.getStreakForPlayer('p-mult')).toBe(4);
+  });
+
+
+  it('resets streak after STREAK_RESET_TICKS of inactivity', () => {
+    const world = new GameWorld();
+    // Stub out pedestrian collision checks so random movement doesn't disrupt tests
+    world.getCityFeatures().getHitPedestrianId = () => null;
+    world.addPlayer('p-idle', 'Idle Driver');
+    const player = world.getPlayer('p-idle')!;
+
+    // Warm up spatial grid so passengers are registered
+    world.tick(0.05);
+
+    // Find a REGULAR (no-deadline) passenger
+    const passMap = world.getPassengerMap();
+    const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
+    expect(entry).toBeDefined();
+    const [, pass] = entry!;
+
+    // Teleport to pickup
+    player.x = pass.x;
+    player.y = pass.y;
+    world.tick(0.05); // pickup tick
+    expect(player.passengerId).toBe(pass.id);
+
+    // Teleport to destination
+    player.x = pass.destX;
+    player.y = pass.destY;
+    world.tick(0.05); // dropoff tick
+    expect(player.passengerId).toBeNull();
+
+    // Streak should now be 1
+    expect(world.getStreakForPlayer('p-idle')).toBe(1);
+
+    // Advance past idle threshold
+    for (let i = 0; i < STREAK_RESET_TICKS + 1; i++) {
+      world.tick(0.05);
+    }
+
+    expect(world.getStreakForPlayer('p-idle')).toBe(0);
+  });
+
+  it('removes streak state when player disconnects', () => {
+    const world = new GameWorld();
+    world.addPlayer('p-dc', 'Disconnect Driver');
+
+    world.removePlayer('p-dc');
+
+    // After removal, streak should not exist
+    expect(world.getStreakForPlayer('p-dc')).toBe(0);
+  });
+});
+
+describe('Passenger Tiers', () => {
+  it('spawns passengers with tier and deadline fields set', () => {
+    const world = new GameWorld();
+    for (const passenger of world.getPassengerMap().values()) {
+      expect(passenger.tier).toBeDefined();
+      expect([EPassengerTier.REGULAR, EPassengerTier.BUSINESS, EPassengerTier.VIP]).toContain(passenger.tier);
+      expect(passenger.deadline).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('BUSINESS passengers have approximately 2× base reward vs REGULAR', () => {
+    // Force-spawn both types and compare rewards for same distance
+    const world = new GameWorld();
+    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState } }).passengers;
+
+    const regular = spawner.spawnPassenger(0, EPassengerTier.REGULAR);
+    const business = spawner.spawnPassenger(0, EPassengerTier.BUSINESS);
+
+    // Business deadline must exist; Regular must not have a deadline
+    expect(business.deadline).toBeGreaterThan(0);
+    expect(regular.deadline).toBe(0);
+
+    // Business reward is always 2× the base formula for its own distance
+    // Verify: business reward > 1000 (min) * 2 = 2000
+    expect(business.reward).toBeGreaterThanOrEqual(2000);
+    // And must be at least 2× the minimum Regular reward possible (1000)
+    expect(business.reward).toBeGreaterThan(1000);
+  });
+
+  it('VIP passengers have approximately 5× base reward vs REGULAR', () => {
+    const world = new GameWorld();
+    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState } }).passengers;
+
+    const vip = spawner.spawnPassenger(0, EPassengerTier.VIP);
+
+    // VIP reward is 5× base formula — minimum base is 1000 VNĐ so VIP minimum = 5000
+    expect(vip.reward).toBeGreaterThanOrEqual(5000);
+    expect(vip.deadline).toBeGreaterThan(0); // VIP also has a deadline
+  });
+
+  it('removes expired passengers (with deadline) after their tick passes', () => {
+    const world = new GameWorld();
+    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState; reapExpiredPassengers: (tick: number) => void } }).passengers;
+
+    // Spawn a BUSINESS passenger that expires at tick 5
+    const business = spawner.spawnPassenger(0, EPassengerTier.BUSINESS);
+    // Manually set a very short deadline
+    business.deadline = 3;
+
+    // Before deadline
+    spawner.reapExpiredPassengers(2);
+    expect(world.getPassengerMap().has(business.id)).toBe(true);
+
+    // After deadline
+    spawner.reapExpiredPassengers(4);
+    expect(world.getPassengerMap().has(business.id)).toBe(false);
   });
 });

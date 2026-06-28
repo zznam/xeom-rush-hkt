@@ -1,4 +1,18 @@
-import { PlayerState, PassengerState, InputPayload, MOTORBIKE_SPEED, COLLISION_RADIUS, CHUNK_SIZE, type TrafficLightState, type PedestrianState, type ViolationType } from '@xeom-rush/shared';
+import {
+  PlayerState,
+  PassengerState,
+  InputPayload,
+  MOTORBIKE_SPEED,
+  COLLISION_RADIUS,
+  CHUNK_SIZE,
+  RUSH_HOUR_INTERVAL_TICKS,
+  RUSH_HOUR_DURATION_TICKS,
+  STREAK_RESET_TICKS,
+  STREAK_MULTIPLIERS,
+  type TrafficLightState,
+  type PedestrianState,
+  type ViolationType,
+} from '@xeom-rush/shared';
 import { SpatialGrid } from './spatial-grid';
 import { PhysicsEngine } from './physics';
 import { PassengerSpawner } from './passenger-spawner';
@@ -9,6 +23,13 @@ const RED_LIGHT_PENALTY = 2000;
 const PEDESTRIAN_STUN_TICKS = 40;
 const PENALTY_COOLDOWN_TICKS = 20;
 const CITY_VISIBILITY_RADIUS = CHUNK_SIZE * 1.5;
+
+function getStreakMultiplier(streak: number): number {
+  for (const { minStreak, multiplier } of STREAK_MULTIPLIERS) {
+    if (streak >= minStreak) return multiplier;
+  }
+  return 1.0;
+}
 
 export class GameWorld {
   private players: Map<string, PlayerState> = new Map();
@@ -22,6 +43,14 @@ export class GameWorld {
   private redLightCooldowns: Map<string, number> = new Map();
   private pedestrianCooldowns: Map<string, number> = new Map();
   private stunnedUntilTicks: Map<string, number> = new Map();
+
+  // Rush Hour subsystem
+  private rushHourEndsAtTick: number = 0;
+  private nextRushHourTick: number = RUSH_HOUR_INTERVAL_TICKS;
+
+  // Combo/Streak subsystem
+  private streakCounts: Map<string, number> = new Map();
+  private lastDeliveryTicks: Map<string, number> = new Map();
 
   constructor() {
     this.spatialGrid = new SpatialGrid();
@@ -49,6 +78,7 @@ export class GameWorld {
     this.players.set(id, player);
     this.inputQueues.set(id, []);
     this.spatialGrid.insert(id, startX, startY);
+    this.streakCounts.set(id, 0);
   }
 
   public removePlayer(id: string): void {
@@ -65,6 +95,8 @@ export class GameWorld {
       this.redLightCooldowns.delete(id);
       this.pedestrianCooldowns.delete(id);
       this.stunnedUntilTicks.delete(id);
+      this.streakCounts.delete(id);
+      this.lastDeliveryTicks.delete(id);
     }
   }
 
@@ -99,6 +131,37 @@ export class GameWorld {
     return this.passengers.getPassengerMap();
   }
 
+  public isRushHour(): boolean {
+    return this.tickCount < this.rushHourEndsAtTick;
+  }
+
+  public getRushHourTicksRemaining(): number {
+    return Math.max(0, this.rushHourEndsAtTick - this.tickCount);
+  }
+
+  /** Manually trigger a rush hour event (for API endpoint and tests). */
+  public triggerRushHour(): void {
+    this.rushHourEndsAtTick = this.tickCount + RUSH_HOUR_DURATION_TICKS;
+    // Reset next auto-trigger from now
+    this.nextRushHourTick = this.tickCount + RUSH_HOUR_INTERVAL_TICKS;
+  }
+
+  public getStreakCounts(): Map<string, number> {
+    return this.streakCounts;
+  }
+
+  public getStreakForPlayer(playerId: string): number {
+    return this.streakCounts.get(playerId) ?? 0;
+  }
+
+  public getAllStreaks(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [id, count] of this.streakCounts.entries()) {
+      if (count > 0) result[id] = count;
+    }
+    return result;
+  }
+
   /**
    * Main game tick update loop: runs at 20Hz (every 50ms)
    */
@@ -106,12 +169,20 @@ export class GameWorld {
     this.tickCount++;
     this.cityFeatures.tick(this.tickCount, dt);
 
+    // Auto-trigger rush hour on schedule
+    if (!this.isRushHour() && this.tickCount >= this.nextRushHourTick) {
+      this.triggerRushHour();
+    }
+
+    // Reset streaks for idle players
+    this.reapIdleStreaks();
+
     // 1. Process player movements
     for (const [playerId, player] of this.players.entries()) {
       const inputs = this.inputQueues.get(playerId) || [];
       const prevX = player.x;
       const prevY = player.y;
-      
+
       let moveDx = 0;
       let moveDy = 0;
       let lastAngle = player.angle;
@@ -221,13 +292,10 @@ export class GameWorld {
     }
 
     // 2. Refresh spatial grid positions for passengers
-    // We clear spatial grid and re-register everything to keep it simple and accurate
-    // Wait, let's keep track of passenger updates in spatial grid as well
     const passMap = this.passengers.getPassengerMap();
     for (const passenger of passMap.values()) {
       if (passenger.isCarried) {
-        // If passenger is carried, they are attached to their driver's position
-        // Remove from spatial grid so other players can't pick them up
+        // If passenger is carried, remove from spatial grid so other players can't pick them up
         this.spatialGrid.remove(passenger.id);
       } else {
         // Register/update in spatial grid
@@ -235,8 +303,18 @@ export class GameWorld {
       }
     }
 
-    // 3. Tick passenger spawner
-    this.passengers.tick();
+    // 3. Tick passenger spawner (handles expiry + respawn)
+    this.passengers.tick(this.tickCount, this.isRushHour());
+  }
+
+  /** Reset streak for players who haven't delivered in STREAK_RESET_TICKS. */
+  private reapIdleStreaks(): void {
+    for (const [playerId, lastTick] of this.lastDeliveryTicks.entries()) {
+      if (this.tickCount - lastTick > STREAK_RESET_TICKS) {
+        this.streakCounts.set(playerId, 0);
+        this.lastDeliveryTicks.delete(playerId);
+      }
+    }
   }
 
   /**
@@ -247,9 +325,8 @@ export class GameWorld {
 
     if (!player.passengerId) {
       // 1. Can we pick up a passenger?
-      // Find nearby passenger entities using spatial grid
       const nearbyEntityIds = this.spatialGrid.getNearbyEntities(player.x, player.y);
-      
+
       for (const entityId of nearbyEntityIds) {
         if (entityId.startsWith('pass-')) {
           const passenger = passMap.get(entityId);
@@ -270,7 +347,7 @@ export class GameWorld {
         }
       }
     } else {
-      // 2. We are carrying a passenger, are we near the destination?
+      // 2. We are carrying a passenger — are we near the destination?
       const passenger = passMap.get(player.passengerId);
       if (passenger) {
         const dx = passenger.destX - player.x;
@@ -278,13 +355,23 @@ export class GameWorld {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < COLLISION_RADIUS + 10) {
-          // Success! Drop off passenger
-          player.score += passenger.reward;
+          // Success! Apply streak multiplier to reward
+          const streak = this.streakCounts.get(player.id) ?? 0;
+          const multiplier = getStreakMultiplier(streak);
+          const reward = Math.floor(passenger.reward * multiplier);
+
+          player.score += reward;
+
+          // Increment streak
+          const newStreak = streak + 1;
+          this.streakCounts.set(player.id, newStreak);
+          this.lastDeliveryTicks.set(player.id, this.tickCount);
+
           this.passengers.remove(passenger.id);
           player.passengerId = null;
         }
       } else {
-        // Passenger somehow disappeared, clear state
+        // Passenger somehow disappeared (expired deadline), clear state
         player.passengerId = null;
       }
     }
@@ -312,6 +399,9 @@ export class GameWorld {
         this.recordViolation(player, 'pedestrian', amount);
         this.pedestrianCooldowns.set(player.id, currentTick + PEDESTRIAN_STUN_TICKS);
         this.stunnedUntilTicks.set(player.id, currentTick + PEDESTRIAN_STUN_TICKS);
+        // Reset streak on harsh penalty
+        this.streakCounts.set(player.id, 0);
+        this.lastDeliveryTicks.delete(player.id);
       }
     }
   }
@@ -327,10 +417,17 @@ export class GameWorld {
   /**
    * Returns filtered player states and passenger states visible to a target player based on chunking.
    */
-  public getVisibleSnapshotForPlayer(targetPlayerId: string): { players: PlayerState[]; passengers: PassengerState[]; trafficLights: TrafficLightState[]; pedestrians: PedestrianState[] } {
+  public getVisibleSnapshotForPlayer(targetPlayerId: string): {
+    players: PlayerState[];
+    passengers: PassengerState[];
+    trafficLights: TrafficLightState[];
+    pedestrians: PedestrianState[];
+    rushHour: boolean;
+    streaks: Record<string, number>;
+  } {
     const player = this.players.get(targetPlayerId);
     if (!player) {
-      return { players: [], passengers: [], trafficLights: [], pedestrians: [] };
+      return { players: [], passengers: [], trafficLights: [], pedestrians: [], rushHour: false, streaks: {} };
     }
 
     const nearbyEntityIds = this.spatialGrid.getNearbyEntities(player.x, player.y);
@@ -357,7 +454,7 @@ export class GameWorld {
       }
     }
 
-    // Also include details for the passenger currently carried by the player so the client can render their destination line
+    // Also include the passenger currently carried by the player so the client can render their destination line
     if (player.passengerId) {
       const carried = passMap.get(player.passengerId);
       if (carried) {
@@ -370,6 +467,8 @@ export class GameWorld {
       passengers: visiblePassengers,
       trafficLights: this.cityFeatures.getVisibleTrafficLights(player.x, player.y, CITY_VISIBILITY_RADIUS),
       pedestrians: this.cityFeatures.getVisiblePedestrians(player.x, player.y, CITY_VISIBILITY_RADIUS),
+      rushHour: this.isRushHour(),
+      streaks: this.getAllStreaks(),
     };
   }
 }

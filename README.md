@@ -12,9 +12,16 @@ In Vietnam, motorbikes are the pulse of the city. *Xe Ôm* (traditional motorbik
 
 ## 🚦 Live Gameplay & Simulation Features
 
-The game is fully playable and includes the following features simulating real-world street dynamics in Vietnam:
-
-* **Passenger Pickups & Deliveries:** Green pulsing hotspots indicate passengers waiting for rides. Drivers receive dynamic line vectors mapping directly to red destination drop-off zones, earning score (VNĐ) on delivery.
+* **Passenger Tiers & Deadlines:** Passengers are spawned with weighted probabilities (70% Regular 🟢, 20% Business 🟡, 10% VIP 🟣). Business and VIP passengers have strict delivery deadlines (relative server ticks); if they are not picked up before their deadline, they expire and disappear. VIP spawns trigger a global sound alert.
+* **Combo / Streak System:** Successfully delivering passengers in succession builds your combo streak. A multiplier (1× → 1.5× → 2.0× → 3.0× at streaks 1, 3, 5, 10) is applied to rewards. The streak resets if you remain idle (no delivery) for 30 seconds, collide with a pedestrian, or disconnect.
+* **Rush Hour Events (Giờ cao điểm):** Every 5 minutes, a 60-second Rush Hour event starts. During this event, passenger spawn rate is doubled (2×) and rewards are boosted by 1.5×. Rush Hour is introduced with a custom musical sting. It can also be manually triggered via `POST /api/rush-hour`.
+* **Procedural Sound Engine:** Generated fully in-browser via the Web Audio API with zero external file assets. Includes:
+  * Motorbike engine hum (pitch scale dynamically linked to speed).
+  * Short ascending chimes on passenger pickup.
+  * Triumphant arpeggios on passenger delivery.
+  * Custom square-wave buzzer sound on keypress `H` (còi xe).
+  * Orchestral/synthesized horn fanfare stings on Rush Hour start and VIP spawns.
+* **HUD Minimap:** Positioned top-center mapping the full 4000×4000 grid. Displays player coordinates, other drivers, passenger blips (color-coded by tier), and destination drop-off zones.
 * **Grid Alleys & Buildings:** A physics collision engine checks movement inputs against dense block building structures, simulating narrow, winding lanes.
 * **Seeded Roundabouts:** Green traffic circles with central obstacles and visual direction indicators guiding vehicles.
 * **Traffic Signals:** Intersections contain dynamic traffic lights (Green/Yellow/Red) alternating for North-South and East-West directions.
@@ -23,7 +30,7 @@ The game is fully playable and includes the following features simulating real-w
 ### ⚠️ Violations & Traffic Penalties
 
 * **Red Light Violation (Vượt đèn đỏ):** Crossing a stop line during a red light triggers a **-2,000đ** penalty.
-* **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian resets your score to **0đ**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
+* **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian resets your score to **0đ**, resets your combo streak to **0**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
 * **Driver-to-Driver Collision (Va chạm xe):** Colliding with another player or bot pushes both bikes apart using slide-along-wall physics resolution and carries a **-1,000đ** penalty (with a 1-second cooldown).
 
 ---
@@ -120,7 +127,8 @@ pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:
 
 ### Prerequisites
 
-- Node.js 18+
+* Node.js 18+
+
 * pnpm
 
 ### Quick Start
@@ -135,8 +143,11 @@ pnpm dev:server
 # Run the frontend web client
 pnpm dev:client
 
-# Run automated unit tests
+# Run automated unit tests (Vitest)
 pnpm test
+
+# Run automated E2E smoke tests (Playwright)
+pnpm test:e2e
 
 # Run performance benchmarks
 pnpm bench

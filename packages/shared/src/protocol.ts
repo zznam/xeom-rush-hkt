@@ -1,4 +1,4 @@
-import { EMessageType, type InputPayload, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type WorldSnapshot, type ConfigPayload, type ViolationType } from './types';
+import { EMessageType, EPassengerTier, type InputPayload, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type WorldSnapshot, type ConfigPayload, type ViolationType } from './types';
 
 const VIOLATION_TYPE_TO_CODE: Record<ViolationType, number> = {
   'red-light': 1,
@@ -92,15 +92,33 @@ export function decodeInput(buffer: ArrayBuffer): InputPayload {
 }
 
 // --- Snapshot Message (Server -> Client) ---
+// Layout:
+//   type(1) + tick(4) + numPlayers(2) + numPassengers(2) + numLights(2) + numPedestrians(2)
+//   + rushHour(1) + numStreaks(2) = 16 bytes base header
+//   Per streak entry: idLen(1) + id bytes + streakCount(2)
+//   Per player: idLen+id + usernameLen+username + x(4)+y(4)+angle(4)+score(4)+lastSeq(4)
+//               + hasPassenger(1) [+ passengerId] + hasViolation(1) [+ type(1)+amount(4)+tick(4)]
+//   Per passenger: idLen+id + x(4)+y(4)+destX(4)+destY(4)+reward(4)+isCarried(1)+tier(1)+deadline(4) = +5 vs old
+//   Per trafficLight: idLen+id + x(4)+y(4)+isRedNS(1)+isYellow(1)
+//   Per pedestrian: idLen+id + x(4)+y(4)+angle(4)
 export function encodeSnapshot(
   tick: number,
   players: PlayerState[],
   passengers: PassengerState[],
   trafficLights: TrafficLightState[] = [],
   pedestrians: PedestrianState[] = [],
+  rushHour: boolean = false,
+  streaks: Record<string, number> = {},
 ): ArrayBuffer {
-  // type(1) + tick(4) + numPlayers(2) + numPassengers(2) + numLights(2) + numPedestrians(2) = 13 bytes base
-  let size = 13;
+  const streakEntries = Object.entries(streaks).filter(([, count]) => count > 0);
+
+  let size = 16; // base header (13 old + rushHour(1) + numStreaks(2))
+
+  // Streak entries
+  for (const [id] of streakEntries) {
+    size += 1 + id.length + 2; // idLen + id + streakCount(Uint16)
+  }
+
   for (const p of players) {
     size += 1 + p.id.length;
     size += 1 + p.username.length;
@@ -114,6 +132,8 @@ export function encodeSnapshot(
     size += 1 + pa.id.length;
     size += 4 + 4 + 4 + 4 + 4; // x, y, destX, destY, reward
     size += 1; // isCarried
+    size += 1; // tier (new)
+    size += 4; // deadline (new)
   }
   for (const tl of trafficLights) {
     size += 1 + tl.id.length;
@@ -134,8 +154,17 @@ export function encodeSnapshot(
   view.setUint16(7, passengers.length);
   view.setUint16(9, trafficLights.length);
   view.setUint16(11, pedestrians.length);
+  view.setUint8(13, rushHour ? 1 : 0);
+  view.setUint16(14, streakEntries.length);
 
-  let offset = 13;
+  let offset = 16;
+
+  // Serialize streaks
+  for (const [id, count] of streakEntries) {
+    offset = writeString(view, offset, id);
+    view.setUint16(offset, count);
+    offset += 2;
+  }
 
   // Serialize players
   for (const p of players) {
@@ -176,7 +205,9 @@ export function encodeSnapshot(
     view.setFloat32(offset + 12, pa.destY);
     view.setInt32(offset + 16, pa.reward);
     view.setUint8(offset + 20, pa.isCarried ? 1 : 0);
-    offset += 21;
+    view.setUint8(offset + 21, pa.tier);
+    view.setUint32(offset + 22, pa.deadline);
+    offset += 26;
   }
 
   // Serialize traffic lights
@@ -208,12 +239,23 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
   const numPassengers = view.getUint16(7);
   const numTrafficLights = view.getUint16(9);
   const numPedestrians = view.getUint16(11);
+  const rushHour = view.getUint8(13) === 1;
+  const numStreaks = view.getUint16(14);
 
-  let offset = 13;
+  let offset = 16;
   const players: PlayerState[] = [];
   const passengers: PassengerState[] = [];
   const trafficLights: TrafficLightState[] = [];
   const pedestrians: PedestrianState[] = [];
+  const streaks: Record<string, number> = {};
+
+  // Deserialize streaks
+  for (let i = 0; i < numStreaks; i++) {
+    const { value: id, nextOffset } = readString(view, offset);
+    offset = nextOffset;
+    streaks[id] = view.getUint16(offset);
+    offset += 2;
+  }
 
   // Deserialize players
   for (let i = 0; i < numPlayers; i++) {
@@ -268,9 +310,11 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
     const destY = view.getFloat32(offset + 12);
     const reward = view.getInt32(offset + 16);
     const isCarried = view.getUint8(offset + 20) === 1;
-    offset += 21;
+    const tier = view.getUint8(offset + 21) as EPassengerTier;
+    const deadline = view.getUint32(offset + 22);
+    offset += 26;
 
-    passengers.push({ id, x, y, destX, destY, reward, spawnedAt: 0, isCarried });
+    passengers.push({ id, x, y, destX, destY, reward, spawnedAt: 0, isCarried, tier, deadline });
   }
 
   // Deserialize traffic lights
@@ -296,5 +340,5 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
     pedestrians.push({ id, x, y, angle });
   }
 
-  return { tick, players, passengers, trafficLights, pedestrians };
+  return { tick, players, passengers, trafficLights, pedestrians, rushHour, streaks };
 }

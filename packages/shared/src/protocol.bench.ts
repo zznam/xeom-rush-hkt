@@ -29,8 +29,11 @@ for (let i = 0; i < 20; i++) {
     reward: 15000 + i * 1000,
     spawnedAt: Date.now(),
     isCarried: i % 3 === 0,
+    tier: 0, // REGULAR
+    deadline: 0,
   });
 }
+
 
 const tick = 12345;
 

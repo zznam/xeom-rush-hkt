@@ -58,6 +58,15 @@ app.get('/api/city-features', (req, res) => {
   });
 });
 
+app.post('/api/rush-hour', (_req, res) => {
+  world.triggerRushHour();
+  console.log(`[Rush Hour] Manually triggered. Active for next 60s.`);
+  res.json({
+    rushHour: true,
+    endsInTicks: world.getRushHourTicksRemaining(),
+  });
+});
+
 app.post('/api/spawn-bots', (req, res) => {
   const count = Math.min(req.body?.count ?? 25, 100); // Cap at 100 bots per request
   const spawnedIds = botManager.spawnBots(count);
@@ -154,10 +163,10 @@ setInterval(() => {
   for (const [playerId, playerSocket] of activeSockets.entries()) {
     if (playerSocket.ws.readyState === WebSocket.OPEN) {
       // Retrieve entities in player's 3x3 surrounding chunks
-      const { players, passengers, trafficLights, pedestrians } = world.getVisibleSnapshotForPlayer(playerId);
+      const { players, passengers, trafficLights, pedestrians, rushHour, streaks } = world.getVisibleSnapshotForPlayer(playerId);
 
       // Encode snapshot in custom binary format
-      const snapshotBuffer = encodeSnapshot(world.getTick(), players, passengers, trafficLights, pedestrians);
+      const snapshotBuffer = encodeSnapshot(world.getTick(), players, passengers, trafficLights, pedestrians, rushHour, streaks);
       playerSocket.ws.send(snapshotBuffer);
     }
   }
