@@ -21,11 +21,12 @@ In Vietnam, motorbikes are the pulse of the city. *Xe Ôm* (traditional motorbik
   * Triumphant arpeggios on passenger delivery.
   * Custom square-wave buzzer sound on keypress `H` (còi xe).
   * Orchestral/synthesized horn fanfare stings on Rush Hour start and VIP spawns.
-* **HUD Minimap:** Positioned top-center mapping the full 4000×4000 grid. Displays player coordinates, other drivers, passenger blips (color-coded by tier), and destination drop-off zones.
+* **HUD Minimap:** Positioned bottom-left mapping the full 4000×4000 grid. Displays player coordinates, other drivers, passenger blips (color-coded by tier), and destination drop-off zones.
 * **Grid Alleys & Buildings:** A physics collision engine checks movement inputs against dense block building structures, simulating narrow, winding lanes.
 * **Seeded Roundabouts:** Green traffic circles with central obstacles and visual direction indicators guiding vehicles.
 * **Traffic Signals:** Intersections contain dynamic traffic lights (Green/Yellow/Red) alternating for North-South and East-West directions.
 * **Pedestrian Crosswalks & AI:** Randomly generated pedestrian agents walk back and forth across crosswalks, complete with dynamic path timing and collision checks.
+* **Autonomous AI Bots:** Bots navigate the city using A* street-grid pathfinding. They feature smooth turn interpolation, reverse-throttle collision recovery when stuck, and distributed spawning logic to prevent clustering.
 
 ### ⚠️ Violations & Traffic Penalties
 
@@ -101,7 +102,7 @@ Instead of sending verbose JSON over WebSockets (e.g., `{"type":"update","x":123
 
 ## 📊 Developer Diagnostic Panel & Load Testing
 
-The client includes a premium developer interface showing live metrics:
+The client includes a premium developer interface (positioned bottom-right, automatically hidden on mobile devices) showing live metrics:
 
 * **Real-time RTT (Ping)** & **Server Tick Rate (Hz)** telemetry.
 * **Payload Size Comparison:** Compares the actual binary packet size to equivalent JSON.
@@ -136,7 +137,7 @@ We use **MongoDB** to persist player career totals and historical match records:
 
 ---
 
-## 🚀 Running the Project
+## 🚀 Running & Deploying the Project
 
 ### Prerequisites
 
@@ -144,7 +145,7 @@ We use **MongoDB** to persist player career totals and historical match records:
 
 * pnpm
 
-### Quick Start
+### Quick Start (Local Development)
 
 ```bash
 # Install dependencies
@@ -168,3 +169,16 @@ pnpm test:e2e
 # Run performance benchmarks
 pnpm bench
 ```
+
+### Production CLI Deployment
+
+The codebase is configured for zero-config CLI deployments using **Vercel** for the static client and **Railway** for the backend server and MongoDB instance.
+
+1. Ensure you have the Vercel CLI (`npm i -g vercel`) and Railway CLI (`npm i -g @railway/cli`) installed.
+2. Run the deployment setup script from the repository root:
+
+```bash
+./deploy.sh
+```
+
+The script will guide you through initializing the project on Railway, provisioning the database, deploying the backend via the included `Dockerfile`, and linking the Vercel frontend to the live `wss://` API.

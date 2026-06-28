@@ -1,0 +1,10 @@
+node_modules
+.git
+.vercel
+apps/client/dist
+apps/client/node_modules
+apps/server/node_modules
+packages/shared/node_modules
+dist
+mongo
+.env
