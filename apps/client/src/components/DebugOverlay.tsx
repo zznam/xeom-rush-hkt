@@ -53,7 +53,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   const compressionRatio = lastSnapshotBytes > 0 ? (approxJsonBytes / lastSnapshotBytes).toFixed(1) : '0.0';
 
   return (
-    <div style={{ pointerEvents: 'auto', position: 'absolute', bottom: 20, right: 20, width: 340 }} className="glass-panel p-4">
+    <div className="debug-overlay-fixed glass-panel p-4">
       <h3 style={{ fontSize: 12, fontWeight: 900, color: '#10b981', letterSpacing: '0.05em', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>📊 THÔNG SỐ ENGINE HỆ THỐNG</span>
         <span style={{ fontSize: 9, backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: 4 }}>TRACK 2</span>

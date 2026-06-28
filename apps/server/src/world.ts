@@ -52,6 +52,11 @@ export class GameWorld {
   private streakCounts: Map<string, number> = new Map();
   private lastDeliveryTicks: Map<string, number> = new Map();
 
+  // Session tracking maps for DB persistence
+  private sessionPeakStreaks: Map<string, number> = new Map();
+  private sessionDeliveries: Map<string, number> = new Map();
+  private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> = new Map();
+
   constructor() {
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
@@ -59,9 +64,9 @@ export class GameWorld {
     this.passengers = new PassengerSpawner(this.physics);
   }
 
-  public addPlayer(id: string, username: string): void {
-    const startX = 2000 + (Math.random() - 0.5) * 200;
-    const startY = 2000 + (Math.random() - 0.5) * 200;
+  public addPlayer(id: string, username: string, spawnX?: number, spawnY?: number): void {
+    const startX = spawnX !== undefined ? spawnX : 2000 + (Math.random() - 0.5) * 200;
+    const startY = spawnY !== undefined ? spawnY : 2000 + (Math.random() - 0.5) * 200;
 
     const player: PlayerState = {
       id,
@@ -79,6 +84,11 @@ export class GameWorld {
     this.inputQueues.set(id, []);
     this.spatialGrid.insert(id, startX, startY);
     this.streakCounts.set(id, 0);
+
+    // Initialize session tracking stats
+    this.sessionPeakStreaks.set(id, 0);
+    this.sessionDeliveries.set(id, 0);
+    this.sessionViolations.set(id, { redLights: 0, pedestrianHits: 0, driverCollisions: 0 });
   }
 
   public removePlayer(id: string): void {
@@ -97,8 +107,27 @@ export class GameWorld {
       this.stunnedUntilTicks.delete(id);
       this.streakCounts.delete(id);
       this.lastDeliveryTicks.delete(id);
+
+      // Clean up session stats
+      this.sessionPeakStreaks.delete(id);
+      this.sessionDeliveries.delete(id);
+      this.sessionViolations.delete(id);
     }
   }
+
+  public getSessionStatsForPlayer(playerId: string) {
+    const player = this.players.get(playerId);
+    if (!player) return null;
+
+    return {
+      username: player.username,
+      score: player.score,
+      peakStreak: this.sessionPeakStreaks.get(playerId) ?? 0,
+      deliveriesCount: this.sessionDeliveries.get(playerId) ?? 0,
+      violations: this.sessionViolations.get(playerId) ?? { redLights: 0, pedestrianHits: 0, driverCollisions: 0 }
+    };
+  }
+
 
   public queueInput(playerId: string, input: InputPayload): void {
     const queue = this.inputQueues.get(playerId);
@@ -367,6 +396,14 @@ export class GameWorld {
           this.streakCounts.set(player.id, newStreak);
           this.lastDeliveryTicks.set(player.id, this.tickCount);
 
+          // Update session stats
+          const currentPeak = this.sessionPeakStreaks.get(player.id) ?? 0;
+          if (newStreak > currentPeak) {
+            this.sessionPeakStreaks.set(player.id, newStreak);
+          }
+          const currentDeliveries = this.sessionDeliveries.get(player.id) ?? 0;
+          this.sessionDeliveries.set(player.id, currentDeliveries + 1);
+
           this.passengers.remove(passenger.id);
           player.passengerId = null;
         }
@@ -412,6 +449,13 @@ export class GameWorld {
       amount,
       tick: this.tickCount,
     };
+
+    const viols = this.sessionViolations.get(player.id);
+    if (viols) {
+      if (type === 'red-light') viols.redLights++;
+      else if (type === 'pedestrian') viols.pedestrianHits++;
+      else if (type === 'driver-collision') viols.driverCollisions++;
+    }
   }
 
   /**

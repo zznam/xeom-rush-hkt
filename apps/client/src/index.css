@@ -88,3 +88,32 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Fixed corner layout classes */
+.minimap-container-fixed {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.debug-overlay-fixed {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 340px;
+  z-index: 50;
+}
+
+/* Mobile responsive breakpoints */
+@media (max-width: 768px) {
+  .debug-overlay-fixed {
+    display: none !important;
+  }
+}

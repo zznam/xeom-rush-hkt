@@ -28,6 +28,7 @@ export class GameRenderer {
   private shakeMagnitude: number = 0;
   private staticRoundabouts: StaticRoundabout[] = [];
   private staticCrosswalks: StaticCrosswalk[] = [];
+  private viewport = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -71,6 +72,12 @@ export class GameRenderer {
     // 1. Center camera on player
     this.camera.x = localPlayer.x + shakeX;
     this.camera.y = localPlayer.y + shakeY;
+
+    // Calculate viewport boundaries with 100px padding for safety culling
+    this.viewport.minX = this.camera.x - width / 2 - 100;
+    this.viewport.maxX = this.camera.x + width / 2 + 100;
+    this.viewport.minY = this.camera.y - height / 2 - 100;
+    this.viewport.maxY = this.camera.y + height / 2 + 100;
 
     // 2. Clear screen
     ctx.fillStyle = '#1e293b'; // Slate 800 dark background
@@ -142,18 +149,55 @@ export class GameRenderer {
     pedestrians: PedestrianState[],
   ): void {
     for (const crosswalk of this.staticCrosswalks) {
+      // Frustum culling check
+      if (
+        crosswalk.x < this.viewport.minX - 60 ||
+        crosswalk.x > this.viewport.maxX + 60 ||
+        crosswalk.y < this.viewport.minY - 60 ||
+        crosswalk.y > this.viewport.maxY + 60
+      ) {
+        continue;
+      }
       this.drawCrosswalk(ctx, crosswalk);
     }
 
     for (const roundabout of this.staticRoundabouts) {
+      // Frustum culling check
+      const bound = roundabout.radius + 40;
+      if (
+        roundabout.x < this.viewport.minX - bound ||
+        roundabout.x > this.viewport.maxX + bound ||
+        roundabout.y < this.viewport.minY - bound ||
+        roundabout.y > this.viewport.maxY + bound
+      ) {
+        continue;
+      }
       this.drawRoundabout(ctx, roundabout);
     }
 
     for (const light of trafficLights) {
+      // Frustum culling check
+      if (
+        light.x < this.viewport.minX - 60 ||
+        light.x > this.viewport.maxX + 60 ||
+        light.y < this.viewport.minY - 60 ||
+        light.y > this.viewport.maxY + 60
+      ) {
+        continue;
+      }
       this.drawTrafficLight(ctx, light);
     }
 
     for (const pedestrian of pedestrians) {
+      // Frustum culling check
+      if (
+        pedestrian.x < this.viewport.minX - 20 ||
+        pedestrian.x > this.viewport.maxX + 20 ||
+        pedestrian.y < this.viewport.minY - 20 ||
+        pedestrian.y > this.viewport.maxY + 20
+      ) {
+        continue;
+      }
       this.drawPedestrian(ctx, pedestrian);
     }
   }
@@ -375,6 +419,15 @@ export class GameRenderer {
     ctx.lineWidth = 2;
 
     for (const rect of buildings) {
+      // Frustum culling check: skip if building is off-screen
+      const isVisible =
+        rect.x + rect.width >= this.viewport.minX &&
+        rect.x <= this.viewport.maxX &&
+        rect.y + rect.height >= this.viewport.minY &&
+        rect.y <= this.viewport.maxY;
+
+      if (!isVisible) continue;
+
       // Draw building block
       ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
       ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);

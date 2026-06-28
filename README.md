@@ -123,6 +123,19 @@ pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:
 
 ---
 
+## 🗄️ Database Persistence & Leaderboard
+
+We use **MongoDB** to persist player career totals and historical match records:
+
+* **Asynchronous Save Queue:** During a match, passenger dropoffs and traffic violations are tracked strictly in memory. When a player disconnects, their session stats are saved asynchronously to prevent database latency from slowing down the 20Hz tick loop.
+* **Collections:**
+  - `players` — Tracks career earnings (VNĐ), total deliveries, and high score/streak records.
+  - `matches` — Logs complete history of completed match sessions, containing a summary of scores and traffic violations (red-light runs, pedestrian collisions, and driver impacts) for each driver.
+* **Leaderboard Optimization:** Exposes a `GET /api/leaderboard` endpoint sorted by indexed `{ careerScore: -1 }` for optimal query response times.
+* **Memory-Only Fallback:** If the database connection times out (configured to fail fast in 2 seconds), the server automatically starts up in **MEMORY-ONLY mode**, allowing quick local testing and E2E runs without database dependencies.
+
+---
+
 ## 🚀 Running the Project
 
 ### Prerequisites
@@ -136,6 +149,9 @@ pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:
 ```bash
 # Install dependencies
 pnpm install
+
+# Start MongoDB service (runs on port 27018 to avoid port conflicts)
+docker compose up -d
 
 # Run the backend server
 pnpm dev:server

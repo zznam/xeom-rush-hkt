@@ -224,6 +224,51 @@ describe('GameWorld realism update', () => {
     expect(ringPointB).toBeDefined();
     expect(Math.hypot(ringPointA!.x - ringPointB!.x, ringPointA!.y - ringPointB!.y)).toBeGreaterThan(1);
   });
+
+  it('spawns bots broadly across the map on valid street positions', () => {
+    const world = new GameWorld();
+    const botManager = new BotManager(world, world.getPhysics());
+    const spawnedIds = botManager.spawnBots(10);
+    
+    // Check that players have been added and their positions are spread out
+    const positions = spawnedIds.map(id => world.getPlayer(id)!);
+    positions.forEach(pos => {
+      expect(pos).toBeDefined();
+      expect(world.getPhysics().isInsideBuilding(pos.x, pos.y)).toBe(false);
+      expect(world.getCityFeatures().isInsideRoundabout(pos.x, pos.y)).toBe(false);
+    });
+
+    // Check that they are not clustered in the 200x200 center box
+    const centerClustered = positions.filter(pos => 
+      Math.abs(pos.x - 2000) <= 100 && Math.abs(pos.y - 2000) <= 100
+    );
+    expect(centerClustered.length).toBeLessThan(10); // Spreads widely
+  });
+
+  it('triggers backing reverse throttle when a bot is stuck', () => {
+    const world = new GameWorld();
+    const botManager = new BotManager(world, world.getPhysics());
+    const [botId] = botManager.spawnBots(1);
+    
+    // Cast to access internal bots map
+    const bot = (botManager as any).bots.get(botId);
+    expect(bot).toBeDefined();
+    
+    // Set stuckTicks to a value in the backup window (e.g. 15)
+    bot.stuckTicks = 15;
+    
+    // Run AI generateInput
+    const player = world.getPlayer(botId)!;
+    const input = (botManager as any).generateInput(bot, player);
+    
+    // Expected reverse angle: opposite to currentAngle
+    const expectedAngle = bot.currentAngle + Math.PI;
+    const expectedDx = Math.cos(expectedAngle) * 0.8;
+    const expectedDy = Math.sin(expectedAngle) * 0.8;
+    
+    expect(input.dx).toBeCloseTo(expectedDx, 4);
+    expect(input.dy).toBeCloseTo(expectedDy, 4);
+  });
 });
 
 describe('Rush Hour Events', () => {

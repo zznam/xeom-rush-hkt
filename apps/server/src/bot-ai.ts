@@ -1,4 +1,4 @@
-import { type InputPayload, type PassengerState, type PlayerState } from '@xeom-rush/shared';
+import { type InputPayload, type PassengerState, type PlayerState, MAP_SIZE } from '@xeom-rush/shared';
 import type { PhysicsEngine } from './physics';
 import type { GameWorld } from './world';
 
@@ -54,6 +54,22 @@ export class BotManager {
     private physics: PhysicsEngine,
   ) {}
 
+  private generateStreetPosition(): { x: number; y: number } {
+    const maxAttempts = 50;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Keep inside map bounds with safety padding
+      const x = 200 + Math.random() * (MAP_SIZE - 400);
+      const y = 200 + Math.random() * (MAP_SIZE - 400);
+
+      // Verify not inside building and not inside roundabout
+      if (!this.physics.isInsideBuilding(x, y) && !this.world.getCityFeatures().isInsideRoundabout(x, y)) {
+        return { x, y };
+      }
+    }
+    // Fallback near map center
+    return { x: 2000, y: 2000 };
+  }
+
   public spawnBots(count: number): string[] {
     const spawnedIds: string[] = [];
 
@@ -62,7 +78,8 @@ export class BotManager {
       const playerId = `bot-${idx}`;
       const username = `🤖 Bot-${idx}`;
 
-      this.world.addPlayer(playerId, username);
+      const spawnPos = this.generateStreetPosition();
+      this.world.addPlayer(playerId, username, spawnPos.x, spawnPos.y);
       const player = this.world.getPlayer(playerId);
 
       this.bots.set(playerId, {
@@ -181,6 +198,16 @@ export class BotManager {
           bot.path = this.calculatePath(bot, player.x, player.y, nearest.x, nearest.y);
           bot.pathIndex = 0;
           bot.stuckTicks = 0;
+        } else {
+          // If no passengers are available, choose a random street intersection to wander to
+          if (bot.path.length === 0) {
+            const randIx = Math.floor(Math.random() * STREET_LINES.length);
+            const randIy = Math.floor(Math.random() * STREET_LINES.length);
+            const targetX = STREET_LINES[randIx];
+            const targetY = STREET_LINES[randIy];
+            bot.path = this.calculatePath(bot, player.x, player.y, targetX, targetY);
+            bot.pathIndex = 0;
+          }
         }
         break;
       }
@@ -275,6 +302,17 @@ export class BotManager {
   private generateInput(bot: BotAgent, player: PlayerState): InputPayload {
     bot.inputSeq++;
 
+    // 1. Stuck resolution: if stuck for >10 ticks, back up for the next 15 ticks to slide out
+    if (bot.stuckTicks > 10 && bot.stuckTicks <= 25) {
+      const reverseAngle = bot.currentAngle + Math.PI;
+      return {
+        seq: bot.inputSeq,
+        dx: Math.cos(reverseAngle) * 0.8,
+        dy: Math.sin(reverseAngle) * 0.8,
+        angle: bot.currentAngle, // keep original facing angle
+      };
+    }
+
     // Calculate a path if missing but we have a target
     if (bot.path.length === 0) {
       const target = this.getTargetPosition(bot);
@@ -299,6 +337,12 @@ export class BotManager {
       distToWaypoint = Math.hypot(currentWaypoint.x - player.x, currentWaypoint.y - player.y);
     }
 
+    // Clear path if we've arrived at the final destination
+    if (bot.pathIndex === bot.path.length - 1 && distToWaypoint < 30) {
+      bot.path = [];
+      bot.pathIndex = 0;
+    }
+
     // Path direction vector
     const pathAngle = Math.atan2(currentWaypoint.y - player.y, currentWaypoint.x - player.x);
     let moveX = Math.cos(pathAngle);
@@ -306,7 +350,7 @@ export class BotManager {
 
     // Dynamic driver-to-driver avoidance steering (separation)
     const nearbyIds = this.world.getSpatialGrid().getNearbyEntities(player.x, player.y);
-    const avoidanceRadius = 105;
+    const avoidanceRadius = 55; // Reduced from 105 to only avoid close entities
     let avoidX = 0;
     let avoidY = 0;
     let avoidCount = 0;
@@ -323,8 +367,8 @@ export class BotManager {
           const dist = Math.hypot(dx, dy);
           
           if (dist > 0 && dist < avoidanceRadius) {
-            // Repulsion strength is inversely proportional to distance (stronger when closer)
-            const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 42 ? 2.4 : 1);
+            // Repulsion strength is inversely proportional to distance
+            const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 35 ? 2.0 : 1);
             avoidX += (dx / dist) * strength;
             avoidY += (dy / dist) * strength;
             avoidCount++;
@@ -334,15 +378,16 @@ export class BotManager {
     }
 
     if (avoidCount > 0) {
-      // Blend path angle with avoidance steering
-      const avoidWeight = Math.min(2.4, 1.1 + avoidCount * 0.18);
-      moveX += avoidX * avoidWeight;
-      moveY += avoidY * avoidWeight;
+      // Normalize avoidance force and cap its contribution to at most 0.45 of path vector
+      const avoidMag = Math.hypot(avoidX, avoidY) || 1;
+      moveX += (avoidX / avoidMag) * 0.45;
+      moveY += (avoidY / avoidMag) * 0.45;
     }
 
     const roundaboutSteer = this.getRoundaboutTangentialSteer(player.x, player.y);
-    moveX += roundaboutSteer.x;
-    moveY += roundaboutSteer.y;
+    // Scale roundabout tangential correction gently so it acts as a guide (0.3) rather than overpowering
+    moveX += roundaboutSteer.x * 0.3;
+    moveY += roundaboutSteer.y * 0.3;
 
     const city = this.world.getCityFeatures();
     const mag = Math.hypot(moveX, moveY) || 1;
@@ -358,33 +403,49 @@ export class BotManager {
         angle: bot.currentAngle,
       };
     }
-    moveX += pedestrianAvoidance.x * 1.8;
-    moveY += pedestrianAvoidance.y * 1.8;
+    
+    // Scale pedestrian avoidance contribution gently (at most 0.5 contribution)
+    const pedAvoidMag = Math.hypot(pedestrianAvoidance.x, pedestrianAvoidance.y);
+    if (pedAvoidMag > 0) {
+      moveX += (pedestrianAvoidance.x / pedAvoidMag) * 0.5;
+      moveY += (pedestrianAvoidance.y / pedAvoidMag) * 0.5;
+    }
 
     const finalAngle = Math.atan2(moveY, moveX);
-    bot.currentAngle = finalAngle;
+    
+    // Smooth angle interpolation to prevent instant robotic snapping (max 0.16 rad/tick)
+    let angleDiff = finalAngle - bot.currentAngle;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+    const maxTurnPerTick = 0.16; // Limit turning speed
+    if (Math.abs(angleDiff) > maxTurnPerTick) {
+      bot.currentAngle += Math.sign(angleDiff) * maxTurnPerTick;
+    } else {
+      bot.currentAngle = finalAngle;
+    }
 
     const trafficDecision = city.getTrafficDecisionAhead(
       player.x,
       player.y,
-      Math.cos(finalAngle),
-      Math.sin(finalAngle),
+      Math.cos(bot.currentAngle),
+      Math.sin(bot.currentAngle),
     );
     if (trafficDecision?.shouldStop && this.shouldBotObeyTrafficLight(bot, player)) {
-      const queueOffset = this.getTrafficQueueOffset(bot, Math.cos(finalAngle), Math.sin(finalAngle));
+      const queueOffset = this.getTrafficQueueOffset(bot, Math.cos(bot.currentAngle), Math.sin(bot.currentAngle));
       return {
         seq: bot.inputSeq,
         dx: queueOffset.dx,
         dy: queueOffset.dy,
-        angle: finalAngle,
+        angle: bot.currentAngle,
       };
     }
 
     return {
       seq: bot.inputSeq,
-      dx: Math.cos(finalAngle),
-      dy: Math.sin(finalAngle),
-      angle: finalAngle,
+      dx: Math.cos(bot.currentAngle),
+      dy: Math.sin(bot.currentAngle),
+      angle: bot.currentAngle,
     };
   }
 

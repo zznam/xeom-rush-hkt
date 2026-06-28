@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import {
   EMessageType,
   TICK_INTERVAL_MS,
@@ -14,6 +15,10 @@ import {
 } from '@xeom-rush/shared';
 import { GameWorld } from './world';
 import { BotManager } from './bot-ai';
+import { dbManager } from './db';
+import { savePlayerSession } from './persist';
+
+dotenv.config();
 
 // --- Express App Setup ---
 const app = express();
@@ -77,6 +82,29 @@ app.post('/api/spawn-bots', (req, res) => {
   });
 });
 
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const db = dbManager.getDb();
+    const playersCol = db.collection('players');
+    const topPlayers = await playersCol
+      .find()
+      .sort({ careerScore: -1 })
+      .limit(10)
+      .toArray();
+
+    res.json(topPlayers.map(p => ({
+      username: p.username,
+      careerScore: p.careerScore,
+      peakScore: p.peakScore,
+      peakStreak: p.peakStreak,
+      totalDeliveries: p.totalDeliveries
+    })));
+  } catch (err) {
+    console.warn('[API Leaderboard] Returning empty leaderboard (DB not connected or queried error).');
+    res.json([]);
+  }
+});
+
 // --- WebSocket Connection Management ---
 interface PlayerSocket {
   ws: WebSocket;
@@ -134,6 +162,13 @@ wss.on('connection', (ws: WebSocket) => {
   ws.on('close', () => {
     if (joined) {
       console.log(`[Player Leave] Player ${playerId} disconnected.`);
+      const stats = world.getSessionStatsForPlayer(playerId);
+      if (stats) {
+        // Fire-and-forget async save to MongoDB
+        savePlayerSession(stats.username, stats).catch((err) => {
+          console.error(`[DB save error] Failed to save stats for ${stats.username}:`, err);
+        });
+      }
       world.removePlayer(playerId);
       activeSockets.delete(playerId);
     }
@@ -172,10 +207,24 @@ setInterval(() => {
   }
 }, TICK_INTERVAL_MS);
 
-// Start server
+// Start server after connecting to MongoDB
 const PORT = process.env.PORT || 3002;
-server.listen(PORT, () => {
-  console.log(`🚀 Authoritative Server running on port ${PORT}`);
-  console.log(`Tick rate: 20Hz (Interval: ${TICK_INTERVAL_MS}ms)`);
-  console.log(`Map Dimensions: ${MAP_SIZE}x${MAP_SIZE} units`);
-});
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush';
+
+const startServer = () => {
+  server.listen(PORT, () => {
+    console.log(`🚀 Authoritative Server running on port ${PORT}`);
+    console.log(`Tick rate: 20Hz (Interval: ${TICK_INTERVAL_MS}ms)`);
+    console.log(`Map Dimensions: ${MAP_SIZE}x${MAP_SIZE} units`);
+  });
+};
+
+dbManager.connect(MONGODB_URI)
+  .then(() => {
+    startServer();
+  })
+  .catch((err) => {
+    console.warn(`⚠️ [Startup] Failed to connect to MongoDB at ${MONGODB_URI}: ${err.message}`);
+    console.warn('⚠️ [Startup] Server starting in MEMORY-ONLY mode. Career stats will not be persistent.');
+    startServer();
+  });
