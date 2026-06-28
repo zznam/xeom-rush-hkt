@@ -1,8 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { type PlayerState, type PassengerState, EPassengerTier, MAP_SIZE } from '@xeom-rush/shared';
 
-const MINIMAP_SIZE = 150;
-const SCALE = MINIMAP_SIZE / MAP_SIZE; // 150 / 4000 = 0.0375
 
 const TIER_COLORS: Record<EPassengerTier, string> = {
   [EPassengerTier.REGULAR]: '#22c55e',   // green
@@ -15,10 +13,20 @@ interface MinimapProps {
   players: PlayerState[];
   passengers: PassengerState[];
   carriedPassengerId: string | null;
+  size?: number;
+  className?: string;
 }
 
-export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passengers, carriedPassengerId }) => {
+export const Minimap: React.FC<MinimapProps> = ({
+  localPlayerId,
+  players,
+  passengers,
+  carriedPassengerId,
+  size = 150,
+  className = 'minimap-container-fixed',
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scale = size / MAP_SIZE;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,20 +37,20 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
 
     // Dark map background
     ctx.fillStyle = 'rgba(10, 15, 30, 0.92)';
-    ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    ctx.fillRect(0, 0, size, size);
 
     // Subtle grid lines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.lineWidth = 0.5;
-    const gridStep = MINIMAP_SIZE / 8;
+    const gridStep = size / 8;
     for (let i = 0; i <= 8; i++) {
       ctx.beginPath();
       ctx.moveTo(i * gridStep, 0);
-      ctx.lineTo(i * gridStep, MINIMAP_SIZE);
+      ctx.lineTo(i * gridStep, size);
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(0, i * gridStep);
-      ctx.lineTo(MINIMAP_SIZE, i * gridStep);
+      ctx.lineTo(size, i * gridStep);
       ctx.stroke();
     }
 
@@ -50,8 +58,8 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
     for (const passenger of passengers) {
       if (passenger.isCarried) continue;
 
-      const mx = passenger.x * SCALE;
-      const my = passenger.y * SCALE;
+      const mx = passenger.x * scale;
+      const my = passenger.y * scale;
 
       ctx.beginPath();
       ctx.arc(mx, my, 2, 0, Math.PI * 2);
@@ -63,8 +71,8 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
     if (carriedPassengerId) {
       const carried = passengers.find((p) => p.id === carriedPassengerId);
       if (carried) {
-        const dx = carried.destX * SCALE;
-        const dy = carried.destY * SCALE;
+        const dx = carried.destX * scale;
+        const dy = carried.destY * scale;
         const s = 4;
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 1.5;
@@ -82,8 +90,8 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
     // Draw other players (small white dots)
     for (const player of players) {
       if (player.id === localPlayerId) continue;
-      const mx = player.x * SCALE;
-      const my = player.y * SCALE;
+      const mx = player.x * scale;
+      const my = player.y * scale;
       ctx.beginPath();
       ctx.arc(mx, my, 1.5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
@@ -93,8 +101,8 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
     // Draw local player (blue dot, larger, with direction indicator)
     const localPlayer = players.find((p) => p.id === localPlayerId);
     if (localPlayer) {
-      const mx = localPlayer.x * SCALE;
-      const my = localPlayer.y * SCALE;
+      const mx = localPlayer.x * scale;
+      const my = localPlayer.y * scale;
 
       // Glow ring
       ctx.beginPath();
@@ -120,12 +128,12 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
       );
       ctx.stroke();
     }
-  }, [localPlayerId, players, passengers, carriedPassengerId]);
+  }, [localPlayerId, players, passengers, carriedPassengerId, size, scale]);
 
   return (
     <div
       id="minimap-container"
-      className="minimap-container-fixed"
+      className={className}
     >
       <span
         style={{
@@ -141,8 +149,8 @@ export const Minimap: React.FC<MinimapProps> = ({ localPlayerId, players, passen
       <canvas
         id="minimap"
         ref={canvasRef}
-        width={MINIMAP_SIZE}
-        height={MINIMAP_SIZE}
+        width={size}
+        height={size}
         style={{
           border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: 6,

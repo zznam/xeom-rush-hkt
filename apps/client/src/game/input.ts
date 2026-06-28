@@ -1,6 +1,8 @@
 export class InputHandler {
   private keys: { [key: string]: boolean } = {};
 
+  private joystickInput: { dx: number; dy: number } | null = null;
+
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => {
@@ -17,7 +19,24 @@ export class InputHandler {
     }
   }
 
+  public setJoystickInput(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) {
+      this.joystickInput = null;
+    } else {
+      this.joystickInput = { dx, dy };
+    }
+  }
+
   public getInputVector(): { dx: number; dy: number; angle: number } {
+    if (this.joystickInput) {
+      const { dx, dy } = this.joystickInput;
+      let angle = 0;
+      if (dx !== 0 || dy !== 0) {
+        angle = Math.atan2(dy, dx);
+      }
+      return { dx, dy, angle };
+    }
+
     let dx = 0;
     let dy = 0;
 
