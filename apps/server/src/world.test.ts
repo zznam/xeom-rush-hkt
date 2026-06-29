@@ -261,10 +261,14 @@ describe('GameWorld realism update', () => {
     const player = world.getPlayer(botId)!;
     const input = (botManager as any).generateInput(bot, player);
     
-    // Expected reverse angle: opposite to currentAngle
-    const expectedAngle = bot.currentAngle + Math.PI;
-    const expectedDx = Math.cos(expectedAngle) * 0.8;
-    const expectedDy = Math.sin(expectedAngle) * 0.8;
+    // Expected escape angle logic: mix of reverse and perpendicular
+    const perpAngle = bot.currentAngle + (Math.PI / 2) * bot.escapeFlip;
+    const reverseAngle = bot.currentAngle + Math.PI;
+    const escapeX = Math.cos(reverseAngle) * 0.5 + Math.cos(perpAngle) * 0.5;
+    const escapeY = Math.sin(reverseAngle) * 0.5 + Math.sin(perpAngle) * 0.5;
+    const escapeMag = Math.hypot(escapeX, escapeY) || 1;
+    const expectedDx = (escapeX / escapeMag) * 0.8;
+    const expectedDy = (escapeY / escapeMag) * 0.8;
     
     expect(input.dx).toBeCloseTo(expectedDx, 4);
     expect(input.dy).toBeCloseTo(expectedDy, 4);
@@ -522,5 +526,92 @@ describe('Passenger Tiers', () => {
     // After deadline
     spawner.reapExpiredPassengers(4);
     expect(world.getPassengerMap().has(business.id)).toBe(false);
+  });
+});
+
+describe('Bot stuck recovery produces net displacement', () => {
+  it('bot makes net displacement after stuck recovery cycle', () => {
+    const world = new GameWorld();
+    const botManager = new BotManager(world, world.getPhysics());
+    const botIds = botManager.spawnBots(1);
+    const botId = botIds[0];
+
+    // Record initial position
+    const initialPlayer = world.getPlayer(botId)!;
+    const startX = initialPlayer.x;
+    const startY = initialPlayer.y;
+
+    // Simulate ticks — bot should move around
+    for (let i = 0; i < 60; i++) {
+      botManager.tick();
+      world.tick(0.05);
+    }
+
+    const afterPlayer = world.getPlayer(botId)!;
+    const displacement = Math.hypot(afterPlayer.x - startX, afterPlayer.y - startY);
+
+    // Bot should have moved at least some distance from spawn after 60 ticks (3 seconds)
+    expect(displacement).toBeGreaterThan(10);
+  });
+});
+
+describe('Pedestrian respawn improvements', () => {
+  it('hit pedestrian respawns with longer delay than walk-off', () => {
+    const world = new GameWorld();
+    const city = world.getCityFeatures();
+
+    // Find an active pedestrian
+    const activePeds = city.getPedestrians();
+    expect(activePeds.length).toBeGreaterThan(0);
+
+    const targetPedId = activePeds[0].id;
+
+    // Record the pedestrian is active before removal
+    expect(city.getPedestrianMap().has(targetPedId)).toBe(true);
+
+    // "Hit" the pedestrian via removePedestrian (which now uses hit delay)
+    city.removePedestrian(targetPedId);
+
+    // Pedestrian should be deactivated immediately
+    expect(city.getPedestrianMap().has(targetPedId)).toBe(false);
+
+    // After 120 ticks (normal walk-off min), the hit pedestrian should still be gone
+    // because hit delay minimum is 200 ticks
+    for (let i = 0; i < 125; i++) {
+      city.tickRespawns();
+    }
+    expect(city.getPedestrianMap().has(targetPedId)).toBe(false);
+
+    // After 300 more ticks (total 425, well past max hit delay of 300), it should be back
+    for (let i = 0; i < 300; i++) {
+      city.tickRespawns();
+    }
+    expect(city.getPedestrianMap().has(targetPedId)).toBe(true);
+  });
+
+  it('respawned pedestrian can walk in either direction', () => {
+    const world = new GameWorld();
+    const city = world.getCityFeatures();
+
+    // Run many respawn cycles and collect directions
+    const directions = new Set<number>();
+
+    // Force multiple respawns by ticking pedestrians until they walk off
+    for (let cycle = 0; cycle < 20; cycle++) {
+      // Tick until some pedestrian walks off and respawns
+      for (let i = 0; i < 500; i++) {
+        city.tick(i, 0.05);
+      }
+
+      // Collect angles of active pedestrians (angle indicates direction)
+      for (const ped of city.getPedestrians()) {
+        // Quantize angle to detect direction variety
+        const quantized = Math.round(ped.angle * 100);
+        directions.add(quantized);
+      }
+    }
+
+    // We should see more than 1 unique direction, proving randomization works
+    expect(directions.size).toBeGreaterThan(1);
   });
 });

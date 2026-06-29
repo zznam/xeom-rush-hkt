@@ -4,6 +4,13 @@ import type { GameWorld } from './world';
 
 const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
 
+/** Number of ticks to track for sliding-window displacement detection */
+const DISPLACEMENT_WINDOW = 20;
+/** If net displacement over the window is below this, the bot is "stuck" */
+const STUCK_DISPLACEMENT_THRESHOLD = 15;
+/** Distance at which bots switch from waypoint following to direct-to-target steering */
+const DIRECT_APPROACH_RADIUS = 60;
+
 enum EBotState {
   SEEKING_PASSENGER,
   NAVIGATING_TO_PICKUP,
@@ -42,6 +49,11 @@ interface BotAgent {
   laneOffset: number;
   stopOffset: number;
   avoidedRoundabouts: Map<string, number>;
+  /** Circular buffer of recent positions for sliding-window displacement */
+  positionHistory: { x: number; y: number }[];
+  positionHistoryIndex: number;
+  /** Perpendicular escape sign flips each stuck recovery attempt */
+  escapeFlip: 1 | -1;
 }
 
 export class BotManager {
@@ -82,13 +94,14 @@ export class BotManager {
       this.world.addPlayer(playerId, username, spawnPos.x, spawnPos.y);
       const player = this.world.getPlayer(playerId);
 
+      const initialPos = { x: player?.x ?? 0, y: player?.y ?? 0 };
       this.bots.set(playerId, {
         playerId,
         state: EBotState.SEEKING_PASSENGER,
         targetPassengerId: null,
         stuckTicks: 0,
-        lastX: player?.x ?? 0,
-        lastY: player?.y ?? 0,
+        lastX: initialPos.x,
+        lastY: initialPos.y,
         inputSeq: 0,
         currentAngle: Math.random() * Math.PI * 2,
         path: [],
@@ -102,6 +115,9 @@ export class BotManager {
         laneOffset: ((idx % 5) - 2) * 4,
         stopOffset: (idx % 6) * 9,
         avoidedRoundabouts: new Map(),
+        positionHistory: Array.from({ length: DISPLACEMENT_WINDOW }, () => ({ ...initialPos })),
+        positionHistoryIndex: 0,
+        escapeFlip: 1,
       });
 
       spawnedIds.push(playerId);
@@ -129,9 +145,13 @@ export class BotManager {
         continue;
       }
 
-      // Detect stuck state (hasn't moved meaningfully)
-      const moveDist = Math.hypot(player.x - bot.lastX, player.y - bot.lastY);
-      if (moveDist < 0.5) {
+      // Sliding-window displacement-based stuck detection
+      bot.positionHistory[bot.positionHistoryIndex] = { x: player.x, y: player.y };
+      bot.positionHistoryIndex = (bot.positionHistoryIndex + 1) % DISPLACEMENT_WINDOW;
+      const oldestPos = bot.positionHistory[bot.positionHistoryIndex];
+      const netDisplacement = Math.hypot(player.x - oldestPos.x, player.y - oldestPos.y);
+
+      if (netDisplacement < STUCK_DISPLACEMENT_THRESHOLD) {
         bot.stuckTicks++;
       } else {
         bot.stuckTicks = 0;
@@ -141,7 +161,7 @@ export class BotManager {
 
       // Handle stuck behavior to keep bots fluid and competing
       if (bot.stuckTicks > 40) {
-        // Hard stuck: release target and seek another passenger
+        // Hard stuck: release target, flip escape direction, and seek another passenger
         this.markNearbyRoundaboutAvoided(bot, player.x, player.y);
         if (bot.targetPassengerId) {
           this.targetedPassengerIds.delete(bot.targetPassengerId);
@@ -151,6 +171,7 @@ export class BotManager {
         bot.path = [];
         bot.pathIndex = 0;
         bot.stuckTicks = 0;
+        bot.escapeFlip = bot.escapeFlip === 1 ? -1 : 1;
       } else if (bot.stuckTicks > 10 && bot.stuckTicks % 10 === 0) {
         // Mildly stuck: recalculate path from current location to target
         const target = this.getTargetPosition(bot);
@@ -302,29 +323,53 @@ export class BotManager {
   private generateInput(bot: BotAgent, player: PlayerState): InputPayload {
     bot.inputSeq++;
 
-    // 1. Stuck resolution: if stuck for >10 ticks, back up for the next 15 ticks to slide out
+    // 1. Stuck resolution: perpendicular escape with alternating direction
     if (bot.stuckTicks > 10 && bot.stuckTicks <= 25) {
+      // Calculate perpendicular escape direction instead of just reversing
+      const perpAngle = bot.currentAngle + (Math.PI / 2) * bot.escapeFlip;
+      // Mix reverse + perpendicular for a diagonal escape
       const reverseAngle = bot.currentAngle + Math.PI;
+      const escapeX = Math.cos(reverseAngle) * 0.5 + Math.cos(perpAngle) * 0.5;
+      const escapeY = Math.sin(reverseAngle) * 0.5 + Math.sin(perpAngle) * 0.5;
+      const escapeMag = Math.hypot(escapeX, escapeY) || 1;
       return {
         seq: bot.inputSeq,
-        dx: Math.cos(reverseAngle) * 0.8,
-        dy: Math.sin(reverseAngle) * 0.8,
+        dx: (escapeX / escapeMag) * 0.8,
+        dy: (escapeY / escapeMag) * 0.8,
         angle: bot.currentAngle, // keep original facing angle
       };
     }
 
+    // 2. Direct-to-target approach: if we have a target and are close, skip waypoints
+    const finalTarget = this.getTargetPosition(bot);
+    if (finalTarget) {
+      const distToTarget = Math.hypot(finalTarget.x - player.x, finalTarget.y - player.y);
+      if (distToTarget < DIRECT_APPROACH_RADIUS && !this.physics.isInsideBuilding(finalTarget.x, finalTarget.y)) {
+        // Steer directly to the actual target, bypassing remaining waypoints
+        const directAngle = Math.atan2(finalTarget.y - player.y, finalTarget.x - player.x);
+        bot.currentAngle = directAngle;
+        bot.path = [];
+        bot.pathIndex = 0;
+        return {
+          seq: bot.inputSeq,
+          dx: Math.cos(directAngle),
+          dy: Math.sin(directAngle),
+          angle: directAngle,
+        };
+      }
+    }
+
     // Calculate a path if missing but we have a target
     if (bot.path.length === 0) {
-      const target = this.getTargetPosition(bot);
-      if (target) {
-        bot.path = this.calculatePath(bot, player.x, player.y, target.x, target.y);
+      if (finalTarget) {
+        bot.path = this.calculatePath(bot, player.x, player.y, finalTarget.x, finalTarget.y);
         bot.pathIndex = 0;
       }
     }
 
     // Default to wandering if no valid target path
     if (bot.path.length === 0) {
-      return this.createWanderInput(bot);
+      return this.createWanderInput(bot, player);
     }
 
     // Advance waypoints if we are close enough
@@ -471,13 +516,43 @@ export class BotManager {
     return null;
   }
 
-  private createWanderInput(bot: BotAgent): InputPayload {
-    bot.currentAngle += (Math.random() - 0.5) * 0.5;
+  private createWanderInput(bot: BotAgent, player: PlayerState): InputPayload {
+    // Street-aware wandering: pick a random nearby intersection and path to it
+    if (bot.path.length === 0) {
+      const currentNode = this.getClosestNode(player.x, player.y);
+      // Pick a random intersection 1-3 blocks away
+      const offsetIx = Math.floor(Math.random() * 3) + 1;
+      const offsetIy = Math.floor(Math.random() * 3) + 1;
+      const signX = Math.random() < 0.5 ? 1 : -1;
+      const signY = Math.random() < 0.5 ? 1 : -1;
+      const targetIx = Math.min(STREET_LINES.length - 1, Math.max(0, currentNode.ix + offsetIx * signX));
+      const targetIy = Math.min(STREET_LINES.length - 1, Math.max(0, currentNode.iy + offsetIy * signY));
+      const targetX = STREET_LINES[targetIx];
+      const targetY = STREET_LINES[targetIy];
+      bot.path = this.calculatePath(bot, player.x, player.y, targetX, targetY);
+      bot.pathIndex = 0;
+    }
+
+    // If we still have no path (shouldn't happen), fall back to gentle random steering
+    if (bot.path.length === 0) {
+      bot.currentAngle += (Math.random() - 0.5) * 0.3;
+      return {
+        seq: bot.inputSeq,
+        dx: Math.cos(bot.currentAngle),
+        dy: Math.sin(bot.currentAngle),
+        angle: bot.currentAngle,
+      };
+    }
+
+    // Follow the wander path normally (the main generateInput will handle it next tick)
+    const wp = bot.path[bot.pathIndex];
+    const wanderAngle = Math.atan2(wp.y - player.y, wp.x - player.x);
+    bot.currentAngle = wanderAngle;
     return {
       seq: bot.inputSeq,
-      dx: Math.cos(bot.currentAngle),
-      dy: Math.sin(bot.currentAngle),
-      angle: bot.currentAngle,
+      dx: Math.cos(wanderAngle),
+      dy: Math.sin(wanderAngle),
+      angle: wanderAngle,
     };
   }
 
@@ -686,7 +761,7 @@ export class BotManager {
     const ix = STREET_LINES.findIndex((line) => line === roundabout.x);
     const iy = STREET_LINES.findIndex((line) => line === roundabout.y);
     if (ix >= 0 && iy >= 0) {
-      bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 160);
+      bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 60);
     }
   }
 

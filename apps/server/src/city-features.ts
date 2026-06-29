@@ -13,7 +13,10 @@ const ROUNDABOUT_RADIUS = 34;
 const PEDESTRIANS_PER_CROSSWALK = 2;
 const PEDESTRIAN_SPEED = 30; // units per second
 const PEDESTRIAN_WALK_HALF_LENGTH = 90; // Half the length of the crosswalk corridor
-const PEDESTRIAN_RESPAWN_TICKS = 120; // 6 seconds at 20Hz
+const PEDESTRIAN_RESPAWN_MIN_TICKS = 120; // 6 seconds at 20Hz (walk-off)
+const PEDESTRIAN_RESPAWN_JITTER_TICKS = 80; // extra 0-4 seconds random
+const PEDESTRIAN_HIT_RESPAWN_MIN_TICKS = 200; // 10 seconds at 20Hz (hit by player)
+const PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS = 100; // extra 0-5 seconds random
 
 // Traffic light timing (in server ticks at 20Hz)
 const TICKS_GREEN = 160;  // 8 seconds
@@ -51,6 +54,7 @@ interface PedestrianAgent {
   originY: number;
   slotIndex: number;
   respawnTick: number | null;
+  wasHit: boolean;           // whether deactivated by player hit (longer respawn)
 }
 
 export class CityFeatures {
@@ -115,19 +119,22 @@ export class CityFeatures {
     const id = `cw-${xi}-${yi}`;
     this.crosswalks.push({ id, x: cx, y: cy, direction: dir });
 
-    // Spawn N pedestrians per crosswalk, staggered from both sides.
+    // Spawn N pedestrians per crosswalk, staggered from both sides with random offsets.
     for (let k = 0; k < PEDESTRIANS_PER_CROSSWALK; k++) {
       const pedId = `ped-${this.nextPedId++}`;
       const direction: 1 | -1 = k % 2 === 0 ? 1 : -1;
+      // Stagger initial position: random 0-70% along the crosswalk corridor
+      const startOffset = Math.random() * PEDESTRIAN_WALK_HALF_LENGTH * 0.7;
 
       const agent: PedestrianAgent = {
-        state: this.createPedestrianState(pedId, cx, cy, dir, direction),
+        state: this.createPedestrianState(pedId, cx, cy, dir, direction, startOffset),
         direction,
         crosswalkDirection: dir,
         originX: cx,
         originY: cy,
         slotIndex: k,
         respawnTick: null,
+        wasHit: false,
       };
       this.pedestrianAgents.set(pedId, agent);
     }
@@ -139,8 +146,11 @@ export class CityFeatures {
     originY: number,
     direction: 'horizontal' | 'vertical',
     walkDirection: 1 | -1,
+    startOffset: number = 0,
   ): PedestrianState {
-    const start = -walkDirection * PEDESTRIAN_WALK_HALF_LENGTH;
+    // Start from the edge, shifted inward by startOffset
+    const edgePos = -walkDirection * PEDESTRIAN_WALK_HALF_LENGTH;
+    const start = edgePos + walkDirection * startOffset;
     return {
       id,
       x: direction === 'vertical' ? originX + start : originX,
@@ -195,21 +205,24 @@ export class CityFeatures {
         agent.state.angle = agent.direction > 0 ? Math.PI / 2 : -Math.PI / 2;
         const relY = agent.state.y - agent.originY;
         if (Math.abs(relY) > PEDESTRIAN_WALK_HALF_LENGTH) {
-          this.deactivatePedestrian(agent, PEDESTRIAN_RESPAWN_TICKS);
+          const walkOffDelay = PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
+          this.deactivatePedestrian(agent, walkOffDelay, false);
         }
       } else {
         agent.state.x += step;
         agent.state.angle = agent.direction > 0 ? 0 : Math.PI;
         const relX = agent.state.x - agent.originX;
         if (Math.abs(relX) > PEDESTRIAN_WALK_HALF_LENGTH) {
-          this.deactivatePedestrian(agent, PEDESTRIAN_RESPAWN_TICKS);
+          const walkOffDelay = PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
+          this.deactivatePedestrian(agent, walkOffDelay, false);
         }
       }
     }
   }
 
-  private deactivatePedestrian(agent: PedestrianAgent, respawnDelayTicks: number): void {
+  private deactivatePedestrian(agent: PedestrianAgent, respawnDelayTicks: number, wasHit: boolean): void {
     agent.respawnTick = respawnDelayTicks;
+    agent.wasHit = wasHit;
   }
 
   public tickRespawns(): void {
@@ -218,15 +231,20 @@ export class CityFeatures {
 
       agent.respawnTick--;
       if (agent.respawnTick <= 0) {
-        agent.direction = agent.slotIndex % 2 === 0 ? 1 : -1;
+        // Randomize walk direction on respawn (50% chance to flip)
+        agent.direction = Math.random() < 0.5 ? 1 : -1;
+        // Random start offset: 0-30% into the crosswalk for organic feel
+        const respawnOffset = Math.random() * PEDESTRIAN_WALK_HALF_LENGTH * 0.3;
         agent.state = this.createPedestrianState(
           agent.state.id,
           agent.originX,
           agent.originY,
           agent.crosswalkDirection,
           agent.direction,
+          respawnOffset,
         );
         agent.respawnTick = null;
+        agent.wasHit = false;
       }
     }
   }
@@ -306,10 +324,11 @@ export class CityFeatures {
     return null;
   }
 
-  public removePedestrian(id: string, respawnDelayTicks: number = PEDESTRIAN_RESPAWN_TICKS): void {
+  public removePedestrian(id: string): void {
     const agent = this.pedestrianAgents.get(id);
     if (agent) {
-      this.deactivatePedestrian(agent, respawnDelayTicks);
+      const hitDelay = PEDESTRIAN_HIT_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS);
+      this.deactivatePedestrian(agent, hitDelay, true);
     }
   }
 
