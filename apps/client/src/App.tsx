@@ -6,18 +6,34 @@ const defaultServerUrl = import.meta.env.VITE_WS_URL || "ws://localhost:3002";
 export const App: React.FC = () => {
   const [username, setUsername] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const [serverUrl, setServerUrl] = useState(defaultServerUrl);
 
   const handleStartGame = (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim()) {
+      setConnectionError(null);
+      
+      // Basic validation to prevent mixed content errors
+      if (window.location.protocol === 'https:' && serverUrl.startsWith('ws://')) {
+        if (!serverUrl.includes('localhost')) {
+          setConnectionError("Trang web đang dùng HTTPS, vui lòng dùng wss:// thay vì ws:// cho địa chỉ server.");
+          return;
+        }
+      }
+      
       setIsPlaying(true);
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = (reason?: string) => {
     setIsPlaying(false);
+    if (reason) {
+      setConnectionError(reason);
+    } else {
+      setConnectionError("Đã mất kết nối đến server.");
+    }
   };
 
   if (isPlaying) {
@@ -40,6 +56,12 @@ export const App: React.FC = () => {
           </h1>
           <p className="logo-subtitle">Real-time Autoritative Alley io Game</p>
         </div>
+
+        {connectionError && (
+          <div className="error-message" style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: '12px', borderRadius: '8px', fontSize: '13px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            ⚠️ {connectionError}
+          </div>
+        )}
 
         <form onSubmit={handleStartGame} className="login-form">
           <div className="form-group">

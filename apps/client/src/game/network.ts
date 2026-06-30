@@ -23,7 +23,15 @@ export class GameNetwork {
     this.onConnectCallback = onConnect;
     this.onDisconnectCallback = onDisconnect;
     
-    const socket = new WebSocket(url);
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(url);
+    } catch (err) {
+      console.error('Failed to create WebSocket:', err);
+      this.onDisconnectCallback?.();
+      return;
+    }
+    
     this.ws = socket;
     socket.binaryType = 'arraybuffer';
 
