@@ -4,6 +4,7 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "watchPatterns": [
+      "railway.json",
       "Dockerfile",
       "package.json",
       "pnpm-lock.yaml",
