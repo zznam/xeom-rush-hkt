@@ -170,15 +170,43 @@ pnpm test:e2e
 pnpm bench
 ```
 
-### Production CLI Deployment
+### Production Git Deployment
 
-The codebase is configured for zero-config CLI deployments using **Vercel** for the static client and **Railway** for the backend server and MongoDB instance.
+Production deploys are driven from Git:
 
-1. Ensure you have the Vercel CLI (`npm i -g vercel`) and Railway CLI (`npm i -g @railway/cli`) installed.
-2. Run the deployment setup script from the repository root:
+* **Railway** hosts the long-running WebSocket/API backend and MongoDB.
+* **Vercel** hosts the static Vite client from `apps/client/dist`.
+* The production branch for both services is `main`.
+* GitHub Actions runs unit tests and production builds before changes are merged to `main`.
+
+#### Railway backend
+
+1. Create or open the Railway project and connect it to `https://github.com/zznam/xeom-rush-hkt`.
+2. Configure the backend service to deploy from the `main` branch.
+3. Keep the service root at the repository root so Railway can read `railway.json` and the root `Dockerfile`.
+4. Add a MongoDB service and set the backend `MONGODB_URI` variable to the Railway MongoDB connection string.
+5. Expose the backend publicly and verify `GET /api/health` returns `{"status":"ok",...}`.
+6. Save the public backend URL for the Vercel client as `wss://<railway-domain>`.
+
+Railway reads `railway.json` for the Dockerfile builder, `/api/health` healthcheck, restart policy, and backend-focused watch patterns. Commits that only touch the Vercel client should not trigger a Railway backend redeploy.
+
+#### Vercel client
+
+1. Import `https://github.com/zznam/xeom-rush-hkt` into Vercel.
+2. Set the project Production Branch to `main`.
+3. Use the existing `vercel.json` build settings:
+   * Build command: `corepack enable && pnpm install --frozen-lockfile && pnpm build:shared && pnpm build:client`
+   * Output directory: `apps/client/dist`
+4. Add `VITE_WS_URL` in Vercel production environment variables using the Railway backend WebSocket URL, for example `wss://xeom-rush-server.up.railway.app`.
+
+After setup, normal production releases are: open a pull request, wait for CI and previews, merge to `main`, then let Railway and Vercel auto-deploy from Git.
+
+### Manual Deployment Setup Helper
+
+For first-time setup reminders, run:
 
 ```bash
 ./deploy.sh
 ```
 
-The script will guide you through initializing the project on Railway, provisioning the database, deploying the backend via the included `Dockerfile`, and linking the Vercel frontend to the live `wss://` API.
+Manual CLI deploys (`railway up` or `vercel --prod`) should be reserved for emergencies or one-off setup checks. Routine production releases should come from merges to `main`.
