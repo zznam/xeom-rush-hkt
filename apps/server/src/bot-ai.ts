@@ -17,6 +17,14 @@ enum EBotState {
   NAVIGATING_TO_DROPOFF,
 }
 
+export interface BotLogEntry {
+  timestamp: string;
+  tick: number;
+  botId: string;
+  event: 'SPAWN' | 'STATE_CHANGE' | 'MILD_STUCK' | 'HARD_STUCK' | 'TRAFFIC' | 'WANDER';
+  details: string;
+}
+
 interface GridNode {
   ix: number;
   iy: number;
@@ -60,11 +68,54 @@ export class BotManager {
   private bots: Map<string, BotAgent> = new Map();
   private targetedPassengerIds: Set<string> = new Set();
   private nextBotIndex = 0;
+  private logs: BotLogEntry[] = [];
+  private maxLogs = 200;
 
   constructor(
     private world: GameWorld,
     private physics: PhysicsEngine,
   ) {}
+
+  private logEvent(botId: string, event: BotLogEntry['event'], details: string): void {
+    const logEntry: BotLogEntry = {
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour12: false }),
+      tick: this.world.getTick(),
+      botId,
+      event,
+      details,
+    };
+    this.logs.push(logEntry);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+    console.log(`[Bot AI t:${logEntry.tick}] [${botId}] [${event}] ${details}`);
+  }
+
+  public getLogs(): BotLogEntry[] {
+    return this.logs;
+  }
+
+  public getStats() {
+    const stats = {
+      totalBots: this.bots.size,
+      states: {
+        SEEKING_PASSENGER: 0,
+        NAVIGATING_TO_PICKUP: 0,
+        NAVIGATING_TO_DROPOFF: 0,
+      },
+      stuckCount: 0,
+    };
+    for (const bot of this.bots.values()) {
+      if (bot.state === EBotState.SEEKING_PASSENGER) stats.states.SEEKING_PASSENGER++;
+      else if (bot.state === EBotState.NAVIGATING_TO_PICKUP) stats.states.NAVIGATING_TO_PICKUP++;
+      else if (bot.state === EBotState.NAVIGATING_TO_DROPOFF) stats.states.NAVIGATING_TO_DROPOFF++;
+
+      if (bot.stuckTicks > 0) {
+        stats.stuckCount++;
+      }
+    }
+    return stats;
+  }
 
   private generateStreetPosition(): { x: number; y: number } {
     const maxAttempts = 50;
@@ -95,7 +146,7 @@ export class BotManager {
       const player = this.world.getPlayer(playerId);
 
       const initialPos = { x: player?.x ?? 0, y: player?.y ?? 0 };
-      this.bots.set(playerId, {
+      const botObj: BotAgent = {
         playerId,
         state: EBotState.SEEKING_PASSENGER,
         targetPassengerId: null,
@@ -118,7 +169,14 @@ export class BotManager {
         positionHistory: Array.from({ length: DISPLACEMENT_WINDOW }, () => ({ ...initialPos })),
         positionHistoryIndex: 0,
         escapeFlip: 1,
-      });
+      };
+      this.bots.set(playerId, botObj);
+
+      this.logEvent(
+        playerId,
+        'SPAWN',
+        `Spawned at (${spawnPos.x.toFixed(0)}, ${spawnPos.y.toFixed(0)}) [law:${botObj.personality.lawfulness.toFixed(2)}, risk:${botObj.personality.riskTolerance.toFixed(2)}, agg:${botObj.personality.aggression.toFixed(2)}]`
+      );
 
       spawnedIds.push(playerId);
     }
@@ -162,6 +220,7 @@ export class BotManager {
       // Handle stuck behavior to keep bots fluid and competing
       if (bot.stuckTicks > 40) {
         // Hard stuck: release target, flip escape direction, and seek another passenger
+        this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Releasing target and seeking passenger.`);
         this.markNearbyRoundaboutAvoided(bot, player.x, player.y);
         if (bot.targetPassengerId) {
           this.targetedPassengerIds.delete(bot.targetPassengerId);
@@ -176,8 +235,12 @@ export class BotManager {
         // Mildly stuck: recalculate path from current location to target
         const target = this.getTargetPosition(bot);
         if (target) {
+          this.logEvent(bot.playerId, 'MILD_STUCK', `Stuck for ${bot.stuckTicks} ticks. Recalculating path to target (${target.x.toFixed(0)}, ${target.y.toFixed(0)}).`);
           bot.path = this.calculatePath(bot, player.x, player.y, target.x, target.y);
           bot.pathIndex = 0;
+        } else {
+          this.logEvent(bot.playerId, 'MILD_STUCK', `Stuck for ${bot.stuckTicks} ticks without target, forcing new wander path.`);
+          bot.path = [];
         }
       }
 
@@ -219,6 +282,7 @@ export class BotManager {
           bot.path = this.calculatePath(bot, player.x, player.y, nearest.x, nearest.y);
           bot.pathIndex = 0;
           bot.stuckTicks = 0;
+          this.logEvent(bot.playerId, 'STATE_CHANGE', `Found passenger ${nearest.id}. Transitioned to NAVIGATING_TO_PICKUP.`);
         } else {
           // If no passengers are available, choose a random street intersection to wander to
           if (bot.path.length === 0) {
@@ -228,6 +292,7 @@ export class BotManager {
             const targetY = STREET_LINES[randIy];
             bot.path = this.calculatePath(bot, player.x, player.y, targetX, targetY);
             bot.pathIndex = 0;
+            this.logEvent(bot.playerId, 'WANDER', `No passenger available. Pathing to wander destination (${targetX.toFixed(0)}, ${targetY.toFixed(0)}).`);
           }
         }
         break;
@@ -242,6 +307,7 @@ export class BotManager {
           bot.targetPassengerId = player.passengerId;
           bot.state = EBotState.NAVIGATING_TO_DROPOFF;
           bot.stuckTicks = 0;
+          this.logEvent(bot.playerId, 'STATE_CHANGE', `Picked up passenger ${player.passengerId}! Transitioned to NAVIGATING_TO_DROPOFF.`);
 
           // Path to destination
           const passenger = passengerMap.get(player.passengerId);
@@ -259,6 +325,7 @@ export class BotManager {
         if (bot.targetPassengerId) {
           const target = passengerMap.get(bot.targetPassengerId);
           if (!target || target.isCarried) {
+            this.logEvent(bot.playerId, 'STATE_CHANGE', `Target passenger ${bot.targetPassengerId} was stolen or despawned. Reverting to SEEKING_PASSENGER.`);
             this.targetedPassengerIds.delete(bot.targetPassengerId);
             bot.targetPassengerId = null;
             bot.state = EBotState.SEEKING_PASSENGER;
@@ -279,6 +346,7 @@ export class BotManager {
           if (bot.targetPassengerId) {
             this.targetedPassengerIds.delete(bot.targetPassengerId);
           }
+          this.logEvent(bot.playerId, 'STATE_CHANGE', `Passenger delivered successfully! Reverting to SEEKING_PASSENGER.`);
           bot.targetPassengerId = null;
           bot.state = EBotState.SEEKING_PASSENGER;
           bot.path = [];
@@ -324,9 +392,10 @@ export class BotManager {
     bot.inputSeq++;
 
     // 1. Stuck resolution: perpendicular escape with alternating direction
-    if (bot.stuckTicks > 10 && bot.stuckTicks <= 25) {
+    if (bot.stuckTicks > 10 && bot.stuckTicks <= 38) {
       // Calculate perpendicular escape direction instead of just reversing
-      const perpAngle = bot.currentAngle + (Math.PI / 2) * bot.escapeFlip;
+      const currentFlip = bot.stuckTicks <= 25 ? bot.escapeFlip : (-bot.escapeFlip as 1 | -1);
+      const perpAngle = bot.currentAngle + (Math.PI / 2) * currentFlip;
       // Mix reverse + perpendicular for a diagonal escape
       const reverseAngle = bot.currentAngle + Math.PI;
       const escapeX = Math.cos(reverseAngle) * 0.5 + Math.cos(perpAngle) * 0.5;
@@ -476,14 +545,24 @@ export class BotManager {
       Math.cos(bot.currentAngle),
       Math.sin(bot.currentAngle),
     );
-    if (trafficDecision?.shouldStop && this.shouldBotObeyTrafficLight(bot, player)) {
-      const queueOffset = this.getTrafficQueueOffset(bot, Math.cos(bot.currentAngle), Math.sin(bot.currentAngle));
-      return {
-        seq: bot.inputSeq,
-        dx: queueOffset.dx,
-        dy: queueOffset.dy,
-        angle: bot.currentAngle,
-      };
+    if (trafficDecision?.shouldStop) {
+      const obeying = this.shouldBotObeyTrafficLight(bot, player);
+      if (obeying) {
+        if (bot.inputSeq % 20 === 0) {
+          this.logEvent(bot.playerId, 'TRAFFIC', `Obeying traffic light: STOP.`);
+        }
+        const queueOffset = this.getTrafficQueueOffset(bot, Math.cos(bot.currentAngle), Math.sin(bot.currentAngle));
+        return {
+          seq: bot.inputSeq,
+          dx: queueOffset.dx,
+          dy: queueOffset.dy,
+          angle: bot.currentAngle,
+        };
+      } else {
+        if (bot.inputSeq % 20 === 0) {
+          this.logEvent(bot.playerId, 'TRAFFIC', `Decided to RUN the red light!`);
+        }
+      }
     }
 
     return {
@@ -761,7 +840,8 @@ export class BotManager {
     const ix = STREET_LINES.findIndex((line) => line === roundabout.x);
     const iy = STREET_LINES.findIndex((line) => line === roundabout.y);
     if (ix >= 0 && iy >= 0) {
-      bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 60);
+      bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 300);
+      this.logEvent(bot.playerId, 'HARD_STUCK', `Roundabout at (${roundabout.x}, ${roundabout.y}) marked as avoided for 300 ticks (15s).`);
     }
   }
 
@@ -790,9 +870,10 @@ export class BotManager {
     const targetRadius = roundabout.radius + 58;
     const radialError = targetRadius - dist;
 
+    // Use counter-clockwise steering (Vietnamese right-hand traffic rule)
     return {
-      x: (-dy / dist) * 0.75 + (dx / dist) * radialError * 0.012,
-      y: (dx / dist) * 0.75 + (dy / dist) * radialError * 0.012,
+      x: (dy / dist) * 0.75 + (dx / dist) * radialError * 0.012,
+      y: (-dx / dist) * 0.75 + (dy / dist) * radialError * 0.012,
     };
   }
 

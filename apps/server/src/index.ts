@@ -82,6 +82,13 @@ app.post('/api/spawn-bots', (req, res) => {
   });
 });
 
+app.get('/api/bot-logs', (_req, res) => {
+  res.json({
+    logs: botManager.getLogs(),
+    stats: botManager.getStats(),
+  });
+});
+
 app.get('/api/leaderboard', async (req, res) => {
   try {
     const db = dbManager.getDb();

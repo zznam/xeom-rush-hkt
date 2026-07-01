@@ -388,6 +388,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         showDebug={showDebug}
         onToggleDebug={setShowDebug}
         onSpawnBots={handleSpawnBots}
+        serverUrl={serverUrl}
       />
     </div>
   );

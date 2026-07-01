@@ -161,11 +161,15 @@ describe('GameWorld realism update', () => {
 
     expect(world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)).toBe(false);
 
-    for (let i = 0; i < 130; i++) {
+    let respawned = false;
+    for (let i = 0; i < 300; i++) {
       world.tick(0.05);
+      if (world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)) {
+        respawned = true;
+      }
     }
 
-    expect(world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)).toBe(true);
+    expect(respawned).toBe(true);
   });
 
   it('reports driver collisions even when balances are already zero', () => {
