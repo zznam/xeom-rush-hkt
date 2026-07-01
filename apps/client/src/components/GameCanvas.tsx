@@ -226,7 +226,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       lastFrameTime = timestamp;
 
       // 1. Capture inputs and update local client prediction
-      const input = inputHandler.getInputVector();
+      const input = inputHandler.getInputVector(dt);
 
       if (localPlayerStateRef.current) {
         clientSeqRef.current++;

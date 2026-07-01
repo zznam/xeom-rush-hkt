@@ -1,4 +1,4 @@
-import { type InputPayload, type PassengerState, type PlayerState, MAP_SIZE } from '@xeom-rush/shared';
+import { type InputPayload, type PassengerState, type PlayerState, MAP_SIZE, rotateTowardAngle } from '@xeom-rush/shared';
 import type { PhysicsEngine } from './physics';
 import type { GameWorld } from './world';
 
@@ -10,6 +10,8 @@ const DISPLACEMENT_WINDOW = 20;
 const STUCK_DISPLACEMENT_THRESHOLD = 15;
 /** Distance at which bots switch from waypoint following to direct-to-target steering */
 const DIRECT_APPROACH_RADIUS = 60;
+/** Maximum bot steering turn per server tick. */
+const BOT_MAX_TURN_PER_TICK = 0.16;
 
 enum EBotState {
   SEEKING_PASSENGER,
@@ -219,18 +221,31 @@ export class BotManager {
 
       // Handle stuck behavior to keep bots fluid and competing
       if (bot.stuckTicks > 40) {
-        // Hard stuck: release target, flip escape direction, and seek another passenger
-        this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Releasing target and seeking passenger.`);
         this.markNearbyRoundaboutAvoided(bot, player.x, player.y);
-        if (bot.targetPassengerId) {
-          this.targetedPassengerIds.delete(bot.targetPassengerId);
+
+        if (player.passengerId) {
+          // Hard-stuck while carrying: preserve the ride and reroute to the dropoff.
+          const passenger = this.world.getPassengerMap().get(player.passengerId);
+          bot.targetPassengerId = player.passengerId;
+          bot.state = EBotState.NAVIGATING_TO_DROPOFF;
+          bot.path = passenger ? this.calculatePath(bot, player.x, player.y, passenger.destX, passenger.destY) : [];
+          bot.pathIndex = 0;
+          bot.stuckTicks = 0;
+          bot.escapeFlip = bot.escapeFlip === 1 ? -1 : 1;
+          this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck while carrying ${player.passengerId} at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Rerouting to dropoff.`);
+        } else {
+          // Hard stuck while empty: release target, flip escape direction, and seek another passenger.
+          this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Releasing target and seeking passenger.`);
+          if (bot.targetPassengerId) {
+            this.targetedPassengerIds.delete(bot.targetPassengerId);
+          }
+          bot.targetPassengerId = null;
+          bot.state = EBotState.SEEKING_PASSENGER;
+          bot.path = [];
+          bot.pathIndex = 0;
+          bot.stuckTicks = 0;
+          bot.escapeFlip = bot.escapeFlip === 1 ? -1 : 1;
         }
-        bot.targetPassengerId = null;
-        bot.state = EBotState.SEEKING_PASSENGER;
-        bot.path = [];
-        bot.pathIndex = 0;
-        bot.stuckTicks = 0;
-        bot.escapeFlip = bot.escapeFlip === 1 ? -1 : 1;
       } else if (bot.stuckTicks > 10 && bot.stuckTicks % 10 === 0) {
         // Mildly stuck: recalculate path from current location to target
         const target = this.getTargetPosition(bot);
@@ -416,14 +431,14 @@ export class BotManager {
       if (distToTarget < DIRECT_APPROACH_RADIUS && !this.physics.isInsideBuilding(finalTarget.x, finalTarget.y)) {
         // Steer directly to the actual target, bypassing remaining waypoints
         const directAngle = Math.atan2(finalTarget.y - player.y, finalTarget.x - player.x);
-        bot.currentAngle = directAngle;
+        bot.currentAngle = rotateTowardAngle(bot.currentAngle, directAngle, BOT_MAX_TURN_PER_TICK);
         bot.path = [];
         bot.pathIndex = 0;
         return {
           seq: bot.inputSeq,
-          dx: Math.cos(directAngle),
-          dy: Math.sin(directAngle),
-          angle: directAngle,
+          dx: Math.cos(bot.currentAngle),
+          dy: Math.sin(bot.currentAngle),
+          angle: bot.currentAngle,
         };
       }
     }
@@ -527,17 +542,7 @@ export class BotManager {
 
     const finalAngle = Math.atan2(moveY, moveX);
     
-    // Smooth angle interpolation to prevent instant robotic snapping (max 0.16 rad/tick)
-    let angleDiff = finalAngle - bot.currentAngle;
-    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-
-    const maxTurnPerTick = 0.16; // Limit turning speed
-    if (Math.abs(angleDiff) > maxTurnPerTick) {
-      bot.currentAngle += Math.sign(angleDiff) * maxTurnPerTick;
-    } else {
-      bot.currentAngle = finalAngle;
-    }
+    bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, BOT_MAX_TURN_PER_TICK);
 
     const trafficDecision = city.getTrafficDecisionAhead(
       player.x,
@@ -626,12 +631,12 @@ export class BotManager {
     // Follow the wander path normally (the main generateInput will handle it next tick)
     const wp = bot.path[bot.pathIndex];
     const wanderAngle = Math.atan2(wp.y - player.y, wp.x - player.x);
-    bot.currentAngle = wanderAngle;
+    bot.currentAngle = rotateTowardAngle(bot.currentAngle, wanderAngle, BOT_MAX_TURN_PER_TICK);
     return {
       seq: bot.inputSeq,
-      dx: Math.cos(wanderAngle),
-      dy: Math.sin(wanderAngle),
-      angle: wanderAngle,
+      dx: Math.cos(bot.currentAngle),
+      dy: Math.sin(bot.currentAngle),
+      angle: bot.currentAngle,
     };
   }
 

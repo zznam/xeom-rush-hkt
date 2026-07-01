@@ -231,13 +231,13 @@ export class GameWorld {
 
       // Calculate new position
       if (!isStunned && (moveDx !== 0 || moveDy !== 0)) {
-        // Normalize vector
         const mag = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
+        const throttle = Math.min(1, mag);
         const ndx = moveDx / mag;
         const ndy = moveDy / mag;
 
-        const deltaX = ndx * MOTORBIKE_SPEED * dt;
-        const deltaY = ndy * MOTORBIKE_SPEED * dt;
+        const deltaX = ndx * MOTORBIKE_SPEED * throttle * dt;
+        const deltaY = ndy * MOTORBIKE_SPEED * throttle * dt;
 
         const resolved = this.physics.resolveMove(
           player.x,

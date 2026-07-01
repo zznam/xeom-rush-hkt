@@ -93,11 +93,12 @@ export class ClientPrediction {
     }
 
     const mag = Math.sqrt(input.dx * input.dx + input.dy * input.dy);
+    const throttle = Math.min(1, mag);
     const ndx = input.dx / mag;
     const ndy = input.dy / mag;
 
-    const deltaX = ndx * MOTORBIKE_SPEED * input.dt;
-    const deltaY = ndy * MOTORBIKE_SPEED * input.dt;
+    const deltaX = ndx * MOTORBIKE_SPEED * throttle * input.dt;
+    const deltaY = ndy * MOTORBIKE_SPEED * throttle * input.dt;
 
     return this.resolveMove(currentX, currentY, currentX + deltaX, currentY + deltaY);
   }

@@ -5,7 +5,7 @@ const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
 const ROUNDABOUT_CHANCE = 0.12;
 const TRAFFIC_LIGHT_CHANCE = 0.30;
 const CROSSWALK_CHANCE = 0.40;
-const ROUNDABOUT_RADIUS = 34;
+const ROUNDABOUT_RADIUS = 24;
 
 interface StaticRoundabout {
   id: string;

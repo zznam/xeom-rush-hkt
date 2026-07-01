@@ -8,7 +8,7 @@ const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
 const ROUNDABOUT_CHANCE = 0.12; // ~12% of intersections become roundabouts
 const TRAFFIC_LIGHT_CHANCE = 0.30; // ~30% of intersections get lights
 const CROSSWALK_CHANCE = 0.40;  // ~40% of intersections get crosswalks
-const ROUNDABOUT_RADIUS = 34;
+const ROUNDABOUT_RADIUS = 24;
 
 const PEDESTRIANS_PER_CROSSWALK = 2;
 const PEDESTRIAN_SPEED = 30; // units per second

@@ -202,6 +202,23 @@ describe('GameWorld realism update', () => {
     });
   });
 
+  it('preserves partial input throttle for smoother acceleration and analog controls', () => {
+    const world = new GameWorld();
+    world.addPlayer('player-half-speed', 'Half Speed', 2000, 2000);
+    const player = world.getPlayer('player-half-speed')!;
+
+    world.queueInput('player-half-speed', {
+      seq: 1,
+      dx: 0.5,
+      dy: 0,
+      angle: 0,
+    });
+    world.tick(0.05);
+
+    expect(player.x).toBeCloseTo(2005, 5);
+    expect(player.y).toBeCloseTo(2000, 5);
+  });
+
   it('gives bots distinct roundabout waypoint lanes', () => {
     const world = new GameWorld();
     const botManager = new BotManager(world, world.getPhysics());
@@ -227,6 +244,15 @@ describe('GameWorld realism update', () => {
     expect(ringPointA).toBeDefined();
     expect(ringPointB).toBeDefined();
     expect(Math.hypot(ringPointA!.x - ringPointB!.x, ringPointA!.y - ringPointB!.y)).toBeGreaterThan(1);
+  });
+
+  it('uses compact roundabout obstacles to leave wider lanes for bots', () => {
+    const world = new GameWorld();
+    const roundabout = world.getCityFeatures().roundabouts[0];
+
+    expect(roundabout).toBeDefined();
+    expect(roundabout.radius).toBe(24);
+    expect(world.getPhysics().isInsideBuilding(roundabout.x + 50, roundabout.y)).toBe(false);
   });
 
   it('spawns bots broadly across the map on valid street positions', () => {
@@ -276,6 +302,30 @@ describe('GameWorld realism update', () => {
     
     expect(input.dx).toBeCloseTo(expectedDx, 4);
     expect(input.dy).toBeCloseTo(expectedDy, 4);
+  });
+
+  it('keeps a hard-stuck carrying bot assigned to its dropoff instead of seeking a new pickup', () => {
+    const world = new GameWorld();
+    const botManager = new BotManager(world, world.getPhysics());
+    const [botId] = botManager.spawnBots(1);
+    const player = world.getPlayer(botId)!;
+    const passenger = world.getPassengerMap().values().next().value!;
+    const bot = (botManager as any).bots.get(botId);
+
+    player.passengerId = passenger.id;
+    passenger.isCarried = true;
+    bot.state = 2;
+    bot.targetPassengerId = passenger.id;
+    bot.stuckTicks = 41;
+    bot.path = [{ x: passenger.destX, y: passenger.destY }];
+    bot.positionHistory = Array.from({ length: 20 }, () => ({ x: player.x, y: player.y }));
+    bot.positionHistoryIndex = 0;
+
+    botManager.tick();
+
+    expect(player.passengerId).toBe(passenger.id);
+    expect(bot.targetPassengerId).toBe(passenger.id);
+    expect(Math.hypot(bot.path.at(-1).x - passenger.destX, bot.path.at(-1).y - passenger.destY)).toBeLessThan(25);
   });
 });
 
@@ -348,7 +398,14 @@ describe('Combo/Streak System', () => {
       const passMap = world.getPassengerMap();
       const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
       expect(entry).toBeDefined();
-      const [, pass] = entry!;
+      const [passId, pass] = entry!;
+      for (const id of passMap.keys()) {
+        if (id !== passId) {
+          passMap.delete(id);
+          world.getSpatialGrid().remove(id);
+        }
+      }
+      world.getSpatialGrid().update(pass.id, pass.x, pass.y);
 
       // Teleport to spawn point
       player.x = pass.x;
@@ -380,18 +437,36 @@ describe('Combo/Streak System', () => {
     // Warm up spatial grid
     world.tick(0.05);
 
+    const clearPassengers = () => {
+      const passMap = world.getPassengerMap();
+      for (const id of passMap.keys()) {
+        passMap.delete(id);
+        world.getSpatialGrid().remove(id);
+      }
+    };
+
     // Helper: pick up and drop off a specific REGULAR passenger, return { earned, passReward }
     const deliverPassenger = (): { earned: number; passReward: number } => {
+      clearPassengers();
+      const spawner = (world as unknown as {
+        passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState };
+      }).passengers;
+      const pass = spawner.spawnPassenger(world.getTick(), EPassengerTier.REGULAR);
       const passMap = world.getPassengerMap();
-      const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
-      if (!entry) return { earned: 0, passReward: 0 };
-      const [, pass] = entry;
+      world.getSpatialGrid().update(pass.id, pass.x, pass.y);
 
       player.x = pass.x;
       player.y = pass.y;
       world.tick(0.05); // pickup
 
       if (!player.passengerId) return { earned: 0, passReward: 0 };
+
+      for (const [id, passenger] of passMap.entries()) {
+        if (id !== pass.id && !passenger.isCarried) {
+          passMap.delete(id);
+          world.getSpatialGrid().remove(id);
+        }
+      }
 
       const passReward = pass.reward;
       const scoreBefore = player.score;
@@ -438,7 +513,14 @@ describe('Combo/Streak System', () => {
     const passMap = world.getPassengerMap();
     const entry = Array.from(passMap.entries()).find(([, p]) => !p.isCarried && p.deadline === 0);
     expect(entry).toBeDefined();
-    const [, pass] = entry!;
+    const [passId, pass] = entry!;
+    for (const id of passMap.keys()) {
+      if (id !== passId) {
+        passMap.delete(id);
+        world.getSpatialGrid().remove(id);
+      }
+    }
+    world.getSpatialGrid().update(pass.id, pass.x, pass.y);
 
     // Teleport to pickup
     player.x = pass.x;
