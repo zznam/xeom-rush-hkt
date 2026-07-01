@@ -64,6 +64,14 @@ export enum EMessageType {
   LEAVE = 3,
   SNAPSHOT = 4,
   CONFIG = 5,
+  DELTA_SNAPSHOT = 6,
+}
+
+export type SnapshotPacketKind = 'full' | 'delta';
+
+export interface SnapshotPacketMeta {
+  bytes: number;
+  kind: SnapshotPacketKind;
 }
 
 // Client -> Server

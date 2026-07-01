@@ -12,6 +12,7 @@ import {
   type TrafficLightState,
   type PedestrianState,
   type ConfigPayload,
+  type SnapshotPacketKind,
   EPassengerTier,
   MOTORBIKE_SPEED,
 } from '@xeom-rush/shared';
@@ -39,6 +40,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const [rtt, setRtt] = useState(0);
   const [tickRate, setTickRate] = useState(0);
   const [lastBytes, setLastBytes] = useState(0);
+  const [lastPacketKind, setLastPacketKind] = useState<SnapshotPacketKind>('full');
   const [showDebug, setShowDebug] = useState(true);
   const [violationAlert, setViolationAlert] = useState<string | null>(null);
   const previousViolationTickRef = useRef<number>(0);
@@ -56,7 +58,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const clientSeqRef = useRef(0);
   // Latency metrics tracking
   const snapshotTimesRef = useRef<number[]>([]);
-  const lastSnapSizeRef = useRef(0);
 
   // Maintain local player position in mutable ref for requestAnimationFrame speed
   const localPlayerStateRef = useRef<PlayerState | null>(null);
@@ -99,11 +100,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       console.log('Received config from server, my player ID is:', myPlayerId);
     });
 
-    network.registerSnapshotCallback((snapshot: WorldSnapshot) => {
+    network.registerSnapshotCallback((snapshot: WorldSnapshot, meta) => {
       // 1. Calculate received package size
-      const snapshotSize = 16 + snapshot.players.length * 55 + snapshot.passengers.length * 40; // approx
-      lastSnapSizeRef.current = snapshotSize;
-      setLastBytes(snapshotSize);
+      setLastBytes(meta.bytes);
+      setLastPacketKind(meta.kind);
 
       // 2. Track snapshot times for tick rate measurement
       const now = Date.now();
@@ -383,6 +383,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         rtt={rtt}
         tickRate={tickRate}
         lastSnapshotBytes={lastBytes}
+        lastPacketKind={lastPacketKind}
         players={players}
         passengers={passengers}
         showDebug={showDebug}

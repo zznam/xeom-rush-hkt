@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { type PlayerState, type PassengerState } from '@xeom-rush/shared';
+import { type PlayerState, type PassengerState, type SnapshotPacketKind } from '@xeom-rush/shared';
 
 interface DebugOverlayProps {
   rtt: number;
   tickRate: number;
   lastSnapshotBytes: number;
+  lastPacketKind: SnapshotPacketKind;
   players: PlayerState[];
   passengers: PassengerState[];
   showDebug: boolean;
@@ -17,6 +18,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   rtt,
   tickRate,
   lastSnapshotBytes,
+  lastPacketKind,
   players,
   passengers,
   showDebug,
@@ -154,6 +156,13 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: '#94a3b8' }}>Kích thước Packet Binary:</span>
             <span style={{ fontWeight: 800, color: '#3b82f6' }}>{lastSnapshotBytes} Bytes</span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: '#94a3b8' }}>Chế độ Snapshot:</span>
+            <span style={{ fontWeight: 800, color: lastPacketKind === 'delta' ? '#22c55e' : '#fbbf24' }}>
+              {lastPacketKind === 'delta' ? 'DELTA' : 'FULL'}
+            </span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>

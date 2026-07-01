@@ -3,16 +3,20 @@ import {
   encodeInput,
   decodeConfig,
   decodeSnapshot,
+  decodeDeltaSnapshot,
+  EMessageType,
   type WorldSnapshot,
   type ConfigPayload,
+  type SnapshotPacketMeta,
 } from '@xeom-rush/shared';
 
 export class GameNetwork {
   private ws: WebSocket | null = null;
-  private onSnapshotCallbacks: ((snapshot: WorldSnapshot) => void)[] = [];
+  private onSnapshotCallbacks: ((snapshot: WorldSnapshot, meta: SnapshotPacketMeta) => void)[] = [];
   private onConfigCallbacks: ((config: ConfigPayload) => void)[] = [];
   private onConnectCallback: (() => void) | null = null;
   private onDisconnectCallback: (() => void) | null = null;
+  private lastSnapshot: WorldSnapshot | null = null;
 
   public rtt: number = 0;
   private pingSentTime: number = 0;
@@ -22,6 +26,7 @@ export class GameNetwork {
   public connect(url: string, username: string, onConnect: () => void, onDisconnect: () => void): void {
     this.onConnectCallback = onConnect;
     this.onDisconnectCallback = onDisconnect;
+    this.lastSnapshot = null;
     
     let socket: WebSocket;
     try {
@@ -50,12 +55,23 @@ export class GameNetwork {
       const view = new DataView(buffer);
       const msgType = view.getUint8(0);
 
-      if (msgType === 5) { // EMessageType.CONFIG
+      if (msgType === EMessageType.CONFIG) {
         const config = decodeConfig(buffer);
         this.onConfigCallbacks.forEach((cb) => cb(config));
-      } else if (msgType === 4) { // EMessageType.SNAPSHOT
+      } else if (msgType === EMessageType.SNAPSHOT) {
         const snapshot = decodeSnapshot(buffer);
-        this.onSnapshotCallbacks.forEach((cb) => cb(snapshot));
+        this.lastSnapshot = snapshot;
+        this.onSnapshotCallbacks.forEach((cb) => cb(snapshot, { bytes: buffer.byteLength, kind: 'full' }));
+
+        if (this.pingSentTime > 0) {
+          this.rtt = Date.now() - this.pingSentTime;
+          this.pingSentTime = 0;
+        }
+      } else if (msgType === EMessageType.DELTA_SNAPSHOT) {
+        if (!this.lastSnapshot) return;
+        const snapshot = decodeDeltaSnapshot(buffer, this.lastSnapshot);
+        this.lastSnapshot = snapshot;
+        this.onSnapshotCallbacks.forEach((cb) => cb(snapshot, { bytes: buffer.byteLength, kind: 'delta' }));
 
         if (this.pingSentTime > 0) {
           this.rtt = Date.now() - this.pingSentTime;
@@ -92,7 +108,7 @@ export class GameNetwork {
     }
   }
 
-  public registerSnapshotCallback(cb: (snapshot: WorldSnapshot) => void): void {
+  public registerSnapshotCallback(cb: (snapshot: WorldSnapshot, meta: SnapshotPacketMeta) => void): void {
     this.onSnapshotCallbacks.push(cb);
   }
 
@@ -105,6 +121,7 @@ export class GameNetwork {
       this.ws.close();
       this.ws = null;
     }
+    this.lastSnapshot = null;
   }
 }
 

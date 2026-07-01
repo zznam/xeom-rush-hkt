@@ -10,8 +10,10 @@ import {
   CHUNK_SIZE,
   decodeInput,
   decodeJoin,
+  encodeDeltaSnapshot,
   encodeConfig,
   encodeSnapshot,
+  type WorldSnapshot,
 } from '@xeom-rush/shared';
 import { GameWorld } from './world';
 import { BotManager } from './bot-ai';
@@ -117,10 +119,13 @@ interface PlayerSocket {
   ws: WebSocket;
   playerId: string;
   username: string;
+  lastSnapshot: WorldSnapshot | null;
+  lastFullSnapshotTick: number;
 }
 
 const activeSockets = new Map<string, PlayerSocket>();
 let connectionIdCounter = 1;
+const FULL_SNAPSHOT_INTERVAL_TICKS = 40;
 
 server.on('upgrade', (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (ws) => {
@@ -147,7 +152,7 @@ wss.on('connection', (ws: WebSocket) => {
         world.addPlayer(playerId, username);
 
         // Register socket
-        activeSockets.set(playerId, { ws, playerId, username });
+        activeSockets.set(playerId, { ws, playerId, username, lastSnapshot: null, lastFullSnapshotTick: 0 });
         joined = true;
 
         console.log(`[Player Join] ${username} (${playerId}) connected.`);
@@ -206,10 +211,29 @@ setInterval(() => {
     if (playerSocket.ws.readyState === WebSocket.OPEN) {
       // Retrieve entities in player's 3x3 surrounding chunks
       const { players, passengers, trafficLights, pedestrians, rushHour, streaks } = world.getVisibleSnapshotForPlayer(playerId);
+      const snapshot: WorldSnapshot = {
+        tick: world.getTick(),
+        players,
+        passengers,
+        trafficLights,
+        pedestrians,
+        rushHour,
+        streaks,
+      };
 
-      // Encode snapshot in custom binary format
-      const snapshotBuffer = encodeSnapshot(world.getTick(), players, passengers, trafficLights, pedestrians, rushHour, streaks);
+      const shouldSendFull =
+        !playerSocket.lastSnapshot ||
+        world.getTick() - playerSocket.lastFullSnapshotTick >= FULL_SNAPSHOT_INTERVAL_TICKS;
+
+      const snapshotBuffer = shouldSendFull || !playerSocket.lastSnapshot
+        ? encodeSnapshot(snapshot.tick, snapshot.players, snapshot.passengers, snapshot.trafficLights, snapshot.pedestrians, snapshot.rushHour, snapshot.streaks)
+        : encodeDeltaSnapshot(playerSocket.lastSnapshot, snapshot);
+
       playerSocket.ws.send(snapshotBuffer);
+      playerSocket.lastSnapshot = snapshot;
+      if (shouldSendFull) {
+        playerSocket.lastFullSnapshotTick = world.getTick();
+      }
     }
   }
 }, TICK_INTERVAL_MS);

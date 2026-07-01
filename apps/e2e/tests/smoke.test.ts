@@ -60,4 +60,16 @@ test.describe('Xeom Rush Smoke Tests', () => {
     expect(box!.width).toBeGreaterThan(0);
     expect(box!.height).toBeGreaterThan(0);
   });
+
+  test('5. Debug overlay reports delta snapshot packets after joining', async ({ page }) => {
+    await page.goto('/');
+
+    await page.locator('#username').fill('DeltaTester');
+    await page.locator('button[type="submit"]').click();
+
+    const canvas = page.locator('canvas').first();
+    await expect(canvas).toBeVisible({ timeout: 10_000 });
+
+    await expect(page.getByText('DELTA')).toBeVisible({ timeout: 10_000 });
+  });
 });

@@ -51,6 +51,13 @@ A single server cannot broadcast position updates of all 100k players to everyon
 
 Instead of sending verbose JSON over WebSockets (e.g., `{"type":"update","x":123.4,"y":56.7,"id":"player-1"}` which is ~60 bytes), we use a custom binary protocol packing data into ArrayBuffers.
 
+The live protocol now uses **per-client binary delta snapshots**:
+
+* The first packet and periodic resync packets are full visible-world baselines.
+* Normal 20Hz packets send only changed entities plus removed entity IDs for anything that left the player's interest area.
+* The client reconstructs deltas back into complete snapshots before prediction, interpolation, rendering, and HUD logic run.
+* The developer panel shows actual packet bytes and whether the latest packet was `FULL` or `DELTA`.
+
 * **Micro-benchmarks (`vitest bench`):**
   * **Serialization (Encoding):** Custom binary serialization is **8.4x faster** than `JSON.stringify`.
   * **Deserialization (Decoding):** Custom binary parsing is **4.6x faster** than `JSON.parse`.
