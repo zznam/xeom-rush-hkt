@@ -8,7 +8,7 @@
     "build:server": "pnpm build:shared && pnpm --filter server build",
     "build:client": "pnpm build:shared && pnpm --filter client build",
     "start:server": "pnpm --filter server start",
-    "test": "pnpm --filter shared test && pnpm --filter server test",
+    "test": "pnpm --filter shared test && pnpm build:shared && pnpm --filter server test",
     "test:e2e": "pnpm --filter e2e test",
     "bench": "pnpm --filter shared bench"
 
