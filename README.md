@@ -4,35 +4,35 @@ An authoritative-server, spatial-partitioned .io game built to demonstrate high-
 
 ## 📌 The Pitch & Vietnamese Context
 
-In Vietnam, motorbikes are the pulse of the city. *Xe Ôm* (traditional motorbike taxi) drivers navigate the labyrinthine hẻm (alleys) and hours of *giờ cao điểm* (rush hour traffic) to deliver passengers and goods.
+In Vietnam, motorbikes are the pulse of the city. _Xe Ôm_ (traditional motorbike taxi) drivers navigate the labyrinthine hẻm (alleys) and hours of _giờ cao điểm_ (rush hour traffic) to deliver passengers and goods.
 
-**Xe Ôm Rush** turns this daily hustle into a high-concurrency real-time competitive game. Players spawn as drivers, search for passengers popping up at market hotspots (like *Chợ Bến Thành* or *Chợ Lớn*), pick them up, and find the shortest routes through narrow alleys to drop them off, earning VNĐ while dodging traffic.
+**Xe Ôm Rush** turns this daily hustle into a high-concurrency real-time competitive game. Players spawn as drivers, search for passengers popping up at market hotspots (like _Chợ Bến Thành_ or _Chợ Lớn_), pick them up, and find the shortest routes through narrow alleys to drop them off, earning VNĐ while dodging traffic.
 
 ---
 
 ## 🚦 Live Gameplay & Simulation Features
 
-* **Passenger Tiers & Deadlines:** Passengers are spawned with weighted probabilities (70% Regular 🟢, 20% Business 🟡, 10% VIP 🟣). Business and VIP passengers have strict delivery deadlines (relative server ticks); if they are not picked up before their deadline, they expire and disappear. VIP spawns trigger a global sound alert.
-* **Combo / Streak System:** Successfully delivering passengers in succession builds your combo streak. A multiplier (1× → 1.5× → 2.0× → 3.0× at streaks 1, 3, 5, 10) is applied to rewards. The streak resets if you remain idle (no delivery) for 30 seconds, collide with a pedestrian, or disconnect.
-* **Rush Hour Events (Giờ cao điểm):** Every 5 minutes, a 60-second Rush Hour event starts. During this event, passenger spawn rate is doubled (2×) and rewards are boosted by 1.5×. Rush Hour is introduced with a custom musical sting. It can also be manually triggered via `POST /api/rush-hour`.
-* **Procedural Sound Engine:** Generated fully in-browser via the Web Audio API with zero external file assets. Includes:
-  * Motorbike engine hum (pitch scale dynamically linked to speed).
-  * Short ascending chimes on passenger pickup.
-  * Triumphant arpeggios on passenger delivery.
-  * Custom square-wave buzzer sound on keypress `H` (còi xe).
-  * Orchestral/synthesized horn fanfare stings on Rush Hour start and VIP spawns.
-* **HUD Minimap:** Positioned bottom-left mapping the full 4000×4000 grid. Displays player coordinates, other drivers, passenger blips (color-coded by tier), and destination drop-off zones.
-* **Grid Alleys & Buildings:** A physics collision engine checks movement inputs against dense block building structures, simulating narrow, winding lanes.
-* **Seeded Roundabouts:** Green traffic circles with central obstacles and visual direction indicators guiding vehicles.
-* **Traffic Signals:** Intersections contain dynamic traffic lights (Green/Yellow/Red) alternating for North-South and East-West directions.
-* **Pedestrian Crosswalks & AI:** Randomly generated pedestrian agents walk back and forth across crosswalks, complete with dynamic path timing and collision checks.
-* **Autonomous AI Bots:** Bots navigate the city using A* street-grid pathfinding. They feature smooth turn interpolation, reverse-throttle collision recovery when stuck, and distributed spawning logic to prevent clustering.
+- **Passenger Tiers & Deadlines:** Passengers are spawned with weighted probabilities (70% Regular 🟢, 20% Business 🟡, 10% VIP 🟣). Business and VIP passengers have strict delivery deadlines (relative server ticks); if they are not picked up before their deadline, they expire and disappear. VIP spawns trigger a global sound alert.
+- **Combo / Streak System:** Successfully delivering passengers in succession builds your combo streak. A multiplier (1× → 1.5× → 2.0× → 3.0× at streaks 1, 3, 5, 10) is applied to rewards. The streak resets if you remain idle (no delivery) for 30 seconds, collide with a pedestrian, or disconnect.
+- **Rush Hour Events (Giờ cao điểm):** Every 5 minutes, a 60-second Rush Hour event starts. During this event, passenger spawn rate is doubled (2×) and rewards are boosted by 1.5×. Rush Hour is introduced with a custom musical sting. It can also be manually triggered via `POST /api/rush-hour`.
+- **Procedural Sound Engine:** Generated fully in-browser via the Web Audio API with zero external file assets. Includes:
+  - Motorbike engine hum (pitch scale dynamically linked to speed).
+  - Short ascending chimes on passenger pickup.
+  - Triumphant arpeggios on passenger delivery.
+  - Custom square-wave buzzer sound on keypress `H` (còi xe).
+  - Orchestral/synthesized horn fanfare stings on Rush Hour start and VIP spawns.
+- **HUD Minimap:** Positioned bottom-left mapping the full 4000×4000 grid. Displays player coordinates, other drivers, passenger blips (color-coded by tier), and destination drop-off zones.
+- **Grid Alleys & Buildings:** A physics collision engine checks movement inputs against dense block building structures, simulating narrow, winding lanes.
+- **Seeded Roundabouts:** Green traffic circles with central obstacles and visual direction indicators guiding vehicles.
+- **Traffic Signals:** Intersections contain dynamic traffic lights (Green/Yellow/Red) alternating for North-South and East-West directions.
+- **Pedestrian Crosswalks & AI:** Randomly generated pedestrian agents walk back and forth across crosswalks, complete with dynamic path timing and collision checks.
+- **Autonomous AI Bots:** Bots navigate the city using A* street-grid pathfinding. They feature smooth turn interpolation, reverse-throttle collision recovery when stuck, and distributed spawning logic to prevent clustering.
 
 ### ⚠️ Violations & Traffic Penalties
 
-* **Red Light Violation (Vượt đèn đỏ):** Crossing a stop line during a red light triggers a **-2,000đ** penalty.
-* **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian resets your score to **0đ**, resets your combo streak to **0**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
-* **Driver-to-Driver Collision (Va chạm xe):** Colliding with another player or bot pushes both bikes apart using slide-along-wall physics resolution and carries a **-1,000đ** penalty (with a 1-second cooldown).
+- **Red Light Violation (Vượt đèn đỏ):** Crossing a stop line during a red light triggers a **-2,000đ** penalty.
+- **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian resets your score to **0đ**, resets your combo streak to **0**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
+- **Driver-to-Driver Collision (Va chạm xe):** Colliding with another player or bot pushes both bikes apart using slide-along-wall physics resolution and carries a **-1,000đ** penalty (with a 1-second cooldown).
 
 ---
 
@@ -44,8 +44,8 @@ To build a true .io game at scale, sending standard JSON updates to every player
 
 A single server cannot broadcast position updates of all 100k players to everyone. We segment the map into a 2D grid of **Chunks** (each `500x500` units).
 
-* Players only receive updates for entities in their **current chunk + 8 neighboring chunks** (a 3x3 local grid).
-* Entity query time drops from $O(N)$ (broadcasting to everyone) to $O(1)$ lookup per player.
+- Players only receive updates for entities in their **current chunk + 8 neighboring chunks** (a 3x3 local grid).
+- Entity query time drops from $O(N)$ (broadcasting to everyone) to $O(1)$ lookup per player.
 
 ### 2. Binary Wire Protocol
 
@@ -53,32 +53,32 @@ Instead of sending verbose JSON over WebSockets (e.g., `{"type":"update","x":123
 
 The live protocol now uses **per-client binary delta snapshots**:
 
-* The first packet and periodic resync packets are full visible-world baselines.
-* Normal 20Hz packets send only changed entities plus removed entity IDs for anything that left the player's interest area.
-* The client reconstructs deltas back into complete snapshots before prediction, interpolation, rendering, and HUD logic run.
-* The developer panel shows actual packet bytes and whether the latest packet was `FULL` or `DELTA`.
+- The first packet and periodic resync packets are full visible-world baselines.
+- Normal 20Hz packets send only changed entities plus removed entity IDs for anything that left the player's interest area.
+- The client reconstructs deltas back into complete snapshots before prediction, interpolation, rendering, and HUD logic run.
+- The developer panel shows actual packet bytes and whether the latest packet was `FULL` or `DELTA`.
 
-* **Micro-benchmarks (`vitest bench`):**
-  * **Serialization (Encoding):** Custom binary serialization is **8.4x faster** than `JSON.stringify`.
-  * **Deserialization (Decoding):** Custom binary parsing is **4.6x faster** than `JSON.parse`.
-* This yields a **5x to 10x bandwidth reduction**, saving server memory and networking bandwidth.
+- **Micro-benchmarks (`vitest bench`):**
+  - **Serialization (Encoding):** Custom binary serialization is **8.4x faster** than `JSON.stringify`.
+  - **Deserialization (Decoding):** Custom binary parsing is **4.6x faster** than `JSON.parse`.
+- This yields a **5x to 10x bandwidth reduction**, saving server memory and networking bandwidth.
 
 ### 3. Authoritative Server Tick Loop (20Hz)
 
-* Physics, collision, and state updates run strictly on the server at **20 ticks per second** (50ms interval).
-* Clients capture inputs (arrow keys / WASD) and stream their velocity intent to the server.
-* Prevents client-side cheating (speed hacks, teleporting).
+- Physics, collision, and state updates run strictly on the server at **20 ticks per second** (50ms interval).
+- Clients capture inputs (arrow keys / WASD) and stream their velocity intent to the server.
+- Prevents client-side cheating (speed hacks, teleporting).
 
 ### 4. Client-side Prediction & Interpolation
 
-* To prevent lag, the client immediately updates the local player's position (**Client Prediction**) and reconciles with server updates when they arrive.
-* Other players are rendered smoothly by interpolating their positions over a historical buffer (**Entity Interpolation**), giving a silky-smooth 60 FPS visual experience on HTML5 Canvas.
+- To prevent lag, the client immediately updates the local player's position (**Client Prediction**) and reconciles with server updates when they arrive.
+- Other players are rendered smoothly by interpolating their positions over a historical buffer (**Entity Interpolation**), giving a silky-smooth 60 FPS visual experience on HTML5 Canvas.
 
 ---
 
 ## 🏗️ System Architecture
 
-```
+```text
                        +---------------------------------------+
                        |           Browser Client              |
                        |  (React UI + HTML5 Canvas @ 60 FPS)   |
@@ -111,11 +111,11 @@ The live protocol now uses **per-client binary delta snapshots**:
 
 The client includes a premium developer interface (positioned bottom-right, automatically hidden on mobile devices) showing live metrics:
 
-* **Real-time RTT (Ping)** & **Server Tick Rate (Hz)** telemetry.
-* **Payload Size Comparison:** Compares the actual binary packet size to equivalent JSON.
-* **Dynamic Compression Ratio:** Visualizes network efficiency (typically showing **6x - 10x smaller payload sizes**).
-* **Map Chunk Debug Grid:** Draw boundaries of active spatial grid chunks.
-* **Real-time Bot Spawner:** Spawn 25 AI drivers directly from the client UI.
+- **Real-time RTT (Ping)** & **Server Tick Rate (Hz)** telemetry.
+- **Payload Size Comparison:** Compares the actual binary packet size to equivalent JSON.
+- **Dynamic Compression Ratio:** Visualizes network efficiency (typically showing **6x - 10x smaller payload sizes**).
+- **Map Chunk Debug Grid:** Draw boundaries of active spatial grid chunks.
+- **Real-time Bot Spawner:** Spawn 25 AI drivers directly from the client UI.
 
 ### Load and Stress Testing
 
@@ -135,12 +135,12 @@ pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:
 
 We use **MongoDB** to persist player career totals and historical match records:
 
-* **Asynchronous Save Queue:** During a match, passenger dropoffs and traffic violations are tracked strictly in memory. When a player disconnects, their session stats are saved asynchronously to prevent database latency from slowing down the 20Hz tick loop.
-* **Collections:**
+- **Asynchronous Save Queue:** During a match, passenger dropoffs and traffic violations are tracked strictly in memory. When a player disconnects, their session stats are saved asynchronously to prevent database latency from slowing down the 20Hz tick loop.
+- **Collections:**
   - `players` — Tracks career earnings (VNĐ), total deliveries, and high score/streak records.
   - `matches` — Logs complete history of completed match sessions, containing a summary of scores and traffic violations (red-light runs, pedestrian collisions, and driver impacts) for each driver.
-* **Leaderboard Optimization:** Exposes a `GET /api/leaderboard` endpoint sorted by indexed `{ careerScore: -1 }` for optimal query response times.
-* **Memory-Only Fallback:** If the database connection times out (configured to fail fast in 2 seconds), the server automatically starts up in **MEMORY-ONLY mode**, allowing quick local testing and E2E runs without database dependencies.
+- **Leaderboard Optimization:** Exposes a `GET /api/leaderboard` endpoint sorted by indexed `{ careerScore: -1 }` for optimal query response times.
+- **Memory-Only Fallback:** If the database connection times out (configured to fail fast in 2 seconds), the server automatically starts up in **MEMORY-ONLY mode**, allowing quick local testing and E2E runs without database dependencies.
 
 ---
 
@@ -148,9 +148,9 @@ We use **MongoDB** to persist player career totals and historical match records:
 
 ### Prerequisites
 
-* Node.js 18+
+- Node.js 18+
 
-* pnpm
+- pnpm
 
 ### Quick Start (Local Development)
 
@@ -181,10 +181,10 @@ pnpm bench
 
 Production deploys are driven from Git:
 
-* **Railway** hosts the long-running WebSocket/API backend and MongoDB.
-* **Vercel** hosts the static Vite client from `apps/client/dist`.
-* The production branch for both services is `main`.
-* GitHub Actions runs unit tests and production builds before changes are merged to `main`.
+- **Railway** hosts the long-running WebSocket/API backend and MongoDB.
+- **Vercel** hosts the static Vite client from `apps/client/dist`.
+- The production branch for both services is `main`.
+- GitHub Actions runs unit tests and production builds before changes are merged to `main`.
 
 #### Railway backend
 
@@ -202,8 +202,8 @@ Railway reads `railway.json` for the Dockerfile builder, `/api/health` healthche
 1. Import `https://github.com/zznam/xeom-rush-hkt` into Vercel.
 2. Set the project Production Branch to `main`.
 3. Use the existing `vercel.json` build settings:
-   * Build command: `corepack enable && pnpm install --frozen-lockfile && pnpm build:shared && pnpm build:client`
-   * Output directory: `apps/client/dist`
+   - Build command: `corepack enable && pnpm install --frozen-lockfile && pnpm build:shared && pnpm build:client`
+   - Output directory: `apps/client/dist`
 4. Add `VITE_WS_URL` in Vercel production environment variables using the Railway backend WebSocket URL, for example `wss://xeom-rush-server.up.railway.app`.
 
 After setup, normal production releases are: open a pull request, wait for CI and previews, merge to `main`, then let Railway and Vercel auto-deploy from Git.

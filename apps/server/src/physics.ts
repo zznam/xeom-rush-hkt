@@ -92,7 +92,13 @@ export class PhysicsEngine {
   /**
    * Resolves collision for a moving player. Returns corrected position.
    */
-  public resolveMove(oldX: number, oldY: number, newX: number, newY: number, radius: number = 15): { x: number; y: number } {
+  public resolveMove(
+    oldX: number,
+    oldY: number,
+    newX: number,
+    newY: number,
+    radius: number = 15,
+  ): { x: number; y: number } {
     // 1. Boundary check
     let x = Math.max(radius, Math.min(MAP_SIZE - radius, newX));
     let y = Math.max(radius, Math.min(MAP_SIZE - radius, newY));

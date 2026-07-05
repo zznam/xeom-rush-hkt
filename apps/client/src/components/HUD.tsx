@@ -33,10 +33,7 @@ export const HUD: React.FC<HUDProps> = ({
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   // Compute leaderboard sorted by score
-  const leaderboard = useMemo(
-    () => [...players].sort((a, b) => b.score - a.score).slice(0, 5),
-    [players],
-  );
+  const leaderboard = useMemo(() => [...players].sort((a, b) => b.score - a.score).slice(0, 5), [players]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -51,7 +48,7 @@ export const HUD: React.FC<HUDProps> = ({
 
   // Retrieve active passenger if local player is carrying one
   const carriedPassenger = localPlayer.passengerId
-    ? passengers.find((p) => p.id === localPlayer.passengerId) ?? null
+    ? (passengers.find((p) => p.id === localPlayer.passengerId) ?? null)
     : null;
 
   const handleJoystickChange = (data: { dx: number; dy: number }) => {
@@ -91,9 +88,7 @@ export const HUD: React.FC<HUDProps> = ({
                 {player.username} {isMe && '(Bạn)'}
               </span>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>
-              {player.score.toLocaleString()}đ
-            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1' }}>{player.score.toLocaleString()}đ</span>
           </div>
         );
       })}
@@ -110,7 +105,7 @@ export const HUD: React.FC<HUDProps> = ({
         bottom: 0,
         pointerEvents: 'none',
       }}
-      className="hud-container"
+      className='hud-container'
     >
       {/* ── Rush Hour Banner ── */}
       {rushHour && (
@@ -156,13 +151,13 @@ export const HUD: React.FC<HUDProps> = ({
         style={{
           pointerEvents: 'auto',
           position: 'absolute',
-          top: rushHour ? (isMobile ? 44 : 52) : (isMobile ? 10 : 20),
+          top: rushHour ? (isMobile ? 44 : 52) : isMobile ? 10 : 20,
           left: isMobile ? 10 : 20,
           width: isMobile ? 220 : 320,
         }}
         className={isMobile ? 'glass-panel p-3' : 'glass-panel p-4'}
       >
-        <div className="flex flex-col gap-1">
+        <div className='flex flex-col gap-1'>
           <span style={{ fontSize: isMobile ? 9 : 11, fontWeight: 700, letterSpacing: '0.05em', color: '#94a3b8' }}>
             THU NHẬP ĐƯỜNG PHỐ (VNĐ)
           </span>
@@ -181,29 +176,43 @@ export const HUD: React.FC<HUDProps> = ({
               gap: 8,
               padding: isMobile ? '2px 8px' : '4px 10px',
               borderRadius: 20,
-              background: myStreak >= 10
-                ? 'linear-gradient(90deg, rgba(168,85,247,0.25), rgba(236,72,153,0.25))'
-                : myStreak >= 5
-                ? 'rgba(251,191,36,0.15)'
-                : 'rgba(34,197,94,0.12)',
+              background:
+                myStreak >= 10
+                  ? 'linear-gradient(90deg, rgba(168,85,247,0.25), rgba(236,72,153,0.25))'
+                  : myStreak >= 5
+                    ? 'rgba(251,191,36,0.15)'
+                    : 'rgba(34,197,94,0.12)',
               border: '1px solid',
-              borderColor: myStreak >= 10 ? 'rgba(168,85,247,0.4)' : myStreak >= 5 ? 'rgba(251,191,36,0.3)' : 'rgba(34,197,94,0.2)',
+              borderColor:
+                myStreak >= 10
+                  ? 'rgba(168,85,247,0.4)'
+                  : myStreak >= 5
+                    ? 'rgba(251,191,36,0.3)'
+                    : 'rgba(34,197,94,0.2)',
               width: 'fit-content',
             }}
           >
             <span style={{ fontSize: isMobile ? 11 : 14 }}>🔥</span>
-            <span style={{ fontSize: isMobile ? 10 : 12, fontWeight: 800, color: myStreak >= 10 ? '#c084fc' : myStreak >= 5 ? '#fbbf24' : '#86efac' }}>
+            <span
+              style={{
+                fontSize: isMobile ? 10 : 12,
+                fontWeight: 800,
+                color: myStreak >= 10 ? '#c084fc' : myStreak >= 5 ? '#fbbf24' : '#86efac',
+              }}
+            >
               {myStreak} COMBO
             </span>
             {streakMultiplier > 1 && (
-              <span style={{
-                fontSize: isMobile ? 9 : 11,
-                fontWeight: 900,
-                color: '#f8fafc',
-                background: 'rgba(0,0,0,0.3)',
-                padding: '1px 6px',
-                borderRadius: 10,
-              }}>
+              <span
+                style={{
+                  fontSize: isMobile ? 9 : 11,
+                  fontWeight: 900,
+                  color: '#f8fafc',
+                  background: 'rgba(0,0,0,0.3)',
+                  padding: '1px 6px',
+                  borderRadius: 10,
+                }}
+              >
                 ×{streakMultiplier.toFixed(1)}
               </span>
             )}
@@ -226,9 +235,7 @@ export const HUD: React.FC<HUDProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: '#94a3b8' }}>TRẠNG THÁI TÀI XẾ</span>
             <span style={{ fontSize: isMobile ? 11 : 13, fontWeight: 600 }}>
-              {carriedPassenger
-                ? `Đang chở khách tới điểm hẹn!`
-                : 'Đang tìm khách...'}
+              {carriedPassenger ? `Đang chở khách tới điểm hẹn!` : 'Đang tìm khách...'}
             </span>
           </div>
         </div>
@@ -271,7 +278,10 @@ export const HUD: React.FC<HUDProps> = ({
 
       {/* ── Leaderboard (Desktop vs Mobile Toggle) ── */}
       {!isMobile ? (
-        <div style={{ pointerEvents: 'auto', position: 'absolute', top: rushHour ? 52 : 20, right: 20, width: 280 }} className="glass-panel p-4">
+        <div
+          style={{ pointerEvents: 'auto', position: 'absolute', top: rushHour ? 52 : 20, right: 20, width: 280 }}
+          className='glass-panel p-4'
+        >
           <h3 style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', color: '#94a3b8', marginBottom: 12 }}>
             🏆 BẢNG XẾP HẠNG TÀI XẾ
           </h3>
@@ -279,14 +289,11 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       ) : (
         <>
-          <button
-            onClick={() => setShowLeaderboard((prev) => !prev)}
-            className="leaderboard-toggle-btn"
-          >
+          <button onClick={() => setShowLeaderboard((prev) => !prev)} className='leaderboard-toggle-btn'>
             🏆
           </button>
           {showLeaderboard && (
-            <div className="glass-panel p-3 floating-leaderboard">
+            <div className='glass-panel p-3 floating-leaderboard'>
               <h3 style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: '#94a3b8', marginBottom: 8 }}>
                 🏆 BẢNG XẾP HẠNG
               </h3>
@@ -312,11 +319,15 @@ export const HUD: React.FC<HUDProps> = ({
             fontWeight: 600,
             color: '#94a3b8',
           }}
-          className="glass-panel"
+          className='glass-panel'
         >
-          <span>⌨️ Di chuyển: <strong>WASD</strong> hoặc <strong>Phím Mũi Tên</strong></span>
+          <span>
+            ⌨️ Di chuyển: <strong>WASD</strong> hoặc <strong>Phím Mũi Tên</strong>
+          </span>
           <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
-          <span>📯 Còi: <strong>H</strong></span>
+          <span>
+            📯 Còi: <strong>H</strong>
+          </span>
           <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
           <span>🛵 Trả khách tại điểm màu đỏ để nhận tiền!</span>
         </div>
@@ -339,11 +350,7 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
 
           {/* Virtual Honk Button */}
-          <button
-            onTouchStart={handleHonkPress}
-            onMouseDown={handleHonkPress}
-            className="honk-btn-mobile"
-          >
+          <button onTouchStart={handleHonkPress} onMouseDown={handleHonkPress} className='honk-btn-mobile'>
             <span style={{ fontSize: 24 }}>📯</span>
             <span style={{ fontSize: 10, fontWeight: 900, marginTop: 2, letterSpacing: '0.05em' }}>CÒI</span>
           </button>

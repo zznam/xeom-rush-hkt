@@ -4,7 +4,7 @@ import { encodeJoin, encodeInput, EMessageType, decodeSnapshot, decodeConfig } f
 // Parse CLI arguments
 const args = process.argv.slice(2);
 let clientCount = 100; // Default 100 bots
-let durationSec = 15;  // Default 15 seconds
+let durationSec = 15; // Default 15 seconds
 let serverUrl = 'ws://localhost:3002';
 
 for (let i = 0; i < args.length; i++) {
@@ -101,7 +101,7 @@ function spawnBot(index: number) {
 
       if (msgType === EMessageType.SNAPSHOT) {
         clientStat.packetsReceived++;
-        
+
         // Measure RTT response
         if (pingSentTime > 0) {
           const rtt = Date.now() - pingSentTime;
@@ -140,7 +140,7 @@ for (let i = 0; i < clientCount; i++) {
 // Print moving telemetry table
 const printInterval = setInterval(() => {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  
+
   // Calculate average latency
   const allRtts: number[] = [];
   let totalReceived = 0;
@@ -158,54 +158,59 @@ const printInterval = setInterval(() => {
 
   console.log(
     `[Time: ${elapsed}s/${durationSec}s] ` +
-    `Connected: ${activeCount}/${clientCount} | ` +
-    `Sent: ${totalSent} pkts | ` +
-    `Recv: ${totalReceived} pkts | ` +
-    `Avg Latency (RTT): ${avgRtt} ms`
+      `Connected: ${activeCount}/${clientCount} | ` +
+      `Sent: ${totalSent} pkts | ` +
+      `Recv: ${totalReceived} pkts | ` +
+      `Avg Latency (RTT): ${avgRtt} ms`,
   );
 }, 2000);
 
 // Close and compile diagnostics
-setTimeout(() => {
-  clearInterval(printInterval);
-  console.log('\n====================================================');
-  console.log('🏁 STRESS TEST COMPLETED — DIAGNOSTIC REPORT');
-  console.log('====================================================');
+setTimeout(
+  () => {
+    clearInterval(printInterval);
+    console.log('\n====================================================');
+    console.log('🏁 STRESS TEST COMPLETED — DIAGNOSTIC REPORT');
+    console.log('====================================================');
 
-  // Close all sockets
-  activeSockets.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-      ws.close();
+    // Close all sockets
+    activeSockets.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    });
+
+    const finalElapsed = (Date.now() - startTime) / 1000;
+    let totalReceived = 0;
+    let totalSent = 0;
+    const finalRtts: number[] = [];
+
+    for (const s of stats.values()) {
+      totalReceived += s.packetsReceived;
+      totalSent += s.packetsSent;
+      finalRtts.push(...s.rttList);
     }
-  });
 
-  const finalElapsed = (Date.now() - startTime) / 1000;
-  let totalReceived = 0;
-  let totalSent = 0;
-  const finalRtts: number[] = [];
+    // Sort latencies to compute percentiles
+    finalRtts.sort((a, b) => a - b);
+    const p50 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.5)] : 0;
+    const p95 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.95)] : 0;
+    const p99 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.99)] : 0;
 
-  for (const s of stats.values()) {
-    totalReceived += s.packetsReceived;
-    totalSent += s.packetsSent;
-    finalRtts.push(...s.rttList);
-  }
-
-  // Sort latencies to compute percentiles
-  finalRtts.sort((a, b) => a - b);
-  const p50 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.50)] : 0;
-  const p95 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.95)] : 0;
-  const p99 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.99)] : 0;
-
-  console.log(`Success Rate:      ${((connectionsEstablished / clientCount) * 100).toFixed(1)}%`);
-  console.log(`Lost Connections:  ${clientCount - connectionsEstablished} sockets`);
-  console.log(`Total Packets Up:  ${totalSent} (Inputs)`);
-  console.log(`Total Packets Down: ${totalReceived} (Snapshots)`);
-  console.log(`Throughput Rate:   ${((totalSent + totalReceived) / finalElapsed).toFixed(1)} packets/sec`);
-  console.log('----------------------------------------------------');
-  console.log(`Average Latency:   ${finalRtts.length > 0 ? (finalRtts.reduce((a, b) => a + b, 0) / finalRtts.length).toFixed(1) : 'N/A'} ms`);
-  console.log(`50th Percentile:   ${p50} ms`);
-  console.log(`95th Percentile:   ${p95} ms`);
-  console.log(`99th Percentile:   ${p99} ms`);
-  console.log('====================================================\n');
-  process.exit(0);
-}, durationSec * 1000 + 1000); // Allow brief buffer time for final print
+    console.log(`Success Rate:      ${((connectionsEstablished / clientCount) * 100).toFixed(1)}%`);
+    console.log(`Lost Connections:  ${clientCount - connectionsEstablished} sockets`);
+    console.log(`Total Packets Up:  ${totalSent} (Inputs)`);
+    console.log(`Total Packets Down: ${totalReceived} (Snapshots)`);
+    console.log(`Throughput Rate:   ${((totalSent + totalReceived) / finalElapsed).toFixed(1)} packets/sec`);
+    console.log('----------------------------------------------------');
+    console.log(
+      `Average Latency:   ${finalRtts.length > 0 ? (finalRtts.reduce((a, b) => a + b, 0) / finalRtts.length).toFixed(1) : 'N/A'} ms`,
+    );
+    console.log(`50th Percentile:   ${p50} ms`);
+    console.log(`95th Percentile:   ${p95} ms`);
+    console.log(`99th Percentile:   ${p99} ms`);
+    console.log('====================================================\n');
+    process.exit(0);
+  },
+  durationSec * 1000 + 1000,
+); // Allow brief buffer time for final print

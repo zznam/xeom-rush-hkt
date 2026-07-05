@@ -1,4 +1,15 @@
-import { EMessageType, EPassengerTier, type InputPayload, type PlayerState, type PassengerState, type TrafficLightState, type PedestrianState, type WorldSnapshot, type ConfigPayload, type ViolationType } from './types';
+import {
+  EMessageType,
+  EPassengerTier,
+  type InputPayload,
+  type PlayerState,
+  type PassengerState,
+  type TrafficLightState,
+  type PedestrianState,
+  type WorldSnapshot,
+  type ConfigPayload,
+  type ViolationType,
+} from './types';
 
 const VIOLATION_TYPE_TO_CODE: Record<ViolationType, number> = {
   'red-light': 1,

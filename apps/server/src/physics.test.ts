@@ -4,7 +4,7 @@ import { PhysicsEngine } from './physics';
 describe('Authoritative Physics Collision Resolver', () => {
   it('should restrict players inside the map boundary', () => {
     const physics = new PhysicsEngine();
-    
+
     // Bounded by MAP_SIZE (4000)
     // Moving outside left boundary (x: -50)
     const posLeft = physics.resolveMove(50, 2000, -50, 2000, 15);
@@ -30,12 +30,12 @@ describe('Authoritative Physics Collision Resolver', () => {
   it('should slide along building blocks instead of locking completely', () => {
     const physics = new PhysicsEngine();
     const buildings = physics.getBuildings();
-    
+
     if (buildings.length === 0) return;
 
     // Pick first building obstacle
     const rect = buildings[0];
-    
+
     // Player is moving down-right and hits the left edge of the building
     // Let's place player at: x = rect.x - 10, y = rect.y + 50 (overlapping in x soon)
     const playerX = rect.x - 10;

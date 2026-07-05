@@ -10,7 +10,7 @@ describe('MongoDB Integration Tests', () => {
     // Start an in-memory MongoDB instance
     mongoServer = await MongoMemoryServer.create();
     const testUri = mongoServer.getUri();
-    
+
     // Connect dbManager to the test instance
     await dbManager.connect(testUri);
   });
@@ -44,7 +44,7 @@ describe('MongoDB Integration Tests', () => {
       score: 15000,
       peakStreak: 4,
       deliveriesCount: 3,
-      violations: { redLights: 1, pedestrianHits: 0, driverCollisions: 2 }
+      violations: { redLights: 1, pedestrianHits: 0, driverCollisions: 2 },
     };
 
     // First save: Create profile
@@ -62,7 +62,7 @@ describe('MongoDB Integration Tests', () => {
       score: 25000,
       peakStreak: 3, // lower than previous peak (4)
       deliveriesCount: 5,
-      violations: { redLights: 0, pedestrianHits: 1, driverCollisions: 1 }
+      violations: { redLights: 0, pedestrianHits: 1, driverCollisions: 1 },
     };
 
     // Second save: Increment score + totalDeliveries, update peakScore, preserve peakStreak
@@ -86,15 +86,15 @@ describe('MongoDB Integration Tests', () => {
         score: 12000,
         peakStreak: 2,
         deliveriesCount: 2,
-        violations: { redLights: 0, pedestrianHits: 0, driverCollisions: 1 }
+        violations: { redLights: 0, pedestrianHits: 0, driverCollisions: 1 },
       },
       {
         username: 'DriverB',
         score: 35000,
         peakStreak: 6,
         deliveriesCount: 7,
-        violations: { redLights: 2, pedestrianHits: 0, driverCollisions: 3 }
-      }
+        violations: { redLights: 2, pedestrianHits: 0, driverCollisions: 3 },
+      },
     ];
 
     const startTime = new Date();

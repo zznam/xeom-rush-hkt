@@ -1,4 +1,10 @@
-import { type InputPayload, type PassengerState, type PlayerState, MAP_SIZE, rotateTowardAngle } from '@xeom-rush/shared';
+import {
+  type InputPayload,
+  type PassengerState,
+  type PlayerState,
+  MAP_SIZE,
+  rotateTowardAngle,
+} from '@xeom-rush/shared';
 import type { PhysicsEngine } from './physics';
 import type { GameWorld } from './world';
 
@@ -177,7 +183,7 @@ export class BotManager {
       this.logEvent(
         playerId,
         'SPAWN',
-        `Spawned at (${spawnPos.x.toFixed(0)}, ${spawnPos.y.toFixed(0)}) [law:${botObj.personality.lawfulness.toFixed(2)}, risk:${botObj.personality.riskTolerance.toFixed(2)}, agg:${botObj.personality.aggression.toFixed(2)}]`
+        `Spawned at (${spawnPos.x.toFixed(0)}, ${spawnPos.y.toFixed(0)}) [law:${botObj.personality.lawfulness.toFixed(2)}, risk:${botObj.personality.riskTolerance.toFixed(2)}, agg:${botObj.personality.aggression.toFixed(2)}]`,
       );
 
       spawnedIds.push(playerId);
@@ -232,10 +238,18 @@ export class BotManager {
           bot.pathIndex = 0;
           bot.stuckTicks = 0;
           bot.escapeFlip = bot.escapeFlip === 1 ? -1 : 1;
-          this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck while carrying ${player.passengerId} at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Rerouting to dropoff.`);
+          this.logEvent(
+            bot.playerId,
+            'HARD_STUCK',
+            `Hard stuck while carrying ${player.passengerId} at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Rerouting to dropoff.`,
+          );
         } else {
           // Hard stuck while empty: release target, flip escape direction, and seek another passenger.
-          this.logEvent(bot.playerId, 'HARD_STUCK', `Hard stuck at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Releasing target and seeking passenger.`);
+          this.logEvent(
+            bot.playerId,
+            'HARD_STUCK',
+            `Hard stuck at (${player.x.toFixed(0)}, ${player.y.toFixed(0)}). Releasing target and seeking passenger.`,
+          );
           if (bot.targetPassengerId) {
             this.targetedPassengerIds.delete(bot.targetPassengerId);
           }
@@ -250,11 +264,19 @@ export class BotManager {
         // Mildly stuck: recalculate path from current location to target
         const target = this.getTargetPosition(bot);
         if (target) {
-          this.logEvent(bot.playerId, 'MILD_STUCK', `Stuck for ${bot.stuckTicks} ticks. Recalculating path to target (${target.x.toFixed(0)}, ${target.y.toFixed(0)}).`);
+          this.logEvent(
+            bot.playerId,
+            'MILD_STUCK',
+            `Stuck for ${bot.stuckTicks} ticks. Recalculating path to target (${target.x.toFixed(0)}, ${target.y.toFixed(0)}).`,
+          );
           bot.path = this.calculatePath(bot, player.x, player.y, target.x, target.y);
           bot.pathIndex = 0;
         } else {
-          this.logEvent(bot.playerId, 'MILD_STUCK', `Stuck for ${bot.stuckTicks} ticks without target, forcing new wander path.`);
+          this.logEvent(
+            bot.playerId,
+            'MILD_STUCK',
+            `Stuck for ${bot.stuckTicks} ticks without target, forcing new wander path.`,
+          );
           bot.path = [];
         }
       }
@@ -297,7 +319,11 @@ export class BotManager {
           bot.path = this.calculatePath(bot, player.x, player.y, nearest.x, nearest.y);
           bot.pathIndex = 0;
           bot.stuckTicks = 0;
-          this.logEvent(bot.playerId, 'STATE_CHANGE', `Found passenger ${nearest.id}. Transitioned to NAVIGATING_TO_PICKUP.`);
+          this.logEvent(
+            bot.playerId,
+            'STATE_CHANGE',
+            `Found passenger ${nearest.id}. Transitioned to NAVIGATING_TO_PICKUP.`,
+          );
         } else {
           // If no passengers are available, choose a random street intersection to wander to
           if (bot.path.length === 0) {
@@ -307,7 +333,11 @@ export class BotManager {
             const targetY = STREET_LINES[randIy];
             bot.path = this.calculatePath(bot, player.x, player.y, targetX, targetY);
             bot.pathIndex = 0;
-            this.logEvent(bot.playerId, 'WANDER', `No passenger available. Pathing to wander destination (${targetX.toFixed(0)}, ${targetY.toFixed(0)}).`);
+            this.logEvent(
+              bot.playerId,
+              'WANDER',
+              `No passenger available. Pathing to wander destination (${targetX.toFixed(0)}, ${targetY.toFixed(0)}).`,
+            );
           }
         }
         break;
@@ -322,7 +352,11 @@ export class BotManager {
           bot.targetPassengerId = player.passengerId;
           bot.state = EBotState.NAVIGATING_TO_DROPOFF;
           bot.stuckTicks = 0;
-          this.logEvent(bot.playerId, 'STATE_CHANGE', `Picked up passenger ${player.passengerId}! Transitioned to NAVIGATING_TO_DROPOFF.`);
+          this.logEvent(
+            bot.playerId,
+            'STATE_CHANGE',
+            `Picked up passenger ${player.passengerId}! Transitioned to NAVIGATING_TO_DROPOFF.`,
+          );
 
           // Path to destination
           const passenger = passengerMap.get(player.passengerId);
@@ -340,7 +374,11 @@ export class BotManager {
         if (bot.targetPassengerId) {
           const target = passengerMap.get(bot.targetPassengerId);
           if (!target || target.isCarried) {
-            this.logEvent(bot.playerId, 'STATE_CHANGE', `Target passenger ${bot.targetPassengerId} was stolen or despawned. Reverting to SEEKING_PASSENGER.`);
+            this.logEvent(
+              bot.playerId,
+              'STATE_CHANGE',
+              `Target passenger ${bot.targetPassengerId} was stolen or despawned. Reverting to SEEKING_PASSENGER.`,
+            );
             this.targetedPassengerIds.delete(bot.targetPassengerId);
             bot.targetPassengerId = null;
             bot.state = EBotState.SEEKING_PASSENGER;
@@ -361,7 +399,11 @@ export class BotManager {
           if (bot.targetPassengerId) {
             this.targetedPassengerIds.delete(bot.targetPassengerId);
           }
-          this.logEvent(bot.playerId, 'STATE_CHANGE', `Passenger delivered successfully! Reverting to SEEKING_PASSENGER.`);
+          this.logEvent(
+            bot.playerId,
+            'STATE_CHANGE',
+            `Passenger delivered successfully! Reverting to SEEKING_PASSENGER.`,
+          );
           bot.targetPassengerId = null;
           bot.state = EBotState.SEEKING_PASSENGER;
           bot.path = [];
@@ -486,7 +528,7 @@ export class BotManager {
 
     for (const otherId of nearbyIds) {
       if (otherId === bot.playerId) continue;
-      
+
       // Avoid both human players and other AI bots
       if (otherId.startsWith('player-') || otherId.startsWith('bot-')) {
         const other = this.world.getPlayer(otherId);
@@ -494,7 +536,7 @@ export class BotManager {
           const dx = player.x - other.x;
           const dy = player.y - other.y;
           const dist = Math.hypot(dx, dy);
-          
+
           if (dist > 0 && dist < avoidanceRadius) {
             // Repulsion strength is inversely proportional to distance
             const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 35 ? 2.0 : 1);
@@ -532,7 +574,7 @@ export class BotManager {
         angle: bot.currentAngle,
       };
     }
-    
+
     // Scale pedestrian avoidance contribution gently (at most 0.5 contribution)
     const pedAvoidMag = Math.hypot(pedestrianAvoidance.x, pedestrianAvoidance.y);
     if (pedAvoidMag > 0) {
@@ -541,7 +583,7 @@ export class BotManager {
     }
 
     const finalAngle = Math.atan2(moveY, moveX);
-    
+
     bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, BOT_MAX_TURN_PER_TICK);
 
     const trafficDecision = city.getTrafficDecisionAhead(
@@ -748,7 +790,7 @@ export class BotManager {
           gScore.set(neighborKey, tentativeGScore);
           fScore.set(neighborKey, tentativeGScore + this.heuristic(neighbor, end));
 
-          if (!openSet.some(n => n.ix === neighbor.ix && n.iy === neighbor.iy)) {
+          if (!openSet.some((n) => n.ix === neighbor.ix && n.iy === neighbor.iy)) {
             openSet.push(neighbor);
           }
         }
@@ -807,8 +849,7 @@ export class BotManager {
     return this.world
       .getSpatialGrid()
       .getNearbyEntities(x, y)
-      .filter((id) => id.startsWith('bot-'))
-      .length;
+      .filter((id) => id.startsWith('bot-')).length;
   }
 
   private hash01(value: string): number {
@@ -846,7 +887,11 @@ export class BotManager {
     const iy = STREET_LINES.findIndex((line) => line === roundabout.y);
     if (ix >= 0 && iy >= 0) {
       bot.avoidedRoundabouts.set(`${ix},${iy}`, this.world.getTick() + 300);
-      this.logEvent(bot.playerId, 'HARD_STUCK', `Roundabout at (${roundabout.x}, ${roundabout.y}) marked as avoided for 300 ticks (15s).`);
+      this.logEvent(
+        bot.playerId,
+        'HARD_STUCK',
+        `Roundabout at (${roundabout.x}, ${roundabout.y}) marked as avoided for 300 ticks (15s).`,
+      );
     }
   }
 

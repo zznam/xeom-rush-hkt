@@ -1,11 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { type PlayerState, type PassengerState, EPassengerTier, MAP_SIZE } from '@xeom-rush/shared';
 
-
 const TIER_COLORS: Record<EPassengerTier, string> = {
-  [EPassengerTier.REGULAR]: '#22c55e',   // green
-  [EPassengerTier.BUSINESS]: '#fbbf24',  // gold
-  [EPassengerTier.VIP]: '#a855f7',       // purple
+  [EPassengerTier.REGULAR]: '#22c55e', // green
+  [EPassengerTier.BUSINESS]: '#fbbf24', // gold
+  [EPassengerTier.VIP]: '#a855f7', // purple
 };
 
 interface MinimapProps {
@@ -122,19 +121,13 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(mx, my);
-      ctx.lineTo(
-        mx + Math.cos(localPlayer.angle) * dirLen,
-        my + Math.sin(localPlayer.angle) * dirLen,
-      );
+      ctx.lineTo(mx + Math.cos(localPlayer.angle) * dirLen, my + Math.sin(localPlayer.angle) * dirLen);
       ctx.stroke();
     }
   }, [localPlayerId, players, passengers, carriedPassengerId, size, scale]);
 
   return (
-    <div
-      id="minimap-container"
-      className={className}
-    >
+    <div id='minimap-container' className={className}>
       <span
         style={{
           fontSize: 9,
@@ -147,7 +140,7 @@ export const Minimap: React.FC<MinimapProps> = ({
         🗺 BẢN ĐỒ
       </span>
       <canvas
-        id="minimap"
+        id='minimap'
         ref={canvasRef}
         width={size}
         height={size}

@@ -26,6 +26,7 @@
 ### Task 1: Shared Protocol Delta Round Trip
 
 **Files:**
+
 - Modify: `packages/shared/src/types.ts`
 - Modify: `packages/shared/src/protocol.ts`
 - Test: `packages/shared/src/protocol.test.ts`
@@ -40,6 +41,7 @@
 ### Task 2: Server Per-Socket Baselines
 
 **Files:**
+
 - Modify: `apps/server/src/index.ts`
 
 - [x] Add a `lastSnapshot` and `lastFullSnapshotTick` to `PlayerSocket`.
@@ -51,6 +53,7 @@
 ### Task 3: Client Delta Reconstruction and Telemetry
 
 **Files:**
+
 - Modify: `apps/client/src/game/network.ts`
 - Modify: `apps/client/src/components/GameCanvas.tsx`
 - Modify: `apps/client/src/components/DebugOverlay.tsx`
@@ -65,6 +68,7 @@
 ### Task 4: Documentation and Full Verification
 
 **Files:**
+
 - Modify: `README.md`
 
 - [x] Update the Binary Wire Protocol section with delta snapshot behavior.

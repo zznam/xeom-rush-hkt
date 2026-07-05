@@ -33,8 +33,13 @@ export class EntityInterpolation {
   /**
    * Calculates interpolated position of all players except the local client.
    */
-  public getInterpolatedPlayers(localPlayerId: string): Map<string, { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }> {
-    const interpolated = new Map<string, { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }>();
+  public getInterpolatedPlayers(
+    localPlayerId: string,
+  ): Map<string, { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }> {
+    const interpolated = new Map<
+      string,
+      { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }
+    >();
     const renderTime = Date.now() - this.renderDelayMs;
 
     // We need at least two snapshots to interpolate between

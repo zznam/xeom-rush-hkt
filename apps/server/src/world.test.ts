@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { COLLISION_RADIUS, EPassengerTier, RUSH_HOUR_INTERVAL_TICKS, RUSH_HOUR_DURATION_TICKS, STREAK_RESET_TICKS } from '@xeom-rush/shared';
+import {
+  COLLISION_RADIUS,
+  EPassengerTier,
+  RUSH_HOUR_INTERVAL_TICKS,
+  RUSH_HOUR_DURATION_TICKS,
+  STREAK_RESET_TICKS,
+} from '@xeom-rush/shared';
 import type { PassengerState } from '@xeom-rush/shared';
 import { BotManager } from './bot-ai';
 import { GameWorld } from './world';
@@ -20,10 +26,16 @@ describe('GameWorld realism update', () => {
     world.addPlayer('player-red', 'Red Runner');
     const player = world.getPlayer('player-red')!;
 
-    let redLight = world.getCityFeatures().getTrafficLights().find((light) => light.isRedNS && !light.isYellow);
+    let redLight = world
+      .getCityFeatures()
+      .getTrafficLights()
+      .find((light) => light.isRedNS && !light.isYellow);
     for (let i = 0; i < 400 && !redLight; i++) {
       world.tick(0.05);
-      redLight = world.getCityFeatures().getTrafficLights().find((light) => light.isRedNS && !light.isYellow);
+      redLight = world
+        .getCityFeatures()
+        .getTrafficLights()
+        .find((light) => light.isRedNS && !light.isYellow);
     }
 
     expect(redLight).toBeDefined();
@@ -52,10 +64,16 @@ describe('GameWorld realism update', () => {
     world.addPlayer('player-zero-red', 'Zero Red Runner');
     const player = world.getPlayer('player-zero-red')!;
 
-    let redLight = world.getCityFeatures().getTrafficLights().find((light) => light.isRedNS && !light.isYellow);
+    let redLight = world
+      .getCityFeatures()
+      .getTrafficLights()
+      .find((light) => light.isRedNS && !light.isYellow);
     for (let i = 0; i < 400 && !redLight; i++) {
       world.tick(0.05);
-      redLight = world.getCityFeatures().getTrafficLights().find((light) => light.isRedNS && !light.isYellow);
+      redLight = world
+        .getCityFeatures()
+        .getTrafficLights()
+        .find((light) => light.isRedNS && !light.isYellow);
     }
 
     expect(redLight).toBeDefined();
@@ -84,10 +102,16 @@ describe('GameWorld realism update', () => {
     greenWorld.addPlayer('player-green', 'Green Runner');
     const greenPlayer = greenWorld.getPlayer('player-green')!;
 
-    let greenLight = greenWorld.getCityFeatures().getTrafficLights().find((light) => !light.isRedNS && !light.isYellow);
+    let greenLight = greenWorld
+      .getCityFeatures()
+      .getTrafficLights()
+      .find((light) => !light.isRedNS && !light.isYellow);
     for (let i = 0; i < 400 && !greenLight; i++) {
       greenWorld.tick(0.05);
-      greenLight = greenWorld.getCityFeatures().getTrafficLights().find((light) => !light.isRedNS && !light.isYellow);
+      greenLight = greenWorld
+        .getCityFeatures()
+        .getTrafficLights()
+        .find((light) => !light.isRedNS && !light.isYellow);
     }
 
     expect(greenLight).toBeDefined();
@@ -102,10 +126,16 @@ describe('GameWorld realism update', () => {
     yellowWorld.addPlayer('player-yellow', 'Yellow Runner');
     const yellowPlayer = yellowWorld.getPlayer('player-yellow')!;
 
-    let yellowLight = yellowWorld.getCityFeatures().getTrafficLights().find((light) => !light.isRedNS && light.isYellow);
+    let yellowLight = yellowWorld
+      .getCityFeatures()
+      .getTrafficLights()
+      .find((light) => !light.isRedNS && light.isYellow);
     for (let i = 0; i < 400 && !yellowLight; i++) {
       yellowWorld.tick(0.05);
-      yellowLight = yellowWorld.getCityFeatures().getTrafficLights().find((light) => !light.isRedNS && light.isYellow);
+      yellowLight = yellowWorld
+        .getCityFeatures()
+        .getTrafficLights()
+        .find((light) => !light.isRedNS && light.isYellow);
     }
 
     expect(yellowLight).toBeDefined();
@@ -135,7 +165,12 @@ describe('GameWorld realism update', () => {
       amount: 10000,
       tick: world.getTick(),
     });
-    expect(world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)).toBe(false);
+    expect(
+      world
+        .getCityFeatures()
+        .getPedestrians()
+        .some((p) => p.id === pedestrian.id),
+    ).toBe(false);
 
     const stunnedX = player.x;
     const stunnedY = player.y;
@@ -160,12 +195,22 @@ describe('GameWorld realism update', () => {
       world.tick(0.05);
     }
 
-    expect(world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)).toBe(false);
+    expect(
+      world
+        .getCityFeatures()
+        .getPedestrians()
+        .some((p) => p.id === pedestrian.id),
+    ).toBe(false);
 
     let respawned = false;
     for (let i = 0; i < 300; i++) {
       world.tick(0.05);
-      if (world.getCityFeatures().getPedestrians().some((p) => p.id === pedestrian.id)) {
+      if (
+        world
+          .getCityFeatures()
+          .getPedestrians()
+          .some((p) => p.id === pedestrian.id)
+      ) {
         respawned = true;
       }
     }
@@ -227,7 +272,13 @@ describe('GameWorld realism update', () => {
     const bots = (botManager as unknown as { bots: Map<string, unknown> }).bots;
     const calculatePath = (
       botManager as unknown as {
-        calculatePath: (bot: unknown, fromX: number, fromY: number, toX: number, toY: number) => { x: number; y: number }[];
+        calculatePath: (
+          bot: unknown,
+          fromX: number,
+          fromY: number,
+          toX: number,
+          toY: number,
+        ) => { x: number; y: number }[];
       }
     ).calculatePath.bind(botManager);
 
@@ -239,8 +290,12 @@ describe('GameWorld realism update', () => {
 
     const pathA = calculatePath(botA, roundabout.x - 220, roundabout.y, roundabout.x, roundabout.y + 220);
     const pathB = calculatePath(botB, roundabout.x - 220, roundabout.y, roundabout.x, roundabout.y + 220);
-    const ringPointA = pathA.find((point) => Math.hypot(point.x - roundabout.x, point.y - roundabout.y) < roundabout.radius + 80);
-    const ringPointB = pathB.find((point) => Math.hypot(point.x - roundabout.x, point.y - roundabout.y) < roundabout.radius + 80);
+    const ringPointA = pathA.find(
+      (point) => Math.hypot(point.x - roundabout.x, point.y - roundabout.y) < roundabout.radius + 80,
+    );
+    const ringPointB = pathB.find(
+      (point) => Math.hypot(point.x - roundabout.x, point.y - roundabout.y) < roundabout.radius + 80,
+    );
 
     expect(ringPointA).toBeDefined();
     expect(ringPointB).toBeDefined();
@@ -260,19 +315,17 @@ describe('GameWorld realism update', () => {
     const world = new GameWorld();
     const botManager = new BotManager(world, world.getPhysics());
     const spawnedIds = botManager.spawnBots(10);
-    
+
     // Check that players have been added and their positions are spread out
-    const positions = spawnedIds.map(id => world.getPlayer(id)!);
-    positions.forEach(pos => {
+    const positions = spawnedIds.map((id) => world.getPlayer(id)!);
+    positions.forEach((pos) => {
       expect(pos).toBeDefined();
       expect(world.getPhysics().isInsideBuilding(pos.x, pos.y)).toBe(false);
       expect(world.getCityFeatures().isInsideRoundabout(pos.x, pos.y)).toBe(false);
     });
 
     // Check that they are not clustered in the 200x200 center box
-    const centerClustered = positions.filter(pos => 
-      Math.abs(pos.x - 2000) <= 100 && Math.abs(pos.y - 2000) <= 100
-    );
+    const centerClustered = positions.filter((pos) => Math.abs(pos.x - 2000) <= 100 && Math.abs(pos.y - 2000) <= 100);
     expect(centerClustered.length).toBeLessThan(10); // Spreads widely
   });
 
@@ -280,18 +333,18 @@ describe('GameWorld realism update', () => {
     const world = new GameWorld();
     const botManager = new BotManager(world, world.getPhysics());
     const [botId] = botManager.spawnBots(1);
-    
+
     // Cast to access internal bots map
     const bot = (botManager as any).bots.get(botId);
     expect(bot).toBeDefined();
-    
+
     // Set stuckTicks to a value in the backup window (e.g. 15)
     bot.stuckTicks = 15;
-    
+
     // Run AI generateInput
     const player = world.getPlayer(botId)!;
     const input = (botManager as any).generateInput(bot, player);
-    
+
     // Expected escape angle logic: mix of reverse and perpendicular
     const perpAngle = bot.currentAngle + (Math.PI / 2) * bot.escapeFlip;
     const reverseAngle = bot.currentAngle + Math.PI;
@@ -300,7 +353,7 @@ describe('GameWorld realism update', () => {
     const escapeMag = Math.hypot(escapeX, escapeY) || 1;
     const expectedDx = (escapeX / escapeMag) * 0.8;
     const expectedDy = (escapeY / escapeMag) * 0.8;
-    
+
     expect(input.dx).toBeCloseTo(expectedDx, 4);
     expect(input.dy).toBeCloseTo(expectedDy, 4);
   });
@@ -378,9 +431,11 @@ describe('Rush Hour Events', () => {
 
 describe('Combo/Streak System', () => {
   const spawnRegularPassenger = (world: GameWorld): PassengerState => {
-    const spawner = (world as unknown as {
-      passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => PassengerState };
-    }).passengers;
+    const spawner = (
+      world as unknown as {
+        passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => PassengerState };
+      }
+    ).passengers;
     const passenger = spawner.spawnPassenger(world.getTick(), EPassengerTier.REGULAR);
     world.getSpatialGrid().update(passenger.id, passenger.x, passenger.y);
     return passenger;
@@ -459,9 +514,13 @@ describe('Combo/Streak System', () => {
     // Helper: pick up and drop off a specific REGULAR passenger, return { earned, passReward }
     const deliverPassenger = (): { earned: number; passReward: number } => {
       clearPassengers();
-      const spawner = (world as unknown as {
-        passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState };
-      }).passengers;
+      const spawner = (
+        world as unknown as {
+          passengers: {
+            spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState;
+          };
+        }
+      ).passengers;
       const pass = spawner.spawnPassenger(world.getTick(), EPassengerTier.REGULAR);
       const passMap = world.getPassengerMap();
       world.getSpatialGrid().update(pass.id, pass.x, pass.y);
@@ -508,7 +567,6 @@ describe('Combo/Streak System', () => {
     expect(earned4).toBe(Math.floor(reward4 * 1.5));
     expect(world.getStreakForPlayer('p-mult')).toBe(4);
   });
-
 
   it('resets streak after STREAK_RESET_TICKS of inactivity', () => {
     const world = new GameWorld();
@@ -571,7 +629,13 @@ describe('Passenger Tiers', () => {
   it('BUSINESS passengers have approximately 2× base reward vs REGULAR', () => {
     // Force-spawn both types and compare rewards for same distance
     const world = new GameWorld();
-    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState } }).passengers;
+    const spawner = (
+      world as unknown as {
+        passengers: {
+          spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState;
+        };
+      }
+    ).passengers;
 
     const regular = spawner.spawnPassenger(0, EPassengerTier.REGULAR);
     const business = spawner.spawnPassenger(0, EPassengerTier.BUSINESS);
@@ -589,7 +653,13 @@ describe('Passenger Tiers', () => {
 
   it('VIP passengers have approximately 5× base reward vs REGULAR', () => {
     const world = new GameWorld();
-    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState } }).passengers;
+    const spawner = (
+      world as unknown as {
+        passengers: {
+          spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState;
+        };
+      }
+    ).passengers;
 
     const vip = spawner.spawnPassenger(0, EPassengerTier.VIP);
 
@@ -600,7 +670,14 @@ describe('Passenger Tiers', () => {
 
   it('removes expired passengers (with deadline) after their tick passes', () => {
     const world = new GameWorld();
-    const spawner = (world as unknown as { passengers: { spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState; reapExpiredPassengers: (tick: number) => void } }).passengers;
+    const spawner = (
+      world as unknown as {
+        passengers: {
+          spawnPassenger: (tick: number, tier: EPassengerTier) => import('@xeom-rush/shared').PassengerState;
+          reapExpiredPassengers: (tick: number) => void;
+        };
+      }
+    ).passengers;
 
     // Spawn a BUSINESS passenger that expires at tick 5
     const business = spawner.spawnPassenger(0, EPassengerTier.BUSINESS);

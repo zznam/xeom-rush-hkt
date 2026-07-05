@@ -135,7 +135,11 @@ export class PassengerSpawner {
    * Spawn a passenger. Pass `currentTick` so deadlines can be set relative to it.
    * Pass a forced `tier` override (e.g. in tests) or let it be randomly assigned.
    */
-  public spawnPassenger(currentTick: number, forceTier?: EPassengerTier, rushHourActive: boolean = false): PassengerState {
+  public spawnPassenger(
+    currentTick: number,
+    forceTier?: EPassengerTier,
+    rushHourActive: boolean = false,
+  ): PassengerState {
     const id = `pass-${this.nextId++}`;
 
     // Choose spawn point: 30% chance near market hot-zones, 70% random

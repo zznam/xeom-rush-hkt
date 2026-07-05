@@ -34,7 +34,6 @@ for (let i = 0; i < 20; i++) {
   });
 }
 
-
 const tick = 12345;
 
 describe('Serialization / Encoding Throughput', () => {
@@ -56,7 +55,7 @@ describe('Serialization / Encoding Throughput', () => {
 describe('Deserialization / Decoding Throughput', () => {
   // Pre-encoded snap buffers
   const binaryBuffer = encodeSnapshot(tick, mockPlayers, mockPassengers);
-  
+
   const rawDataObj = {
     tick,
     players: mockPlayers,

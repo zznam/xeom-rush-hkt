@@ -181,7 +181,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         const reconciled = prediction.reconcile(
           localStateFromServer.x,
           localStateFromServer.y,
-          localStateFromServer.lastProcessedSeq
+          localStateFromServer.lastProcessedSeq,
         );
 
         const updatedLocalState: PlayerState = {
@@ -209,13 +209,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
     });
 
     // Connect WebSocket
-    network.connect(serverUrl, username, () => {
-      console.log('Connected to game server.');
-    }, () => {
-      console.log('Disconnected from game server.');
-      soundEngine.stopEngine();
-      onDisconnect();
-    });
+    network.connect(
+      serverUrl,
+      username,
+      () => {
+        console.log('Connected to game server.');
+      },
+      () => {
+        console.log('Disconnected from game server.');
+        soundEngine.stopEngine();
+        onDisconnect();
+      },
+    );
 
     // Game loop requestAnimationFrame
     let animationFrameId = 0;
@@ -241,11 +246,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
         });
 
         // Run local prediction movement immediately (gives instant local reaction at 60fps)
-        const predictedPos = prediction.predict(
-          localPlayerStateRef.current.x,
-          localPlayerStateRef.current.y,
-          { seq: clientSeqRef.current, dx: input.dx, dy: input.dy, angle: input.angle, dt }
-        );
+        const predictedPos = prediction.predict(localPlayerStateRef.current.x, localPlayerStateRef.current.y, {
+          seq: clientSeqRef.current,
+          dx: input.dx,
+          dy: input.dy,
+          angle: input.angle,
+          dt,
+        });
 
         localPlayerStateRef.current = {
           ...localPlayerStateRef.current,
@@ -278,7 +285,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           passengersRef.current,
           trafficLightsRef.current,
           pedestriansRef.current,
-          showDebug
+          showDebug,
         );
       }
 
@@ -333,27 +340,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
       {/* Collision Alert Banner */}
       {violationAlert && (
-        <div style={{
-          position: 'absolute',
-          top: '25%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(239, 68, 68, 0.95)',
-          border: '2.5px solid #ffffff',
-          borderRadius: '12px',
-          padding: '14px 28px',
-          color: '#ffffff',
-          fontFamily: "'Outfit', 'Inter', sans-serif",
-          fontWeight: 900,
-          fontSize: '24px',
-          boxShadow: '0 0 25px rgba(239, 68, 68, 0.7)',
-          pointerEvents: 'none',
-          zIndex: 999,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          animation: 'bounceIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-        }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: '25%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(239, 68, 68, 0.95)',
+            border: '2.5px solid #ffffff',
+            borderRadius: '12px',
+            padding: '14px 28px',
+            color: '#ffffff',
+            fontFamily: "'Outfit', 'Inter', sans-serif",
+            fontWeight: 900,
+            fontSize: '24px',
+            boxShadow: '0 0 25px rgba(239, 68, 68, 0.7)',
+            pointerEvents: 'none',
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'bounceIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+          }}
+        >
           {violationAlert}
         </div>
       )}

@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -8,4 +8,4 @@ export default defineConfig({
     // Force Vite to include and pre-bundle shared CJS package
     include: ['@xeom-rush/shared'],
   },
-})
+});

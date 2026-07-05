@@ -27,7 +27,7 @@ export class GameNetwork {
     this.onConnectCallback = onConnect;
     this.onDisconnectCallback = onDisconnect;
     this.lastSnapshot = null;
-    
+
     let socket: WebSocket;
     try {
       socket = new WebSocket(url);
@@ -36,7 +36,7 @@ export class GameNetwork {
       this.onDisconnectCallback?.();
       return;
     }
-    
+
     this.ws = socket;
     socket.binaryType = 'arraybuffer';
 

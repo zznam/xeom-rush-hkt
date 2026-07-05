@@ -6,8 +6,8 @@ const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
 
 // The fraction of intersections that get each feature
 const ROUNDABOUT_CHANCE = 0.12; // ~12% of intersections become roundabouts
-const TRAFFIC_LIGHT_CHANCE = 0.30; // ~30% of intersections get lights
-const CROSSWALK_CHANCE = 0.40;  // ~40% of intersections get crosswalks
+const TRAFFIC_LIGHT_CHANCE = 0.3; // ~30% of intersections get lights
+const CROSSWALK_CHANCE = 0.4; // ~40% of intersections get crosswalks
 const ROUNDABOUT_RADIUS = 24;
 
 const PEDESTRIANS_PER_CROSSWALK = 2;
@@ -19,8 +19,8 @@ const PEDESTRIAN_HIT_RESPAWN_MIN_TICKS = 200; // 10 seconds at 20Hz (hit by play
 const PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS = 100; // extra 0-5 seconds random
 
 // Traffic light timing (in server ticks at 20Hz)
-const TICKS_GREEN = 160;  // 8 seconds
-const TICKS_YELLOW = 40;  // 2 seconds
+const TICKS_GREEN = 160; // 8 seconds
+const TICKS_YELLOW = 40; // 2 seconds
 const TICKS_DIRECTION_TOTAL = TICKS_GREEN + TICKS_YELLOW;
 const TICKS_TOTAL = TICKS_DIRECTION_TOTAL * 2;
 const STOP_LINE_DIST = 46;
@@ -48,13 +48,13 @@ export interface TrafficDecision {
 
 interface PedestrianAgent {
   state: PedestrianState;
-  direction: 1 | -1;         // walking forward or backward along crosswalk
+  direction: 1 | -1; // walking forward or backward along crosswalk
   crosswalkDirection: 'horizontal' | 'vertical';
-  originX: number;           // center of crosswalk
+  originX: number; // center of crosswalk
   originY: number;
   slotIndex: number;
   respawnTick: number | null;
-  wasHit: boolean;           // whether deactivated by player hit (longer respawn)
+  wasHit: boolean; // whether deactivated by player hit (longer respawn)
 }
 
 export class CityFeatures {
@@ -107,7 +107,9 @@ export class CityFeatures {
     // Stagger offsets so not all lights turn green at the same time
     const tickOffset = Math.floor(rng.next() * TICKS_TOTAL);
     this.trafficLightMap.set(id, {
-      id, x: cx, y: cy,
+      id,
+      x: cx,
+      y: cy,
       isRedNS: false,
       isYellow: false,
       tickOffset,
@@ -155,9 +157,8 @@ export class CityFeatures {
       id,
       x: direction === 'vertical' ? originX + start : originX,
       y: direction === 'horizontal' ? originY + start : originY,
-      angle: direction === 'horizontal'
-        ? (walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2)
-        : (walkDirection > 0 ? 0 : Math.PI),
+      angle:
+        direction === 'horizontal' ? (walkDirection > 0 ? Math.PI / 2 : -Math.PI / 2) : walkDirection > 0 ? 0 : Math.PI,
     };
   }
 
@@ -205,7 +206,8 @@ export class CityFeatures {
         agent.state.angle = agent.direction > 0 ? Math.PI / 2 : -Math.PI / 2;
         const relY = agent.state.y - agent.originY;
         if (Math.abs(relY) > PEDESTRIAN_WALK_HALF_LENGTH) {
-          const walkOffDelay = PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
+          const walkOffDelay =
+            PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
           this.deactivatePedestrian(agent, walkOffDelay, false);
         }
       } else {
@@ -213,7 +215,8 @@ export class CityFeatures {
         agent.state.angle = agent.direction > 0 ? 0 : Math.PI;
         const relX = agent.state.x - agent.originX;
         if (Math.abs(relX) > PEDESTRIAN_WALK_HALF_LENGTH) {
-          const walkOffDelay = PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
+          const walkOffDelay =
+            PEDESTRIAN_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_RESPAWN_JITTER_TICKS);
           this.deactivatePedestrian(agent, walkOffDelay, false);
         }
       }
@@ -251,14 +254,18 @@ export class CityFeatures {
 
   public getTrafficLights(): TrafficLightState[] {
     return Array.from(this.trafficLightMap.values()).map(({ id, x, y, isRedNS, isYellow }) => ({
-      id, x, y, isRedNS, isYellow,
+      id,
+      x,
+      y,
+      isRedNS,
+      isYellow,
     }));
   }
 
   public getPedestrians(): PedestrianState[] {
     return Array.from(this.pedestrianAgents.values())
-      .filter(a => a.respawnTick === null)
-      .map(a => a.state);
+      .filter((a) => a.respawnTick === null)
+      .map((a) => a.state);
   }
 
   public getPedestrianMap(): Map<string, PedestrianState> {
@@ -298,7 +305,7 @@ export class CityFeatures {
    * Returns true if there is a roundabout at the given intersection.
    */
   public isRoundaboutAt(ix: number, iy: number): boolean {
-    return this.roundabouts.some(r => r.id === `roundabout-${ix}-${iy}`);
+    return this.roundabouts.some((r) => r.id === `roundabout-${ix}-${iy}`);
   }
 
   /**
@@ -311,11 +318,7 @@ export class CityFeatures {
     return false;
   }
 
-  public getHitPedestrianId(
-    playerX: number,
-    playerY: number,
-    playerRadius: number = 15,
-  ): string | null {
+  public getHitPedestrianId(playerX: number, playerY: number, playerRadius: number = 15): string | null {
     for (const [id, agent] of this.pedestrianAgents) {
       if (agent.respawnTick !== null) continue;
       const dist = Math.hypot(agent.state.x - playerX, agent.state.y - playerY);
@@ -327,7 +330,8 @@ export class CityFeatures {
   public removePedestrian(id: string): void {
     const agent = this.pedestrianAgents.get(id);
     if (agent) {
-      const hitDelay = PEDESTRIAN_HIT_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS);
+      const hitDelay =
+        PEDESTRIAN_HIT_RESPAWN_MIN_TICKS + Math.floor(Math.random() * PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS);
       this.deactivatePedestrian(agent, hitDelay, true);
     }
   }
@@ -366,12 +370,7 @@ export class CityFeatures {
     return { x: avoidX, y: avoidY, shouldBrake };
   }
 
-  public checkRedLightViolation(
-    playerX: number,
-    playerY: number,
-    prevX: number,
-    prevY: number,
-  ): boolean {
+  public checkRedLightViolation(playerX: number, playerY: number, prevX: number, prevY: number): boolean {
     const DETECT_RADIUS = 120; // How close to intersection we check
 
     for (const light of this.trafficLightMap.values()) {
@@ -426,9 +425,7 @@ export class CityFeatures {
 
       const movingNS = Math.abs(headingY) >= Math.abs(headingX);
       const redForDirection = movingNS ? light.isRedNS : !light.isRedNS;
-      const yellowForDirection = movingNS
-        ? (!light.isRedNS && light.isYellow)
-        : (light.isRedNS && light.isYellow);
+      const yellowForDirection = movingNS ? !light.isRedNS && light.isYellow : light.isRedNS && light.isYellow;
       const shouldStop = redForDirection || yellowForDirection;
       if (!shouldStop) continue;
       if (!this.isBeforeStopLine(playerX, playerY, headingX, headingY, light, movingNS)) continue;

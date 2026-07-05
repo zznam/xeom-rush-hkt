@@ -34,7 +34,7 @@ describe('Spatial Grid Cell Partitioning', () => {
 
     // Initial insert at chunk (4, 4)
     grid.insert('player-1', 2200, 2200);
-    
+
     // Check occupancy
     expect(grid.getChunkOccupancy()['4,4']).toBe(1);
 
@@ -51,7 +51,7 @@ describe('Spatial Grid Cell Partitioning', () => {
 
     // Move very far away to chunk (10, 10)
     grid.update('player-1', 5200, 5200);
-    
+
     const nearbyOldCellFar = grid.getNearbyEntities(2200, 2200);
     expect(nearbyOldCellFar).not.toContain('player-1');
   });

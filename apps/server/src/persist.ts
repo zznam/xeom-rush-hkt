@@ -53,9 +53,11 @@ export async function savePlayerSession(username: string, stats: ISessionStats):
             peakStreak,
             updatedAt: new Date(),
           },
-        }
+        },
       );
-      console.log(`[Persist] Updated career profile for user: ${username} (+${stats.score}đ, +${stats.deliveriesCount} deliveries)`);
+      console.log(
+        `[Persist] Updated career profile for user: ${username} (+${stats.score}đ, +${stats.deliveriesCount} deliveries)`,
+      );
     }
   } catch (error) {
     console.error(`[Persist] Failed to save player session for user: ${username}`, error);
@@ -65,7 +67,10 @@ export async function savePlayerSession(username: string, stats: ISessionStats):
 /**
  * Logs a complete match session log into database history.
  */
-export async function logMatchSession(players: ISessionStats[], startTime: Date = new Date(Date.now() - 60000)): Promise<void> {
+export async function logMatchSession(
+  players: ISessionStats[],
+  startTime: Date = new Date(Date.now() - 60000),
+): Promise<void> {
   try {
     const db = dbManager.getDb();
     const matchesCol = db.collection('matches');
@@ -73,13 +78,13 @@ export async function logMatchSession(players: ISessionStats[], startTime: Date 
     await matchesCol.insertOne({
       startTime,
       endTime: new Date(),
-      players: players.map(p => ({
+      players: players.map((p) => ({
         username: p.username,
         score: p.score,
         deliveriesCount: p.deliveriesCount,
         peakStreak: p.peakStreak,
-        violations: p.violations
-      }))
+        violations: p.violations,
+      })),
     });
     console.log(`[Persist] Logged match session with ${players.length} participants.`);
   } catch (error) {

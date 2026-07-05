@@ -8,7 +8,15 @@
 
 body {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    'Plus Jakarta Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
   background-color: #0f172a;
   color: #f8fafc;
   overflow: hidden;
@@ -47,7 +55,9 @@ body {
   padding: 12px 24px;
   border-radius: 12px;
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
   box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
 }
 
@@ -71,7 +81,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Custom Scrollbars */
@@ -149,7 +161,9 @@ body {
   cursor: pointer;
   z-index: 55;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: background 0.2s, transform 0.1s;
+  transition:
+    background 0.2s,
+    transform 0.1s;
 }
 
 .leaderboard-toggle-btn:active {
@@ -207,4 +221,3 @@ body {
     transform: translateY(0);
   }
 }
-

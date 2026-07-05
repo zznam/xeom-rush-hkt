@@ -80,7 +80,9 @@ class SoundEngine {
   /** Silence the engine hum (e.g., when player disconnects). */
   public stopEngine(): void {
     if (this.engineOsc) {
-      try { this.engineOsc.stop(); } catch (_) {}
+      try {
+        this.engineOsc.stop();
+      } catch (_) {}
       this.engineOsc = null;
     }
     this.engineGain = null;
@@ -90,7 +92,7 @@ class SoundEngine {
   /** Pickup chime — ascending C5 → E5 → G5. */
   public playPickup(): void {
     const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
-    notes.forEach((freq, i) => this.playTone('sine', freq, 0.12, 0.35, i * 0.10));
+    notes.forEach((freq, i) => this.playTone('sine', freq, 0.12, 0.35, i * 0.1));
   }
 
   /** Dropoff fanfare — triumphant arpeggio C5 → E5 → G5 → C6. */

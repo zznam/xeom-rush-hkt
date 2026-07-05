@@ -1,10 +1,16 @@
-import { type PassengerState, type TrafficLightState, type PedestrianState, MAP_SIZE, CHUNK_SIZE } from '@xeom-rush/shared';
+import {
+  type PassengerState,
+  type TrafficLightState,
+  type PedestrianState,
+  MAP_SIZE,
+  CHUNK_SIZE,
+} from '@xeom-rush/shared';
 import { prediction } from './prediction';
 
 const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
 const ROUNDABOUT_CHANCE = 0.12;
-const TRAFFIC_LIGHT_CHANCE = 0.30;
-const CROSSWALK_CHANCE = 0.40;
+const TRAFFIC_LIGHT_CHANCE = 0.3;
+const CROSSWALK_CHANCE = 0.4;
 const ROUNDABOUT_RADIUS = 24;
 
 interface StaticRoundabout {
@@ -50,11 +56,14 @@ export class GameRenderer {
    */
   public draw(
     localPlayer: { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null },
-    otherPlayers: Map<string, { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }>,
+    otherPlayers: Map<
+      string,
+      { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }
+    >,
     passengers: PassengerState[],
     trafficLights: TrafficLightState[],
     pedestrians: PedestrianState[],
-    showDebug: boolean
+    showDebug: boolean,
   ): void {
     const ctx = this.ctx;
     const width = this.canvas.width;
@@ -105,7 +114,15 @@ export class GameRenderer {
     }
 
     // 8. Draw local player
-    this.drawMotorbike(ctx, localPlayer.x, localPlayer.y, localPlayer.angle, localPlayer.username, true, localPlayer.passengerId !== null);
+    this.drawMotorbike(
+      ctx,
+      localPlayer.x,
+      localPlayer.y,
+      localPlayer.angle,
+      localPlayer.username,
+      true,
+      localPlayer.passengerId !== null,
+    );
 
     // 9. Draw spatial chunk grid if debug is enabled
     if (showDebug) {
@@ -256,7 +273,7 @@ export class GameRenderer {
     ctx.fillStyle = 'rgba(248, 250, 252, 0.75)';
     ctx.font = '900 13px Inter, sans-serif';
     for (let i = 0; i < 4; i++) {
-      const angle = i * Math.PI / 2 + Math.PI / 4;
+      const angle = (i * Math.PI) / 2 + Math.PI / 4;
       const ax = roundabout.x + Math.cos(angle) * (roundabout.radius + 27);
       const ay = roundabout.y + Math.sin(angle) * (roundabout.radius + 27);
       ctx.save();
@@ -395,17 +412,17 @@ export class GameRenderer {
     const marketSize = 800;
     const startX = MAP_SIZE / 2 - marketSize / 2;
     const startY = MAP_SIZE / 2 - marketSize / 2;
-    
+
     ctx.save();
     ctx.fillStyle = 'rgba(234, 179, 8, 0.08)'; // Golden yellow market overlay
     ctx.fillRect(startX, startY, marketSize, marketSize);
-    
+
     // Draw market border
     ctx.strokeStyle = 'rgba(234, 179, 8, 0.4)';
     ctx.lineWidth = 4;
     ctx.setLineDash([10, 10]);
     ctx.strokeRect(startX, startY, marketSize, marketSize);
-    
+
     ctx.fillStyle = 'rgba(234, 179, 8, 0.6)';
     ctx.font = '900 24px Outfit, Inter, sans-serif';
     ctx.fillText('🔴 CHỢ BẾN THÀNH - HOTSPOT', startX + 40, startY + 50);
@@ -443,7 +460,11 @@ export class GameRenderer {
     }
   }
 
-  private drawPassengers(ctx: CanvasRenderingContext2D, passengers: PassengerState[], localPassengerId: string | null): void {
+  private drawPassengers(
+    ctx: CanvasRenderingContext2D,
+    passengers: PassengerState[],
+    localPassengerId: string | null,
+  ): void {
     for (const p of passengers) {
       if (p.isCarried) continue;
 
@@ -522,7 +543,7 @@ export class GameRenderer {
     angle: number,
     username: string,
     isLocal: boolean,
-    hasPassenger: boolean
+    hasPassenger: boolean,
   ): void {
     ctx.save();
     ctx.translate(x, y);
@@ -582,7 +603,7 @@ export class GameRenderer {
     ctx.font = isLocal ? 'bold 13px Inter, sans-serif' : '11px Inter, sans-serif';
     ctx.fillStyle = isLocal ? '#60a5fa' : '#f87171';
     ctx.textAlign = 'center';
-    
+
     let tag = username;
     if (hasPassenger) {
       tag += ' 🛵💨'; // Show passenger riding along emoji
@@ -613,7 +634,7 @@ export class GameRenderer {
           ctx.fillStyle = 'rgba(16, 185, 129, 0.05)';
           ctx.fillRect(x, y, CHUNK_SIZE, CHUNK_SIZE);
         }
-        
+
         ctx.strokeRect(x, y, CHUNK_SIZE, CHUNK_SIZE);
 
         // Print chunk key

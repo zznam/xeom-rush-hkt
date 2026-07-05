@@ -25,7 +25,7 @@ export class DbManager {
     try {
       this.client = new MongoClient(uri, {
         serverSelectionTimeoutMS: 2000, // 2s timeout for server selection
-        connectTimeoutMS: 2000,         // 2s timeout for initial connection
+        connectTimeoutMS: 2000, // 2s timeout for initial connection
       });
       await this.client.connect();
 

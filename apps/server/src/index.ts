@@ -95,19 +95,17 @@ app.get('/api/leaderboard', async (req, res) => {
   try {
     const db = dbManager.getDb();
     const playersCol = db.collection('players');
-    const topPlayers = await playersCol
-      .find()
-      .sort({ careerScore: -1 })
-      .limit(10)
-      .toArray();
+    const topPlayers = await playersCol.find().sort({ careerScore: -1 }).limit(10).toArray();
 
-    res.json(topPlayers.map(p => ({
-      username: p.username,
-      careerScore: p.careerScore,
-      peakScore: p.peakScore,
-      peakStreak: p.peakStreak,
-      totalDeliveries: p.totalDeliveries
-    })));
+    res.json(
+      topPlayers.map((p) => ({
+        username: p.username,
+        careerScore: p.careerScore,
+        peakScore: p.peakScore,
+        peakStreak: p.peakStreak,
+        totalDeliveries: p.totalDeliveries,
+      })),
+    );
   } catch (err) {
     console.warn('[API Leaderboard] Returning empty leaderboard (DB not connected or queried error).');
     res.json([]);
@@ -160,7 +158,6 @@ wss.on('connection', (ws: WebSocket) => {
         // Send configuration back to player
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
-
       } else if (msgType === EMessageType.INPUT) {
         if (!joined) return;
         const input = decodeInput(message);
@@ -210,7 +207,8 @@ setInterval(() => {
   for (const [playerId, playerSocket] of activeSockets.entries()) {
     if (playerSocket.ws.readyState === WebSocket.OPEN) {
       // Retrieve entities in player's 3x3 surrounding chunks
-      const { players, passengers, trafficLights, pedestrians, rushHour, streaks } = world.getVisibleSnapshotForPlayer(playerId);
+      const { players, passengers, trafficLights, pedestrians, rushHour, streaks } =
+        world.getVisibleSnapshotForPlayer(playerId);
       const snapshot: WorldSnapshot = {
         tick: world.getTick(),
         players,
@@ -225,9 +223,18 @@ setInterval(() => {
         !playerSocket.lastSnapshot ||
         world.getTick() - playerSocket.lastFullSnapshotTick >= FULL_SNAPSHOT_INTERVAL_TICKS;
 
-      const snapshotBuffer = shouldSendFull || !playerSocket.lastSnapshot
-        ? encodeSnapshot(snapshot.tick, snapshot.players, snapshot.passengers, snapshot.trafficLights, snapshot.pedestrians, snapshot.rushHour, snapshot.streaks)
-        : encodeDeltaSnapshot(playerSocket.lastSnapshot, snapshot);
+      const snapshotBuffer =
+        shouldSendFull || !playerSocket.lastSnapshot
+          ? encodeSnapshot(
+              snapshot.tick,
+              snapshot.players,
+              snapshot.passengers,
+              snapshot.trafficLights,
+              snapshot.pedestrians,
+              snapshot.rushHour,
+              snapshot.streaks,
+            )
+          : encodeDeltaSnapshot(playerSocket.lastSnapshot, snapshot);
 
       playerSocket.ws.send(snapshotBuffer);
       playerSocket.lastSnapshot = snapshot;
@@ -250,7 +257,8 @@ const startServer = () => {
   });
 };
 
-dbManager.connect(MONGODB_URI)
+dbManager
+  .connect(MONGODB_URI)
   .then(() => {
     startServer();
   })

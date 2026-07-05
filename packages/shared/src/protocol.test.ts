@@ -11,7 +11,13 @@ import {
   encodeDeltaSnapshot,
   decodeDeltaSnapshot,
 } from './protocol';
-import { EPassengerTier, type PlayerState, type PassengerState, type PedestrianState, type TrafficLightState } from './types';
+import {
+  EPassengerTier,
+  type PlayerState,
+  type PassengerState,
+  type PedestrianState,
+  type TrafficLightState,
+} from './types';
 
 const makeBasePassenger = (overrides: Partial<PassengerState> = {}): PassengerState => ({
   id: 'pass-1',
@@ -229,13 +235,13 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
         connected: true,
       },
     ];
-    const baselinePassengers = [
-      makeBasePassenger({ id: 'pass-1', x: 900, y: 900, reward: 8000 }),
-    ];
-    const baseline = decodeSnapshot(encodeSnapshot(10, baselinePlayers, baselinePassengers, [], [], false, {
-      'player-1': 2,
-      'player-2': 1,
-    }));
+    const baselinePassengers = [makeBasePassenger({ id: 'pass-1', x: 900, y: 900, reward: 8000 })];
+    const baseline = decodeSnapshot(
+      encodeSnapshot(10, baselinePlayers, baselinePassengers, [], [], false, {
+        'player-1': 2,
+        'player-2': 1,
+      }),
+    );
 
     const nextPlayers: PlayerState[] = [
       {
@@ -250,13 +256,23 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
       baselinePlayers[1],
     ];
     const nextPassengers = [
-      makeBasePassenger({ id: 'pass-2', x: 1020, y: 1010, reward: 12000, isCarried: true, tier: EPassengerTier.BUSINESS, deadline: 80 }),
+      makeBasePassenger({
+        id: 'pass-2',
+        x: 1020,
+        y: 1010,
+        reward: 12000,
+        isCarried: true,
+        tier: EPassengerTier.BUSINESS,
+        deadline: 80,
+      }),
       makeBasePassenger({ id: 'pass-3', x: 1700, y: 1600, reward: 6000 }),
     ];
-    const next = decodeSnapshot(encodeSnapshot(11, nextPlayers, nextPassengers, [], [], true, {
-      'player-1': 3,
-      'player-2': 1,
-    }));
+    const next = decodeSnapshot(
+      encodeSnapshot(11, nextPlayers, nextPassengers, [], [], true, {
+        'player-1': 3,
+        'player-2': 1,
+      }),
+    );
 
     const deltaBuffer = encodeDeltaSnapshot(baseline, next);
     const decoded = decodeDeltaSnapshot(deltaBuffer, baseline);
@@ -265,63 +281,64 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
   });
 
   it('removes entities and stale streaks when applying a delta snapshot', () => {
-    const baseline = decodeSnapshot(encodeSnapshot(
-      20,
-      [
-        {
-          id: 'player-1',
-          username: 'Visible Driver',
-          x: 1000,
-          y: 1000,
-          angle: 0,
-          score: 1000,
-          lastProcessedSeq: 7,
-          passengerId: null,
-          connected: true,
-        },
-        {
-          id: 'player-gone',
-          username: 'Left Chunk',
-          x: 2000,
-          y: 2000,
-          angle: 0,
-          score: 0,
-          lastProcessedSeq: 0,
-          passengerId: null,
-          connected: true,
-        },
-      ],
-      [
-        makeBasePassenger({ id: 'pass-gone' }),
-        makeBasePassenger({ id: 'pass-kept', x: 1300 }),
-      ],
-      [{ id: 'tl-gone', x: 100, y: 200, isRedNS: true, isYellow: false }],
-      [{ id: 'ped-gone', x: 300, y: 400, angle: 1 }],
-      true,
-      { 'player-1': 4, 'player-gone': 2 }
-    ));
+    const baseline = decodeSnapshot(
+      encodeSnapshot(
+        20,
+        [
+          {
+            id: 'player-1',
+            username: 'Visible Driver',
+            x: 1000,
+            y: 1000,
+            angle: 0,
+            score: 1000,
+            lastProcessedSeq: 7,
+            passengerId: null,
+            connected: true,
+          },
+          {
+            id: 'player-gone',
+            username: 'Left Chunk',
+            x: 2000,
+            y: 2000,
+            angle: 0,
+            score: 0,
+            lastProcessedSeq: 0,
+            passengerId: null,
+            connected: true,
+          },
+        ],
+        [makeBasePassenger({ id: 'pass-gone' }), makeBasePassenger({ id: 'pass-kept', x: 1300 })],
+        [{ id: 'tl-gone', x: 100, y: 200, isRedNS: true, isYellow: false }],
+        [{ id: 'ped-gone', x: 300, y: 400, angle: 1 }],
+        true,
+        { 'player-1': 4, 'player-gone': 2 },
+      ),
+    );
 
-    const next = decodeSnapshot(encodeSnapshot(
-      21,
-      [
-        {
-          id: 'player-1',
-          username: 'Visible Driver',
-          x: 1000,
-          y: 1000,
-          angle: 0,
-          score: 1000,
-          lastProcessedSeq: 7,
-          passengerId: null,
-          connected: true,
-        },
-      ],
-      [makeBasePassenger({ id: 'pass-kept', x: 1300 })],
-      [],
-      [],
-      false,
-      { 'player-1': 4 }
-    ));
+    const next = decodeSnapshot(
+      encodeSnapshot(
+        21,
+        [
+          {
+            id: 'player-1',
+            username: 'Visible Driver',
+            x: 1000,
+            y: 1000,
+            angle: 0,
+            score: 1000,
+            lastProcessedSeq: 7,
+            passengerId: null,
+            connected: true,
+          },
+        ],
+        [makeBasePassenger({ id: 'pass-kept', x: 1300 })],
+        [],
+        [],
+        false,
+        { 'player-1': 4 },
+      ),
+    );
 
     const decoded = decodeDeltaSnapshot(encodeDeltaSnapshot(baseline, next), baseline);
 
@@ -334,30 +351,40 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
   });
 
   it('encodes unchanged delta snapshots smaller than full snapshots', () => {
-    const snapshot = decodeSnapshot(encodeSnapshot(
-      30,
-      [
-        {
-          id: 'player-1',
-          username: 'Unchanged',
-          x: 1000,
-          y: 1000,
-          angle: 0,
-          score: 1000,
-          lastProcessedSeq: 7,
-          passengerId: null,
-          connected: true,
-        },
-      ],
-      [makeBasePassenger({ id: 'pass-1' })],
-      [{ id: 'tl-1', x: 100, y: 200, isRedNS: true, isYellow: false }],
-      [{ id: 'ped-1', x: 300, y: 400, angle: 1 }],
-      true,
-      { 'player-1': 4 }
-    ));
+    const snapshot = decodeSnapshot(
+      encodeSnapshot(
+        30,
+        [
+          {
+            id: 'player-1',
+            username: 'Unchanged',
+            x: 1000,
+            y: 1000,
+            angle: 0,
+            score: 1000,
+            lastProcessedSeq: 7,
+            passengerId: null,
+            connected: true,
+          },
+        ],
+        [makeBasePassenger({ id: 'pass-1' })],
+        [{ id: 'tl-1', x: 100, y: 200, isRedNS: true, isYellow: false }],
+        [{ id: 'ped-1', x: 300, y: 400, angle: 1 }],
+        true,
+        { 'player-1': 4 },
+      ),
+    );
     const next = { ...snapshot, tick: 31 };
 
-    const fullBuffer = encodeSnapshot(next.tick, next.players, next.passengers, next.trafficLights, next.pedestrians, next.rushHour, next.streaks);
+    const fullBuffer = encodeSnapshot(
+      next.tick,
+      next.players,
+      next.passengers,
+      next.trafficLights,
+      next.pedestrians,
+      next.rushHour,
+      next.streaks,
+    );
     const deltaBuffer = encodeDeltaSnapshot(snapshot, next);
 
     expect(deltaBuffer.byteLength).toBeLessThan(fullBuffer.byteLength);

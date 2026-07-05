@@ -55,7 +55,8 @@ export class GameWorld {
   // Session tracking maps for DB persistence
   private sessionPeakStreaks: Map<string, number> = new Map();
   private sessionDeliveries: Map<string, number> = new Map();
-  private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> = new Map();
+  private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> =
+    new Map();
 
   constructor() {
     this.spatialGrid = new SpatialGrid();
@@ -124,10 +125,9 @@ export class GameWorld {
       score: player.score,
       peakStreak: this.sessionPeakStreaks.get(playerId) ?? 0,
       deliveriesCount: this.sessionDeliveries.get(playerId) ?? 0,
-      violations: this.sessionViolations.get(playerId) ?? { redLights: 0, pedestrianHits: 0, driverCollisions: 0 }
+      violations: this.sessionViolations.get(playerId) ?? { redLights: 0, pedestrianHits: 0, driverCollisions: 0 },
     };
   }
-
 
   public queueInput(playerId: string, input: InputPayload): void {
     const queue = this.inputQueues.get(playerId);
@@ -239,12 +239,7 @@ export class GameWorld {
         const deltaX = ndx * MOTORBIKE_SPEED * throttle * dt;
         const deltaY = ndy * MOTORBIKE_SPEED * throttle * dt;
 
-        const resolved = this.physics.resolveMove(
-          player.x,
-          player.y,
-          player.x + deltaX,
-          player.y + deltaY
-        );
+        const resolved = this.physics.resolveMove(player.x, player.y, player.x + deltaX, player.y + deltaY);
 
         player.x = resolved.x;
         player.y = resolved.y;
