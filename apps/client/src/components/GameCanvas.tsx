@@ -230,10 +230,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           localStateFromServer.lastProcessedSeq,
         );
 
+        const currX = localPlayerStateRef.current?.x ?? reconciled.x;
+        const currY = localPlayerStateRef.current?.y ?? reconciled.y;
+        const currAngle = localPlayerStateRef.current?.angle ?? localStateFromServer.angle;
+
+        const errX = reconciled.x - currX;
+        const errY = reconciled.y - currY;
+        const errDist = Math.hypot(errX, errY);
+
+        let newX = currX;
+        let newY = currY;
+        if (errDist > 60) {
+          // Large desync or collision stun/teleport: snap immediately
+          newX = reconciled.x;
+          newY = reconciled.y;
+        } else if (errDist > 0.5) {
+          // Smooth blend towards reconciled position to eliminate micro-jitter
+          newX = currX + errX * 0.35;
+          newY = currY + errY * 0.35;
+        }
+
         const updatedLocalState: PlayerState = {
           ...localStateFromServer,
-          x: reconciled.x,
-          y: reconciled.y,
+          x: newX,
+          y: newY,
+          angle: currAngle,
         };
 
         if (

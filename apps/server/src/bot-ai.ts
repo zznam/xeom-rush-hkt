@@ -4,6 +4,7 @@ import {
   type PlayerState,
   MAP_SIZE,
   rotateTowardAngle,
+  shortestAngleDelta,
 } from '@xeom-rush/shared';
 import type { PhysicsEngine } from './physics';
 import type { GameWorld } from './world';
@@ -17,7 +18,7 @@ const STUCK_DISPLACEMENT_THRESHOLD = 15;
 /** Distance at which bots switch from waypoint following to direct-to-target steering */
 const DIRECT_APPROACH_RADIUS = 60;
 /** Maximum bot steering turn per server tick. */
-const BOT_MAX_TURN_PER_TICK = 0.16;
+const BOT_MAX_TURN_PER_TICK = 0.35;
 
 enum EBotState {
   SEEKING_PASSENGER,
@@ -70,6 +71,8 @@ interface BotAgent {
   positionHistoryIndex: number;
   /** Perpendicular escape sign flips each stuck recovery attempt */
   escapeFlip: 1 | -1;
+  /** Whether the bot is intentionally stopped at a red light or pedestrian crosswalk */
+  isWaitingTraffic: boolean;
 }
 
 export class BotManager {
@@ -177,6 +180,7 @@ export class BotManager {
         positionHistory: Array.from({ length: DISPLACEMENT_WINDOW }, () => ({ ...initialPos })),
         positionHistoryIndex: 0,
         escapeFlip: 1,
+        isWaitingTraffic: false,
       };
       this.bots.set(playerId, botObj);
 
@@ -211,13 +215,13 @@ export class BotManager {
         continue;
       }
 
-      // Sliding-window displacement-based stuck detection
+      // Sliding-window displacement-based stuck detection (ignore if intentionally waiting for traffic)
       bot.positionHistory[bot.positionHistoryIndex] = { x: player.x, y: player.y };
       bot.positionHistoryIndex = (bot.positionHistoryIndex + 1) % DISPLACEMENT_WINDOW;
       const oldestPos = bot.positionHistory[bot.positionHistoryIndex];
       const netDisplacement = Math.hypot(player.x - oldestPos.x, player.y - oldestPos.y);
 
-      if (netDisplacement < STUCK_DISPLACEMENT_THRESHOLD) {
+      if (netDisplacement < STUCK_DISPLACEMENT_THRESHOLD && !bot.isWaitingTraffic) {
         bot.stuckTicks++;
       } else {
         bot.stuckTicks = 0;
@@ -466,16 +470,19 @@ export class BotManager {
       };
     }
 
-    // 2. Direct-to-target approach: if we have a target and are close, skip waypoints
+    // 2. Direct-to-target approach: if we have a target and are close, steer directly without clearing path
     const finalTarget = this.getTargetPosition(bot);
     if (finalTarget) {
       const distToTarget = Math.hypot(finalTarget.x - player.x, finalTarget.y - player.y);
       if (distToTarget < DIRECT_APPROACH_RADIUS && !this.physics.isInsideBuilding(finalTarget.x, finalTarget.y)) {
-        // Steer directly to the actual target, bypassing remaining waypoints
+        // Steer directly to the actual target
         const directAngle = Math.atan2(finalTarget.y - player.y, finalTarget.x - player.x);
         bot.currentAngle = rotateTowardAngle(bot.currentAngle, directAngle, BOT_MAX_TURN_PER_TICK);
-        bot.path = [];
-        bot.pathIndex = 0;
+        if (distToTarget < 20) {
+          bot.path = [];
+          bot.pathIndex = 0;
+        }
+        bot.isWaitingTraffic = false;
         return {
           seq: bot.inputSeq,
           dx: Math.cos(bot.currentAngle),
@@ -567,6 +574,7 @@ export class BotManager {
 
     const pedestrianAvoidance = city.getPedestrianAvoidance(player.x, player.y, headingX, headingY);
     if (pedestrianAvoidance.shouldBrake && bot.personality.aggression < 0.72) {
+      bot.isWaitingTraffic = true;
       return {
         seq: bot.inputSeq,
         dx: 0,
@@ -583,8 +591,10 @@ export class BotManager {
     }
 
     const finalAngle = Math.atan2(moveY, moveX);
-
+    const turnDelta = Math.abs(shortestAngleDelta(bot.currentAngle, finalAngle));
     bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, BOT_MAX_TURN_PER_TICK);
+    // Smooth speed reduction when turning sharply (e.g. 90-degree corners)
+    const turnThrottle = turnDelta > 0.8 ? 0.65 : 1.0;
 
     const trafficDecision = city.getTrafficDecisionAhead(
       player.x,
@@ -595,6 +605,7 @@ export class BotManager {
     if (trafficDecision?.shouldStop) {
       const obeying = this.shouldBotObeyTrafficLight(bot, player);
       if (obeying) {
+        bot.isWaitingTraffic = true;
         if (bot.inputSeq % 20 === 0) {
           this.logEvent(bot.playerId, 'TRAFFIC', `Obeying traffic light: STOP.`);
         }
@@ -606,16 +617,19 @@ export class BotManager {
           angle: bot.currentAngle,
         };
       } else {
+        bot.isWaitingTraffic = false;
         if (bot.inputSeq % 20 === 0) {
           this.logEvent(bot.playerId, 'TRAFFIC', `Decided to RUN the red light!`);
         }
       }
     }
 
+    bot.isWaitingTraffic = false;
+
     return {
       seq: bot.inputSeq,
-      dx: Math.cos(bot.currentAngle),
-      dy: Math.sin(bot.currentAngle),
+      dx: Math.cos(bot.currentAngle) * turnThrottle,
+      dy: Math.sin(bot.currentAngle) * turnThrottle,
       angle: bot.currentAngle,
     };
   }

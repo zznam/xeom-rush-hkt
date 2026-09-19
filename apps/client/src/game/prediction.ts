@@ -15,8 +15,30 @@ export interface PendingInput {
   dt: number;
 }
 
+class SeededRng {
+  private s: number;
+  constructor(seed: number) {
+    this.s = seed;
+  }
+  public next(): number {
+    this.s = (this.s * 1664525 + 1013904223) % 4294967296;
+    return this.s / 4294967296;
+  }
+}
+
+const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
+const ROUNDABOUT_CHANCE = 0.25;
+const ROUNDABOUT_RADIUS = 34;
+
+export interface CircleObstacle {
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export class ClientPrediction {
   private buildings: Rectangle[] = [];
+  private circles: CircleObstacle[] = [];
   private pendingInputs: PendingInput[] = [];
 
   constructor() {
@@ -39,6 +61,22 @@ export class ClientPrediction {
           width: blockSize,
           height: blockSize,
         });
+      }
+    }
+
+    const rng = new SeededRng(42);
+    for (let xi = 0; xi < STREET_LINES.length; xi++) {
+      for (let yi = 0; yi < STREET_LINES.length; yi++) {
+        const cx = STREET_LINES[xi];
+        const cy = STREET_LINES[yi];
+        const inCenter = Math.abs(cx - MAP_SIZE / 2) < 400 && Math.abs(cy - MAP_SIZE / 2) < 400;
+        const nearEdge = cx < 150 || cy < 150 || cx > MAP_SIZE - 150 || cy > MAP_SIZE - 150;
+        if (inCenter || nearEdge) continue;
+
+        const roll = rng.next();
+        if (roll < ROUNDABOUT_CHANCE) {
+          this.circles.push({ x: cx, y: cy, radius: ROUNDABOUT_RADIUS });
+        }
       }
     }
   }
@@ -77,6 +115,22 @@ export class ClientPrediction {
         } else {
           return { x: oldX, y: oldY };
         }
+      }
+    }
+
+    for (const circle of this.circles) {
+      const dx = x - circle.x;
+      const dy = y - circle.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = radius + circle.radius;
+      if (dist < minDist) {
+        const fallbackDx = oldX - circle.x;
+        const fallbackDy = oldY - circle.y;
+        const fallbackDist = Math.hypot(fallbackDx, fallbackDy) || 1;
+        const nx = dist > 0 ? dx / dist : fallbackDx / fallbackDist;
+        const ny = dist > 0 ? dy / dist : fallbackDy / fallbackDist;
+        x = circle.x + nx * minDist;
+        y = circle.y + ny * minDist;
       }
     }
 

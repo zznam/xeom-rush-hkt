@@ -229,37 +229,36 @@ export class GameWorld {
       const prevX = player.x;
       const prevY = player.y;
 
-      let moveDx = 0;
-      let moveDy = 0;
+      const moveDx = 0;
+      const moveDy = 0;
       let lastAngle = player.angle;
       let lastSeq = player.lastProcessedSeq;
-
-      // Drain input queue, applying them in order
-      while (inputs.length > 0) {
-        const input = inputs.shift()!;
-        moveDx = input.dx;
-        moveDy = input.dy;
-        lastAngle = input.angle;
-        lastSeq = input.seq;
-      }
 
       const stunnedUntilTick = this.stunnedUntilTicks.get(playerId) ?? 0;
       const isStunned = this.tickCount < stunnedUntilTick;
 
-      // Calculate new position
-      if (!isStunned && (moveDx !== 0 || moveDy !== 0)) {
-        const mag = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
-        const throttle = Math.min(1, mag);
-        const ndx = moveDx / mag;
-        const ndy = moveDy / mag;
+      // Drain input queue, applying each input across proportional time slices
+      if (inputs.length > 0) {
+        const stepDt = dt / inputs.length;
+        while (inputs.length > 0) {
+          const input = inputs.shift()!;
+          lastAngle = input.angle;
+          lastSeq = input.seq;
 
-        const deltaX = ndx * MOTORBIKE_SPEED * throttle * dt;
-        const deltaY = ndy * MOTORBIKE_SPEED * throttle * dt;
+          if (!isStunned && (input.dx !== 0 || input.dy !== 0)) {
+            const mag = Math.hypot(input.dx, input.dy);
+            const throttle = Math.min(1, mag);
+            const ndx = input.dx / mag;
+            const ndy = input.dy / mag;
 
-        const resolved = this.physics.resolveMove(player.x, player.y, player.x + deltaX, player.y + deltaY);
+            const deltaX = ndx * MOTORBIKE_SPEED * throttle * stepDt;
+            const deltaY = ndy * MOTORBIKE_SPEED * throttle * stepDt;
 
-        player.x = resolved.x;
-        player.y = resolved.y;
+            const resolved = this.physics.resolveMove(player.x, player.y, player.x + deltaX, player.y + deltaY);
+            player.x = resolved.x;
+            player.y = resolved.y;
+          }
+        }
       }
 
       if (!isStunned) {
@@ -491,8 +490,8 @@ export class GameWorld {
     const visiblePassengers: PassengerState[] = [];
     const passMap = this.passengers.getPassengerMap();
 
-    // Make sure the player sees themselves
-    visiblePlayers.push(player);
+    // Make sure the player sees themselves (clone to prevent in-place mutation breaking delta encoding)
+    visiblePlayers.push({ ...player });
 
     for (const entityId of nearbyEntityIds) {
       if (entityId === targetPlayerId) continue;
@@ -500,12 +499,12 @@ export class GameWorld {
       if (entityId.startsWith('pass-')) {
         const passenger = passMap.get(entityId);
         if (passenger && !passenger.isCarried) {
-          visiblePassengers.push(passenger);
+          visiblePassengers.push({ ...passenger });
         }
       } else {
         const otherPlayer = this.players.get(entityId);
         if (otherPlayer) {
-          visiblePlayers.push(otherPlayer);
+          visiblePlayers.push({ ...otherPlayer });
         }
       }
     }
@@ -514,7 +513,7 @@ export class GameWorld {
     if (player.passengerId) {
       const carried = passMap.get(player.passengerId);
       if (carried) {
-        visiblePassengers.push(carried);
+        visiblePassengers.push({ ...carried });
       }
     }
 
@@ -522,7 +521,9 @@ export class GameWorld {
       players: visiblePlayers,
       passengers: visiblePassengers,
       trafficLights: this.cityFeatures.getVisibleTrafficLights(player.x, player.y, CITY_VISIBILITY_RADIUS),
-      pedestrians: this.cityFeatures.getVisiblePedestrians(player.x, player.y, CITY_VISIBILITY_RADIUS),
+      pedestrians: this.cityFeatures
+        .getVisiblePedestrians(player.x, player.y, CITY_VISIBILITY_RADIUS)
+        .map((p) => ({ ...p })),
       rushHour: this.isRushHour(),
       streaks: this.getAllStreaks(),
     };

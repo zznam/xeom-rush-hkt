@@ -10,8 +10,8 @@ export class EntityInterpolation {
   private buffer: EntitySnapshot[] = [];
   // Buffer size limit
   private maxBufferSize: number = 20;
-  // Delay interpolation by 100ms (2 ticks of server updates) to ensure smooth interpolation buffer
-  private renderDelayMs: number = 100;
+  // Delay interpolation by 60ms (~1.2 ticks) for real-time responsiveness without stutter
+  private renderDelayMs: number = 60;
 
   public addSnapshot(players: PlayerState[]): void {
     const playerMap = new Map<string, PlayerState>();
@@ -20,7 +20,7 @@ export class EntityInterpolation {
     }
 
     this.buffer.push({
-      timestamp: Date.now(),
+      timestamp: performance.now(),
       players: playerMap,
     });
 
@@ -40,24 +40,47 @@ export class EntityInterpolation {
       string,
       { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }
     >();
-    const renderTime = Date.now() - this.renderDelayMs;
+
+    if (this.buffer.length === 0) return interpolated;
+
+    // Prune stale snapshots older than render window
+    const now = performance.now();
+    const renderTime = now - this.renderDelayMs;
+
+    while (this.buffer.length > 2 && this.buffer[1].timestamp < renderTime - 100) {
+      this.buffer.shift();
+    }
 
     // We need at least two snapshots to interpolate between
     if (this.buffer.length < 2) {
-      // If we don't have enough snapshots, just return the latest snapshot state directly
-      if (this.buffer.length === 1) {
-        const latest = this.buffer[0];
-        for (const [id, p] of latest.players.entries()) {
-          if (id === localPlayerId) continue;
-          interpolated.set(id, {
-            x: p.x,
-            y: p.y,
-            angle: p.angle,
-            username: p.username,
-            score: p.score,
-            passengerId: p.passengerId,
-          });
-        }
+      const latest = this.buffer[this.buffer.length - 1];
+      for (const [id, p] of latest.players.entries()) {
+        if (id === localPlayerId) continue;
+        interpolated.set(id, {
+          x: p.x,
+          y: p.y,
+          angle: p.angle,
+          username: p.username,
+          score: p.score,
+          passengerId: p.passengerId,
+        });
+      }
+      return interpolated;
+    }
+
+    const latestSnap = this.buffer[this.buffer.length - 1];
+    // If tab was paused or network lagged heavily (> 300ms gap), snap to latest to avoid stale extrapolation
+    if (renderTime > latestSnap.timestamp + 300) {
+      for (const [id, p] of latestSnap.players.entries()) {
+        if (id === localPlayerId) continue;
+        interpolated.set(id, {
+          x: p.x,
+          y: p.y,
+          angle: p.angle,
+          username: p.username,
+          score: p.score,
+          passengerId: p.passengerId,
+        });
       }
       return interpolated;
     }
@@ -83,7 +106,7 @@ export class EntityInterpolation {
         older = this.buffer[0];
         newer = this.buffer[1];
       } else {
-        // If renderTime is newer than our newest, extrapolate or just return latest
+        // If renderTime is newer than our newest, extrapolate smoothly
         older = this.buffer[this.buffer.length - 2];
         newer = this.buffer[this.buffer.length - 1];
       }
@@ -93,8 +116,8 @@ export class EntityInterpolation {
 
     const total = newer.timestamp - older.timestamp;
     const ratio = total > 0 ? (renderTime - older.timestamp) / total : 0;
-    // Clamp ratio between 0 and 1
-    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    // Allow extrapolation up to 1.3 to prevent freezing during minor packet arrival jitter
+    const clampedRatio = Math.max(0, Math.min(1.3, ratio));
 
     // Interpolate players in newer snapshot
     for (const [id, newerPlayer] of newer.players.entries()) {
@@ -102,9 +125,14 @@ export class EntityInterpolation {
 
       const olderPlayer = older.players.get(id);
       if (olderPlayer) {
-        // Lerp positions
-        const x = olderPlayer.x + (newerPlayer.x - olderPlayer.x) * clampedRatio;
-        const y = olderPlayer.y + (newerPlayer.y - olderPlayer.y) * clampedRatio;
+        const dist = Math.hypot(newerPlayer.x - olderPlayer.x, newerPlayer.y - olderPlayer.y);
+        // If entity jumped an impossible distance (> 200 units in 50ms), snap instead of lerping
+        let x = newerPlayer.x;
+        let y = newerPlayer.y;
+        if (dist <= 200) {
+          x = olderPlayer.x + (newerPlayer.x - olderPlayer.x) * clampedRatio;
+          y = olderPlayer.y + (newerPlayer.y - olderPlayer.y) * clampedRatio;
+        }
 
         // Angle interpolation (handle wrapping correctly)
         let diff = newerPlayer.angle - olderPlayer.angle;
