@@ -1,259 +1,158 @@
-import React, { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
+import { readStored, writeStored } from './game/preferences';
+import './App.css';
 
-const defaultServerUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3002';
+const defaultServerUrl =
+  import.meta.env.VITE_WS_URL || (import.meta.env.DEV ? 'ws://localhost:3002' : 'wss://xeom-rush.zznam.deno.net');
 
-export const App: React.FC = () => {
-  const [username, setUsername] = useState('');
+export default function App() {
+  const [username, setUsername] = useState(() => readStored('name'));
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-
   const [serverUrl, setServerUrl] = useState(defaultServerUrl);
-
-  const handleStartGame = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (username.trim()) {
-      setConnectionError(null);
-
-      // Basic validation to prevent mixed content errors
-      if (window.location.protocol === 'https:' && serverUrl.startsWith('ws://')) {
-        if (!serverUrl.includes('localhost')) {
-          setConnectionError('Trang web đang dùng HTTPS, vui lòng dùng wss:// thay vì ws:// cho địa chỉ server.');
-          return;
-        }
-      }
-
-      setIsPlaying(true);
-    }
-  };
-
-  const handleDisconnect = (reason?: string) => {
+  const handleDisconnect = useCallback((reason?: string) => {
     setIsPlaying(false);
-    if (reason) {
-      setConnectionError(reason);
-    } else {
-      setConnectionError('Đã mất kết nối đến server.');
-    }
-  };
+    setConnectionError(reason || null);
+  }, []);
 
-  if (isPlaying) {
+  if (isPlaying)
     return <GameCanvas username={username.trim()} serverUrl={serverUrl.trim()} onDisconnect={handleDisconnect} />;
-  }
 
   return (
-    <div className='login-screen'>
-      <div className='glass-panel login-card'>
-        <div className='brand-logo'>
-          <span className='logo-emoji'>🛵</span>
-          <h1 className='logo-title font-extrabold gradient-text'>XE ÔM RUSH</h1>
-          <p className='logo-subtitle'>Real-time Autoritative Alley io Game</p>
-        </div>
-
-        {connectionError && (
-          <div
-            className='error-message'
-            style={{
-              color: '#ef4444',
-              background: 'rgba(239, 68, 68, 0.1)',
-              padding: '12px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              textAlign: 'center',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
+    <main className='lobby'>
+      <header className='lobby-nav'>
+        <a className='wordmark' href='/' aria-label='Xe Ôm Rush home'>
+          <span>🛵</span> XE ÔM RUSH<span className='edition'>CITY CLUB</span>
+        </a>
+        <a className='how-link' href='#how-to-play'>
+          Cách chơi <span>↗</span>
+        </a>
+      </header>
+      <section className='hero'>
+        <img
+          className='hero-art'
+          src='/art/saigon-rush-hero.png'
+          alt='Tài xế và hành khách vui vẻ trên chiếc xe máy giữa phố Sài Gòn đầy màu sắc'
+        />
+        <div className='hero-wash' />
+        <div className='hero-copy'>
+          <span className='eyebrow'>
+            <i /> MỘT VÒNG SÀI GÒN, NGÀN NIỀM VUI
+          </span>
+          <h1>
+            Phố nhỏ.
+            <br />
+            Chuyến xe <em>lớn!</em>
+          </h1>
+          <p>
+            Đón khách, luồn hẻm, gom tiền thưởng.
+            <br />
+            Cả thành phố đang chờ tay lái của bạn.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!username.trim()) return;
+              try {
+                const url = new URL(serverUrl.trim());
+                if (
+                  !['ws:', 'wss:'].includes(url.protocol) ||
+                  (location.protocol === 'https:' && url.protocol !== 'wss:')
+                )
+                  throw new Error();
+              } catch {
+                setConnectionError('Địa chỉ kết nối chưa hợp lệ. Vui lòng dùng WSS trên trang HTTPS.');
+                return;
+              }
+              writeStored('name', username.trim());
+              setConnectionError(null);
+              setIsPlaying(true);
             }}
           >
-            ⚠️ {connectionError}
+            <label htmlFor='username'>BIỆT DANH TÀI XẾ</label>
+            <div className='join-row'>
+              <input
+                id='username'
+                required
+                maxLength={15}
+                autoComplete='nickname'
+                placeholder='Bạn tên gì nè?'
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+              />
+              <button type='submit' className='join-button'>
+                LÊN XE <span>↗</span>
+              </button>
+            </div>
+            {connectionError && (
+              <p className='connection-error' role='alert'>
+                {connectionError}
+              </p>
+            )}
+            {import.meta.env.DEV && (
+              <details className='server-settings'>
+                <summary>Kết nối phát triển</summary>
+                <label htmlFor='serverUrl'>Địa chỉ server</label>
+                <input id='serverUrl' value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+              </details>
+            )}
+          </form>
+          <div className='play-notes'>
+            <span>✦ Chơi miễn phí</span>
+            <span>✦ Không cần tải</span>
+            <span>✦ Máy tính & điện thoại</span>
           </div>
-        )}
-
-        <form onSubmit={handleStartGame} className='login-form'>
-          <div className='form-group'>
-            <label className='form-label' htmlFor='username'>
-              TÊN TÀI XẾ (USERNAME)
-            </label>
-            <input
-              id='username'
-              type='text'
-              required
-              maxLength={15}
-              placeholder='Nhập tên tài xế ví dụ: AnhXeOm...'
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className='form-input'
-            />
-          </div>
-
-          <div className='form-group' style={{ marginTop: 12 }}>
-            <label className='form-label' htmlFor='serverUrl'>
-              ĐỊA CHỈ SERVER (WEBSOCKET)
-            </label>
-            <input
-              id='serverUrl'
-              type='text'
-              required
-              placeholder={defaultServerUrl}
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              className='form-input'
-            />
-          </div>
-
-          <button type='submit' className='btn-primary login-btn'>
-            🛵 LÊN XE & ĐUA NGAY!
-          </button>
-        </form>
-
-        <div className='rules-section'>
-          <h4>💡 HƯỚNG DẪN TRÒ CHƠI</h4>
-          <ul>
-            <li>
-              Lái xe ôm đón khách (chấm tròn xanh 🟢) trên đường hoặc tại <strong>Chợ Bến Thành</strong>.
-            </li>
-            <li>Theo dõi vạch chỉ dẫn màu đỏ để đưa khách đến đích (chấm đỏ 🔴).</li>
-            <li>
-              Nhận tiền thưởng <strong>VNĐ</strong> để thăng cấp trên bảng xếp hạng tài xế!
-            </li>
-          </ul>
         </div>
-      </div>
-
-      <style>{`
-        .login-screen {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100vw;
-          height: 100vh;
-          background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
-          padding: 20px;
-        }
-
-        .login-card {
-          width: 100%;
-          max-width: 440px;
-          padding: 32px;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        .brand-logo {
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .logo-emoji {
-          font-size: 48px;
-          animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
-        }
-
-        .logo-title {
-          font-family: 'Outfit', sans-serif;
-          font-size: 32px;
-          letter-spacing: -0.02em;
-        }
-
-        .logo-subtitle {
-          font-size: 12px;
-          font-weight: 700;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .form-label {
-          font-size: 10px;
-          font-weight: 800;
-          color: #94a3b8;
-          letter-spacing: 0.05em;
-        }
-
-        .form-input {
-          background: rgba(15, 23, 42, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-          padding: 12px 16px;
-          font-size: 14px;
-          font-family: inherit;
-          color: white;
-          outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .form-input:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
-        }
-
-        .login-btn {
-          width: 100%;
-          margin-top: 8px;
-          font-size: 15px;
-          padding: 14px;
-        }
-
-        .rules-section {
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .rules-section h4 {
-          font-size: 11px;
-          font-weight: 800;
-          color: #94a3b8;
-          letter-spacing: 0.05em;
-        }
-
-        .rules-section ul {
-          list-style: none;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .rules-section li {
-          font-size: 11.5px;
-          color: #cbd5e1;
-          line-height: 1.4;
-          padding-left: 12px;
-          position: relative;
-        }
-
-        .rules-section li::before {
-          content: "•";
-          color: #3b82f6;
-          position: absolute;
-          left: 0;
-          font-weight: bold;
-        }
-      `}</style>
-    </div>
+        <div className='hero-sticker'>
+          <span>ĐI CHILL</span>
+          <strong>
+            KIẾM
+            <br />
+            TIỀN!
+          </strong>
+          <small>trong game thôi nha 😉</small>
+        </div>
+      </section>
+      <section className='how-to-play' id='how-to-play' aria-label='Cách chơi'>
+        <div className='how-intro'>
+          <span className='eyebrow'>BẮT NHỊP THÀNH PHỐ</span>
+          <h2>Ba bước. Một chuyến vui.</h2>
+          <p>
+            WASD / phím mũi tên để lái.
+            <br />
+            Điện thoại? Dùng cần điều khiển!
+          </p>
+        </div>
+        <article>
+          <span className='step-icon mint'>🙋</span>
+          <div>
+            <small>01 / ĐÓN KHÁCH</small>
+            <h3>Khách vẫy, mình tới.</h3>
+            <p>Lái lại gần khách để tự động đón.</p>
+          </div>
+        </article>
+        <article>
+          <span className='step-icon peach'>🧭</span>
+          <div>
+            <small>02 / TÌM ĐƯỜNG</small>
+            <h3>Len lỏi từng con hẻm.</h3>
+            <p>Theo dấu chỉ đường đến điểm trả.</p>
+          </div>
+        </article>
+        <article>
+          <span className='step-icon butter'>✦</span>
+          <div>
+            <small>03 / NHẬN THƯỞNG</small>
+            <h3>Chuyến tốt, ví đầy.</h3>
+            <p>Trả khách liên tiếp để tăng combo!</p>
+          </div>
+        </article>
+      </section>
+      <footer className='lobby-footer'>
+        <span>MADE FOR THE JOY OF THE RIDE.</span>
+        <span>Sài Gòn trong tim. An toàn trên đường. ♡</span>
+      </footer>
+    </main>
   );
-};
-
-export default App;
+}

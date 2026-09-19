@@ -21,6 +21,7 @@ import { CityFeatures } from './city-features';
 const DRIVER_COLLISION_PENALTY = 1000;
 const RED_LIGHT_PENALTY = 2000;
 const PEDESTRIAN_STUN_TICKS = 40;
+const PEDESTRIAN_PENALTY = 5000;
 const PENALTY_COOLDOWN_TICKS = 20;
 const CITY_VISIBILITY_RADIUS = CHUNK_SIZE * 1.5;
 
@@ -66,8 +67,12 @@ export class GameWorld {
   }
 
   public addPlayer(id: string, username: string, spawnX?: number, spawnY?: number): void {
-    const startX = spawnX !== undefined ? spawnX : 2000 + (Math.random() - 0.5) * 200;
-    const startY = spawnY !== undefined ? spawnY : 2000 + (Math.random() - 0.5) * 200;
+    let startX = spawnX ?? 2000 + (Math.random() - 0.5) * 200;
+    let startY = spawnY ?? 2000 + (Math.random() - 0.5) * 200;
+    if (spawnX === undefined && this.physics.isInsideBuilding(startX, startY)) {
+      startX = 2050;
+      startY = 2050;
+    }
 
     const player: PlayerState = {
       id,
@@ -131,9 +136,20 @@ export class GameWorld {
 
   public queueInput(playerId: string, input: InputPayload): void {
     const queue = this.inputQueues.get(playerId);
-    if (queue) {
+    if (queue && Number.isFinite(input.dx) && Number.isFinite(input.dy) && Number.isFinite(input.angle)) {
+      if (queue.length >= 8) queue.shift();
       queue.push(input);
     }
+  }
+
+  public setConnected(id: string, connected: boolean): void {
+    const player = this.players.get(id);
+    if (player) player.connected = connected;
+    this.inputQueues.set(id, []);
+  }
+
+  public getPlayerCount(): number {
+    return [...this.players.values()].filter((p) => p.connected && !p.id.startsWith('bot-')).length;
   }
 
   public getPlayer(id: string): PlayerState | undefined {
@@ -208,6 +224,7 @@ export class GameWorld {
 
     // 1. Process player movements
     for (const [playerId, player] of this.players.entries()) {
+      if (!player.connected) continue;
       const inputs = this.inputQueues.get(playerId) || [];
       const prevX = player.x;
       const prevY = player.y;
@@ -260,7 +277,7 @@ export class GameWorld {
     }
 
     // 1.5. Check player-to-player collisions
-    const playerIds = Array.from(this.players.keys());
+    const playerIds = [...this.players.values()].filter((p) => p.connected).map((p) => p.id);
     for (let i = 0; i < playerIds.length; i++) {
       for (let j = i + 1; j < playerIds.length; j++) {
         const p1 = this.players.get(playerIds[i])!;
@@ -425,8 +442,8 @@ export class GameWorld {
     if (hitPedestrianId) {
       const cooldown = this.pedestrianCooldowns.get(player.id) || 0;
       if (currentTick > cooldown) {
-        const amount = player.score;
-        player.score = 0;
+        const amount = Math.min(player.score, PEDESTRIAN_PENALTY);
+        player.score -= amount;
         this.cityFeatures.removePedestrian(hitPedestrianId);
         this.recordViolation(player, 'pedestrian', amount);
         this.pedestrianCooldowns.set(player.id, currentTick + PEDESTRIAN_STUN_TICKS);

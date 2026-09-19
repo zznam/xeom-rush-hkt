@@ -14,11 +14,17 @@ export class InputHandler {
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
         if (e.key) {
           this.keys[e.key.toLowerCase()] = true;
         }
       });
 
+      window.addEventListener('blur', () => this.clear());
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.clear();
+      });
       window.addEventListener('keyup', (e) => {
         if (e.key) {
           this.keys[e.key.toLowerCase()] = false;

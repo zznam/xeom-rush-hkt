@@ -5,11 +5,21 @@
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
+  private enabled = true;
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.stopEngine();
+  }
+  public unlock(): void {
+    this.getCtx();
+  }
   private engineOsc: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
   private engineRunning: boolean = false;
 
   private getCtx(): AudioContext | null {
+    if (!this.enabled) return null;
     if (typeof window === 'undefined' || !window.AudioContext) return null;
     if (!this.ctx) {
       this.ctx = new AudioContext();

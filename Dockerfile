@@ -1,5 +1,5 @@
 # Use official Node.js Alpine image for a small footprint
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Enable corepack for pnpm support
 RUN corepack enable
@@ -26,6 +26,8 @@ RUN pnpm build:shared && pnpm --filter server build
 
 # Expose the WebSocket/Express port
 EXPOSE 3002
+
+ENV NODE_ENV=production
 
 # Start the server using the compiled dist
 CMD ["pnpm", "--filter", "server", "start"]

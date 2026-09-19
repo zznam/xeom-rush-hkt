@@ -1,6 +1,8 @@
 # 🏍️ Xe Ôm Rush
 
-An authoritative-server, spatial-partitioned .io game built to demonstrate high-scale real-time multiplayer architecture patterns for the Codex Community Vietnam Hackathon.
+A cheerful Saigon motorbike taxi game with an authoritative multiplayer server. The toon release adds illustrated characters, pickup and delivery feedback, accessible controls, reconnect recovery, and Deno KV persistence.
+
+[Play the game](https://xeom-rush.vercel.app) · [16-feature roadmap](docs/roadmap.md) · [Art assets and prompts](docs/art-direction.md) · [Deno deployment guide](docs/deno-deployment.md)
 
 ## 📌 The Pitch & Vietnamese Context
 
@@ -13,8 +15,8 @@ In Vietnam, motorbikes are the pulse of the city. _Xe Ôm_ (traditional motorbik
 ## 🚦 Live Gameplay & Simulation Features
 
 - **Passenger Tiers & Deadlines:** Passengers are spawned with weighted probabilities (70% Regular 🟢, 20% Business 🟡, 10% VIP 🟣). Business and VIP passengers have strict delivery deadlines (relative server ticks); if they are not picked up before their deadline, they expire and disappear. VIP spawns trigger a global sound alert.
-- **Combo / Streak System:** Successfully delivering passengers in succession builds your combo streak. A multiplier (1× → 1.5× → 2.0× → 3.0× at streaks 1, 3, 5, 10) is applied to rewards. The streak resets if you remain idle (no delivery) for 30 seconds, collide with a pedestrian, or disconnect.
-- **Rush Hour Events (Giờ cao điểm):** Every 5 minutes, a 60-second Rush Hour event starts. During this event, passenger spawn rate is doubled (2×) and rewards are boosted by 1.5×. Rush Hour is introduced with a custom musical sting. It can also be manually triggered via `POST /api/rush-hour`.
+- **Combo / Streak System:** Successfully delivering passengers in succession builds your combo streak. A multiplier (1× → 1.5× → 2.0× → 3.0× at streaks 1, 3, 5, 10) is applied to rewards. The streak resets if you remain idle (no delivery) for 30 seconds, collide with a pedestrian, or start a new ride. Brief reconnects to the same running city preserve the ride.
+- **Rush Hour Events (Giờ cao điểm):** Every 5 minutes, a 60-second Rush Hour event starts. During this event, passenger spawn rate is doubled (2×) and rewards are boosted by 1.5×. Rush Hour is introduced with a custom musical sting. Local development also supports manually triggering it via `POST /api/rush-hour`. Demo controls are disabled in production.
 - **Procedural Sound Engine:** Generated fully in-browser via the Web Audio API with zero external file assets. Includes:
   - Motorbike engine hum (pitch scale dynamically linked to speed).
   - Short ascending chimes on passenger pickup.
@@ -31,7 +33,7 @@ In Vietnam, motorbikes are the pulse of the city. _Xe Ôm_ (traditional motorbik
 ### ⚠️ Violations & Traffic Penalties
 
 - **Red Light Violation (Vượt đèn đỏ):** Crossing a stop line during a red light triggers a **-2,000đ** penalty.
-- **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian resets your score to **0đ**, resets your combo streak to **0**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
+- **Pedestrian Collision (Tông người đi bộ):** Striking a pedestrian deducts up to **5,000đ** (never below zero), resets your combo streak to **0**, stuns your bike (disabling input) for **2 seconds** (40 ticks), and triggers a high-impact screen shake.
 - **Driver-to-Driver Collision (Va chạm xe):** Colliding with another player or bot pushes both bikes apart using slide-along-wall physics resolution and carries a **-1,000đ** penalty (with a 1-second cooldown).
 
 ---
@@ -109,7 +111,7 @@ The live protocol now uses **per-client binary delta snapshots**:
 
 ## 📊 Developer Diagnostic Panel & Load Testing
 
-The client includes a premium developer interface (positioned bottom-right, automatically hidden on mobile devices) showing live metrics:
+Local development includes a diagnostic interface (hidden by default and excluded from production) showing live metrics:
 
 - **Real-time RTT (Ping)** & **Server Tick Rate (Hz)** telemetry.
 - **Payload Size Comparison:** Compares the actual binary packet size to equivalent JSON.
@@ -133,14 +135,14 @@ pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:
 
 ## 🗄️ Database Persistence & Leaderboard
 
-We use **MongoDB** to persist player career totals and historical match records:
+The Deno deployment uses **Deno KV** for career totals, ranking, and idempotent session checkpoints every 30 seconds and at ride end. Live city state remains in memory. Legacy names still identify careers; stable guest identity is planned in release 2. The original **MongoDB** adapter remains available for Node deployments:
 
 - **Asynchronous Save Queue:** During a match, passenger dropoffs and traffic violations are tracked strictly in memory. When a player disconnects, their session stats are saved asynchronously to prevent database latency from slowing down the 20Hz tick loop.
 - **Collections:**
   - `players` — Tracks career earnings (VNĐ), total deliveries, and high score/streak records.
   - `matches` — Logs complete history of completed match sessions, containing a summary of scores and traffic violations (red-light runs, pedestrian collisions, and driver impacts) for each driver.
 - **Leaderboard Optimization:** Exposes a `GET /api/leaderboard` endpoint sorted by indexed `{ careerScore: -1 }` for optimal query response times.
-- **Memory-Only Fallback:** If the database connection times out (configured to fail fast in 2 seconds), the server automatically starts up in **MEMORY-ONLY mode**, allowing quick local testing and E2E runs without database dependencies.
+- **Memory-Only Fallback:** If the database connection times out (configured to fail fast in 2 seconds), local development starts in **MEMORY-ONLY mode**; production refuses to start without working persistence. This allows quick local testing and E2E runs without database dependencies.
 
 ---
 
@@ -148,7 +150,7 @@ We use **MongoDB** to persist player career totals and historical match records:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+ (or Deno 2 for the production runtime)
 
 - pnpm
 
@@ -179,41 +181,12 @@ pnpm bench
 
 ### Production Git Deployment
 
-Production deploys are driven from Git:
+Production deploys from the `main` branch of this repository:
 
-- **Railway** hosts the long-running WebSocket/API backend and MongoDB.
-- **Vercel** hosts the static Vite client from `apps/client/dist`.
-- The production branch for both services is `main`.
-- GitHub Actions runs unit tests and production builds before changes are merged to `main`.
+- **Vercel** serves `apps/client/dist` using the existing `vercel.json` settings.
+- **Deno Deploy** runs the WebSocket/API backend and managed **Deno KV** persistence.
+- Set Vercel production `VITE_WS_URL` to `wss://xeom-rush.zznam.deno.net` and rebuild after changes.
+- Follow [the deployment guide](docs/deno-deployment.md) for exact build settings, validation, and rollback.
+- GitHub Actions runs unit, Deno persistence, build, and browser checks before merging release changes.
 
-#### Railway backend
-
-1. Create or open the Railway project and connect it to `https://github.com/zznam/xeom-rush-hkt`.
-2. Configure the backend service to deploy from the `main` branch.
-3. Keep the service root at the repository root so Railway can read `railway.json` and the root `Dockerfile`.
-4. Add a MongoDB service and set the backend `MONGODB_URI` variable to the Railway MongoDB connection string.
-5. Expose the backend publicly and verify `GET /api/health` returns `{"status":"ok",...}`.
-6. Save the public backend URL for the Vercel client as `wss://<railway-domain>`.
-
-Railway reads `railway.json` for the Dockerfile builder, `/api/health` healthcheck, restart policy, and backend-focused watch patterns. Commits that only touch the Vercel client should not trigger a Railway backend redeploy.
-
-#### Vercel client
-
-1. Import `https://github.com/zznam/xeom-rush-hkt` into Vercel.
-2. Set the project Production Branch to `main`.
-3. Use the existing `vercel.json` build settings:
-   - Build command: `corepack enable && pnpm install --frozen-lockfile && pnpm build:shared && pnpm build:client`
-   - Output directory: `apps/client/dist`
-4. Add `VITE_WS_URL` in Vercel production environment variables using the Railway backend WebSocket URL, for example `wss://xeom-rush-server.up.railway.app`.
-
-After setup, normal production releases are: open a pull request, wait for CI and previews, merge to `main`, then let Railway and Vercel auto-deploy from Git.
-
-### Manual Deployment Setup Helper
-
-For first-time setup reminders, run:
-
-```bash
-./deploy.sh
-```
-
-Manual CLI deploys (`railway up` or `vercel --prod`) should be reserved for emergencies or one-off setup checks. Routine production releases should come from merges to `main`.
+The original Railway Docker configuration is retained as an optional paid-host fallback. The Railway trial expired; its MongoDB volume has not been removed or migrated. New Deno careers begin in the new database. The legacy `deploy.sh` helper describes Railway setup and is not used for Deno.

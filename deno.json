@@ -1,0 +1,7 @@
+{
+  "nodeModulesDir": "manual",
+  "unstable": ["kv"],
+  "tasks": {
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-sys --unstable-kv deploy/deno-entry.ts"
+  }
+}

@@ -11,3 +11,6 @@ build
 *.log
 .vercel
 mongo/
+
+**/test-results/
+**/playwright-report/
