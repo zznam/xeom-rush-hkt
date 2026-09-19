@@ -10,7 +10,7 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 
 - App directory: repository root.
 - Preset: none; dynamic runtime.
-- Install: `corepack enable && pnpm install --frozen-lockfile`.
+- Install: `pnpm install --frozen-lockfile` (Deno provides pnpm; Corepack is not installed).
 - Build: `pnpm build:server`.
 - Entrypoint: `deploy/deno-entry.ts`.
 - Working directory: repository root.
@@ -20,7 +20,7 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 - `BOT_COUNT=8` by default; supported range 0–20.
 - Do not set `DENO_KV_PATH` in production: the platform supplies the assigned database.
 
-The entrypoint enforces production mode. `deno.json` enables KV; explicit CommonJS package types let Deno run the same compiled authoritative server as Node. Demo mutation endpoints are unavailable in production.
+The entrypoint enforces production mode. `deno.json` enables KV and records the tested build/runtime configuration; explicit CommonJS package types let Deno run the same compiled authoritative server as Node. Demo mutation endpoints are unavailable in production.
 
 ## Vercel
 
