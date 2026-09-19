@@ -391,3 +391,30 @@ describe('Binary Wire Protocol Encoder/Decoder', () => {
     expect(decodeDeltaSnapshot(deltaBuffer, snapshot)).toEqual(next);
   });
 });
+
+describe('Vietnamese protocol names', () => {
+  it('preserves Vietnamese and emoji names through join, full and delta packets', () => {
+    const username = 'Cô Ba 🛵';
+    expect(decodeJoin(encodeJoin(username))).toBe(username);
+    const player: PlayerState = {
+      id: 'driver',
+      username,
+      x: 2000,
+      y: 2000,
+      angle: 0,
+      score: 0,
+      lastProcessedSeq: 0,
+      passengerId: null,
+      connected: true,
+    };
+    const initial = decodeSnapshot(encodeSnapshot(1, [player], []));
+    expect(initial.players[0].username).toBe(username);
+    const changed = { ...initial, tick: 2, players: [{ ...player, username: 'Chú Tư' }] };
+    expect(decodeDeltaSnapshot(encodeDeltaSnapshot(initial, changed), initial).players[0].username).toBe('Chú Tư');
+  });
+  it('rejects overlong UTF-8 and truncated strings', () => {
+    expect(() => encodeJoin('ế'.repeat(100))).toThrow();
+    const packet = encodeJoin('Cô Ba');
+    expect(() => decodeJoin(packet.slice(0, packet.byteLength - 1))).toThrow();
+  });
+});

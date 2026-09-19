@@ -1,6 +1,6 @@
 import { test, expect, request } from '@playwright/test';
 
-const SERVER_URL = 'http://localhost:3002';
+const SERVER_URL = 'http://localhost:3003';
 
 test.describe('Xeom Rush Smoke Tests', () => {
   test('1. Server health endpoint responds with ok status', async () => {
@@ -72,4 +72,51 @@ test.describe('Xeom Rush Smoke Tests', () => {
 
     await expect(page.getByText('DELTA')).toBeVisible({ timeout: 10_000 });
   });
+});
+
+test('toon lobby loads its generated art and remembers a Vietnamese driver name', async ({ page }) => {
+  await page.goto('/');
+  const art = page.locator('.hero-art');
+  await expect(art).toBeVisible();
+  await expect.poll(() => art.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  await page.locator('#username').fill('Cô Ba');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.locator('.hud-container')).toBeVisible();
+  await page.getByRole('button', { name: 'Kết thúc', exact: true }).click();
+  await expect(page.getByText('Một chuyến thật vui!')).toBeVisible();
+  await page.getByRole('button', { name: 'Chơi tiếp' }).click();
+  await expect(page.locator('#username')).toHaveValue('Cô Ba');
+});
+
+test('sound and motion controls do not reconnect the game', async ({ page }) => {
+  let connections = 0;
+  page.on('websocket', () => {
+    connections++;
+  });
+  await page.goto('/');
+  await page.locator('#username').fill('SettingsDriver');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.locator('.hud-container')).toBeVisible();
+  const before = connections;
+  await page.getByRole('button', { name: 'Âm thanh', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Giảm chuyển động', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Giảm chuyển động', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(connections).toBe(before);
+  await page.reload();
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('mobile layout keeps the join form and touch controls usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.locator('button[type="submit"]')).toBeInViewport();
+  await page.locator('#username').fill('MobileDriver');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole('group', { name: 'Cần điều khiển lái xe' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Kết thúc', exact: true })).toBeInViewport();
 });

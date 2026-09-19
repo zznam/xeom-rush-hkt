@@ -29,8 +29,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -43,3 +48,12 @@ jobs:
 
       - name: Build server
         run: pnpm build:server
+
+      - name: Test Deno persistence
+        run: deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/deno-kv.test.ts
+
+      - name: Install browser
+        run: pnpm --filter e2e exec playwright install --with-deps chromium
+
+      - name: Test browser flows
+        run: pnpm test:e2e

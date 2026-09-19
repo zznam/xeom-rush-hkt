@@ -147,7 +147,7 @@ describe('GameWorld realism update', () => {
     expect(yellowPlayer.score).toBe(10000);
   });
 
-  it('sets score to zero, removes the hit pedestrian, and stuns movement briefly', () => {
+  it('caps pedestrian penalties, removes the hit pedestrian, and stuns movement briefly', () => {
     const world = new GameWorld();
     world.addPlayer('player-ped', 'Careless Driver');
     const player = world.getPlayer('player-ped')!;
@@ -159,10 +159,10 @@ describe('GameWorld realism update', () => {
     player.score = 10000;
 
     world.tick(0.05);
-    expect(player.score).toBe(0);
+    expect(player.score).toBe(5000);
     expect(player.lastViolation).toEqual({
       type: 'pedestrian',
-      amount: 10000,
+      amount: 5000,
       tick: world.getTick(),
     });
     expect(
@@ -778,5 +778,30 @@ describe('Pedestrian respawn improvements', () => {
 
     // We should see more than 1 unique direction, proving randomization works
     expect(directions.size).toBeGreaterThan(1);
+  });
+});
+
+describe('Public play resilience', () => {
+  it('does not move or penalize a temporarily disconnected player', () => {
+    const world = new GameWorld();
+    world.addPlayer('reconnect', 'Cô Ba', 2000, 2000);
+    const player = world.getPlayer('reconnect')!;
+    player.score = 12000;
+    world.setConnected('reconnect', false);
+    world.queueInput('reconnect', { seq: 1, dx: 1, dy: 0, angle: 0 });
+    world.tick(0.05);
+    expect(player.x).toBe(2000);
+    expect(player.score).toBe(12000);
+    world.setConnected('reconnect', true);
+    world.tick(0.05);
+    expect(player.x).toBe(2000);
+  });
+  it('ignores invalid movement without poisoning the world', () => {
+    const world = new GameWorld();
+    world.addPlayer('finite', 'Driver', 2000, 2000);
+    world.queueInput('finite', { seq: 1, dx: NaN, dy: Infinity, angle: 0 });
+    world.tick(0.05);
+    expect(world.getPlayer('finite')!.x).toBe(2000);
+    expect(Number.isFinite(world.getPlayer('finite')!.y)).toBe(true);
   });
 });

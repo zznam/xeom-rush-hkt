@@ -23,24 +23,25 @@ const VIOLATION_CODE_TO_TYPE: Record<number, ViolationType> = {
   3: 'driver-collision',
 };
 
-// Helper to write string to DataView
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder('utf-8', { fatal: true });
+const byteLength = (value: string): number => textEncoder.encode(value).length;
+
 function writeString(view: DataView, offset: number, str: string): number {
-  view.setUint8(offset, str.length);
-  offset += 1;
-  for (let i = 0; i < str.length; i++) {
-    view.setUint8(offset + i, str.charCodeAt(i));
-  }
-  return offset + str.length;
+  const bytes = textEncoder.encode(str);
+  if (bytes.length > 255) throw new RangeError('Protocol string exceeds 255 bytes');
+  view.setUint8(offset, bytes.length);
+  new Uint8Array(view.buffer, view.byteOffset + offset + 1, bytes.length).set(bytes);
+  return offset + 1 + bytes.length;
 }
 
-// Helper to read string from DataView
 function readString(view: DataView, offset: number): { value: string; nextOffset: number } {
   const len = view.getUint8(offset);
-  let value = '';
-  for (let i = 0; i < len; i++) {
-    value += String.fromCharCode(view.getUint8(offset + 1 + i));
-  }
-  return { value, nextOffset: offset + 1 + len };
+  if (offset + 1 + len > view.byteLength) throw new RangeError('Truncated protocol string');
+  return {
+    value: textDecoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 1, len)),
+    nextOffset: offset + 1 + len,
+  };
 }
 
 function sameValue(a: unknown, b: unknown): boolean {
@@ -92,11 +93,11 @@ function getRemovedStreakIds(previous: Record<string, number>, next: Record<stri
 }
 
 function sizePlayer(p: PlayerState): number {
-  let size = 1 + p.id.length;
-  size += 1 + p.username.length;
+  let size = 1 + byteLength(p.id);
+  size += 1 + byteLength(p.username);
   size += 4 + 4 + 4 + 4 + 4;
   size += 1;
-  if (p.passengerId) size += 1 + p.passengerId.length;
+  if (p.passengerId) size += 1 + byteLength(p.passengerId);
   size += 1;
   if (p.lastViolation) size += 1 + 4 + 4;
   return size;
@@ -175,7 +176,7 @@ function readPlayer(view: DataView, offset: number): { value: PlayerState; nextO
 }
 
 function sizePassenger(pa: PassengerState): number {
-  return 1 + pa.id.length + 26;
+  return 1 + byteLength(pa.id) + 26;
 }
 
 function writePassenger(view: DataView, offset: number, pa: PassengerState): number {
@@ -209,7 +210,7 @@ function readPassenger(view: DataView, offset: number): { value: PassengerState;
 }
 
 function sizeTrafficLight(tl: TrafficLightState): number {
-  return 1 + tl.id.length + 10;
+  return 1 + byteLength(tl.id) + 10;
 }
 
 function writeTrafficLight(view: DataView, offset: number, tl: TrafficLightState): number {
@@ -232,7 +233,7 @@ function readTrafficLight(view: DataView, offset: number): { value: TrafficLight
 }
 
 function sizePedestrian(ped: PedestrianState): number {
-  return 1 + ped.id.length + 12;
+  return 1 + byteLength(ped.id) + 12;
 }
 
 function writePedestrian(view: DataView, offset: number, ped: PedestrianState): number {
@@ -253,7 +254,7 @@ function readPedestrian(view: DataView, offset: number): { value: PedestrianStat
 }
 
 function sizeStringList(values: string[]): number {
-  return values.reduce((sum, value) => sum + 1 + value.length, 0);
+  return values.reduce((sum, value) => sum + 1 + byteLength(value), 0);
 }
 
 function writeStringList(view: DataView, offset: number, values: string[]): number {
@@ -275,7 +276,7 @@ function readStringList(view: DataView, offset: number, count: number): { values
 
 // --- Join Message (Client -> Server) ---
 export function encodeJoin(username: string): ArrayBuffer {
-  const buffer = new ArrayBuffer(2 + username.length);
+  const buffer = new ArrayBuffer(2 + byteLength(username));
   const view = new DataView(buffer);
   view.setUint8(0, EMessageType.JOIN);
   writeString(view, 1, username);
@@ -292,7 +293,7 @@ export function decodeJoin(buffer: ArrayBuffer): string {
 // --- Config Message (Server -> Client) ---
 export function encodeConfig(myId: string, mapSize: number, chunkSize: number): ArrayBuffer {
   // 1 byte msgType + 1 byte idLen + id bytes + 4 bytes mapSize + 4 bytes chunkSize
-  const buffer = new ArrayBuffer(1 + 1 + myId.length + 4 + 4);
+  const buffer = new ArrayBuffer(1 + 1 + byteLength(myId) + 4 + 4);
   const view = new DataView(buffer);
   view.setUint8(0, EMessageType.CONFIG);
   let offset = writeString(view, 1, myId);
@@ -357,7 +358,7 @@ export function encodeSnapshot(
 
   // Streak entries
   for (const [id] of streakEntries) {
-    size += 1 + id.length + 2; // idLen + id + streakCount(Uint16)
+    size += 1 + byteLength(id) + 2; // idLen + id + streakCount(Uint16)
   }
 
   for (const p of players) {
@@ -506,7 +507,7 @@ export function encodeDeltaSnapshot(previous: WorldSnapshot, next: WorldSnapshot
   size += changedPedestrians.reduce((sum, pedestrian) => sum + sizePedestrian(pedestrian), 0);
   size += sizeStringList(removedPedestrianIds);
   for (const [id] of changedStreakEntries) {
-    size += 1 + id.length + 2;
+    size += 1 + byteLength(id) + 2;
   }
   size += sizeStringList(removedStreakIds);
 

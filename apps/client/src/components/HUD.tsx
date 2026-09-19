@@ -283,7 +283,7 @@ export const HUD: React.FC<HUDProps> = ({
           className='glass-panel p-4'
         >
           <h3 style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', color: '#94a3b8', marginBottom: 12 }}>
-            🏆 BẢNG XẾP HẠNG TÀI XẾ
+            🏆 TÀI XẾ QUANH BẠN
           </h3>
           {renderLeaderboardRows()}
         </div>
@@ -295,7 +295,7 @@ export const HUD: React.FC<HUDProps> = ({
           {showLeaderboard && (
             <div className='glass-panel p-3 floating-leaderboard'>
               <h3 style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: '#94a3b8', marginBottom: 8 }}>
-                🏆 BẢNG XẾP HẠNG
+                🏆 TÀI XẾ QUANH BẠN
               </h3>
               {renderLeaderboardRows()}
             </div>
@@ -338,6 +338,7 @@ export const HUD: React.FC<HUDProps> = ({
         <>
           {/* Virtual Joystick Container */}
           <div
+            className='joystick-mobile'
             style={{
               pointerEvents: 'auto',
               position: 'absolute',

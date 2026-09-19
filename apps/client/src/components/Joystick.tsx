@@ -8,18 +8,24 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [touchPos, setTouchPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const touchId = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (touchId.current !== null) return;
+    touchId.current = e.changedTouches[0].identifier;
     setIsDragging(true);
-    updatePosition(e.touches[0]);
+    updatePosition(e.changedTouches[0]);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return;
-    updatePosition(e.touches[0]);
+    const touch = Array.from(e.touches).find((item) => item.identifier === touchId.current);
+    if (touch) updatePosition(touch);
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (Array.from(e.touches).some((touch) => touch.identifier === touchId.current)) return;
+    touchId.current = null;
     setIsDragging(false);
     setTouchPos({ x: 0, y: 0 });
     onChange({ dx: 0, dy: 0 });
@@ -61,6 +67,9 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      role='group'
+      aria-label='Cần điều khiển lái xe'
       style={{
         width: 120,
         height: 120,

@@ -81,8 +81,8 @@ export class PassengerSpawner {
       if (nearCenter) {
         // Spawn near the middle market area (MAP_SIZE / 2)
         const center = MAP_SIZE / 2;
-        x = center + (Math.random() - 0.5) * 300;
-        y = center + (Math.random() - 0.5) * 300;
+        x = center + (Math.random() - 0.5) * 650;
+        y = center + (Math.random() - 0.5) * 650;
       } else {
         // Random coordinates, keeping some padding from edges
         x = 100 + Math.random() * (MAP_SIZE - 200);
@@ -90,7 +90,10 @@ export class PassengerSpawner {
       }
 
       // Validate position is not inside a building
-      if (!this.physics.isInsideBuilding(x, y)) {
+      if (
+        !this.physics.isInsideBuilding(x, y) &&
+        [...this.passengers.values()].every((p) => p.isCarried || Math.hypot(p.x - x, p.y - y) >= 65)
+      ) {
         return { x, y };
       }
     }
