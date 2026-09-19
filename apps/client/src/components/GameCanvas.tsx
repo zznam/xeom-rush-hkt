@@ -515,7 +515,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
             borderRadius: '12px',
             padding: '14px 28px',
             color: '#ffffff',
-            fontFamily: "'Outfit', 'Inter', sans-serif",
+            fontFamily: "'Be Vietnam Pro', sans-serif",
             fontWeight: 900,
             fontSize: '24px',
             boxShadow: '0 0 25px rgba(239, 68, 68, 0.7)',

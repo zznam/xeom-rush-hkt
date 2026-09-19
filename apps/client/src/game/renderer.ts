@@ -464,9 +464,9 @@ export class GameRenderer {
     ctx.strokeRect(1600, 1600, 800, 800);
     ctx.fillStyle = '#6b7753';
     ctx.textAlign = 'center';
-    ctx.font = '900 28px Outfit, sans-serif';
+    ctx.font = '900 28px "Be Vietnam Pro", sans-serif';
     ctx.fillText('CHỢ BẾN THÀNH', 2000, 1660);
-    ctx.font = '700 13px Outfit, sans-serif';
+    ctx.font = '700 13px "Be Vietnam Pro", sans-serif';
     ctx.fillText('ĐÓN KHÁCH · KHÁM PHÁ · LÊN ĐƯỜNG', 2000, 1685);
     ctx.restore();
   }
@@ -548,7 +548,7 @@ export class GameRenderer {
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = color;
-      ctx.font = '900 10px Outfit, sans-serif';
+      ctx.font = '900 10px "Be Vietnam Pro", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${p.tier === 2 ? '★ ' : ''}${(p.reward / 1000).toFixed(0)}kđ`, p.x, p.y - 46 + bob);
     }
@@ -578,7 +578,7 @@ export class GameRenderer {
         ctx.fill();
 
         ctx.fillStyle = '#ef4444';
-        ctx.font = '900 12px Inter, sans-serif';
+        ctx.font = '900 12px "Be Vietnam Pro", sans-serif';
         ctx.fillText('🏁 ĐIỂM TRẢ KHÁCH', activePass.destX, activePass.destY - 45);
         ctx.fillText(`${Math.floor(activePass.reward).toLocaleString()} VNĐ`, activePass.destX, activePass.destY - 30);
 
@@ -644,7 +644,7 @@ export class GameRenderer {
 
     // 6. Draw Username Tag Above Player
     ctx.save();
-    ctx.font = isLocal ? 'bold 13px Inter, sans-serif' : '11px Inter, sans-serif';
+    ctx.font = isLocal ? 'bold 13px "Be Vietnam Pro", sans-serif' : '11px "Be Vietnam Pro", sans-serif';
     ctx.fillStyle = isLocal ? '#165e50' : '#804e3a';
     ctx.strokeStyle = '#fff9e9';
     ctx.lineWidth = 4;

@@ -24,11 +24,11 @@
   align-items: center;
   gap: 10px;
   font:
-    900 22px 'Outfit',
+    900 22px 'Be Vietnam Pro',
     sans-serif;
   text-decoration: none;
   color: var(--ink);
-  letter-spacing: -0.6px;
+  letter-spacing: -0.5px;
 }
 .wordmark > span:first-child {
   font-size: 30px;
@@ -95,9 +95,9 @@
 .hero h1 {
   margin: 24px 0 20px;
   font:
-    900 clamp(48px, 5.7vw, 80px)/0.98 'Outfit',
+    900 clamp(44px, 5.5vw, 76px)/1.06 'Be Vietnam Pro',
     sans-serif;
-  letter-spacing: -3px;
+  letter-spacing: -1.5px;
 }
 .hero h1 em {
   font-style: normal;
@@ -148,7 +148,7 @@
   border-radius: 9px;
   padding: 13px 18px;
   font:
-    900 13px 'Outfit',
+    900 13px 'Be Vietnam Pro',
     sans-serif;
   cursor: pointer;
   transition:
@@ -198,7 +198,7 @@
 }
 .hero-sticker strong {
   font:
-    900 27px/1 'Outfit',
+    900 25px/1.15 'Be Vietnam Pro',
     sans-serif;
   text-align: center;
   margin: 5px;
@@ -216,7 +216,7 @@
 }
 .how-intro h2 {
   font:
-    800 22px/1.2 'Outfit',
+    800 22px/1.25 'Be Vietnam Pro',
     sans-serif;
   margin: 12px 0 9px;
 }
@@ -259,7 +259,7 @@
 }
 .how-to-play h3 {
   font:
-    800 15px 'Outfit',
+    800 15px 'Be Vietnam Pro',
     sans-serif;
   margin: 8px 0;
 }
@@ -315,7 +315,7 @@
   background: #fff9e9;
   color: #263e3a;
   font:
-    700 12px 'Outfit',
+    700 12px 'Be Vietnam Pro',
     sans-serif;
   padding: 11px 14px;
   box-shadow: 0 3px 0 #263e3a;
@@ -351,7 +351,7 @@
 }
 .trip-guide h3 {
   font:
-    800 17px 'Outfit',
+    800 17px 'Be Vietnam Pro',
     sans-serif;
   margin: 7px 0;
 }
@@ -373,7 +373,7 @@
   box-shadow: 4px 5px 0 #263e3a35;
   padding: 15px 22px;
   font:
-    900 20px 'Outfit',
+    900 20px 'Be Vietnam Pro',
     sans-serif;
   white-space: nowrap;
   pointer-events: none;
@@ -403,7 +403,7 @@
 .connection-card h2,
 .results-card h2 {
   font:
-    900 28px 'Outfit',
+    900 28px 'Be Vietnam Pro',
     sans-serif;
   margin: 12px 0;
 }
@@ -416,7 +416,7 @@
 .results-card strong {
   display: block;
   font:
-    900 40px 'Outfit',
+    900 40px 'Be Vietnam Pro',
     sans-serif;
   color: #137f6e;
   margin: 20px 0;

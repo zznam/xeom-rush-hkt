@@ -161,7 +161,14 @@ export const HUD: React.FC<HUDProps> = ({
           <span style={{ fontSize: isMobile ? 9 : 11, fontWeight: 700, letterSpacing: '0.05em', color: '#94a3b8' }}>
             THU NHẬP ĐƯỜNG PHỐ (VNĐ)
           </span>
-          <span style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, fontFamily: 'Outfit', color: '#fbbf24' }}>
+          <span
+            style={{
+              fontSize: isMobile ? 22 : 32,
+              fontWeight: 900,
+              fontFamily: "'Be Vietnam Pro', sans-serif",
+              color: '#fbbf24',
+            }}
+          >
             {localPlayer.score.toLocaleString()} đ
           </span>
         </div>
