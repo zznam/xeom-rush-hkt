@@ -27,8 +27,8 @@ class SeededRng {
 }
 
 const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
-const ROUNDABOUT_CHANCE = 0.25;
-const ROUNDABOUT_RADIUS = 34;
+const ROUNDABOUT_CHANCE = 0.12;
+const ROUNDABOUT_RADIUS = 24;
 
 export interface CircleObstacle {
   x: number;

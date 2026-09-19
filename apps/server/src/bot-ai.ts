@@ -233,6 +233,20 @@ export class BotManager {
       if (bot.stuckTicks > 40) {
         this.markNearbyRoundaboutAvoided(bot, player.x, player.y);
 
+        const city = this.world.getCityFeatures();
+        const nearbyRoundabout = city.roundabouts.find(
+          (r) => Math.hypot(r.x - player.x, r.y - player.y) < r.radius + 45,
+        );
+        if (nearbyRoundabout) {
+          // Push bot outward towards clear road if stuck near fountain
+          const rdx = player.x - nearbyRoundabout.x;
+          const rdy = player.y - nearbyRoundabout.y;
+          const rdist = Math.hypot(rdx, rdy) || 1;
+          player.x = nearbyRoundabout.x + (rdx / rdist) * (nearbyRoundabout.radius + 35);
+          player.y = nearbyRoundabout.y + (rdy / rdist) * (nearbyRoundabout.radius + 35);
+          this.world.getSpatialGrid().update(bot.playerId, player.x, player.y);
+        }
+
         if (player.passengerId) {
           // Hard-stuck while carrying: preserve the ride and reroute to the dropoff.
           const passenger = this.world.getPassengerMap().get(player.passengerId);
@@ -452,12 +466,37 @@ export class BotManager {
   private generateInput(bot: BotAgent, player: PlayerState): InputPayload {
     bot.inputSeq++;
 
-    // 1. Stuck resolution: perpendicular escape with alternating direction
+    // 1. Stuck resolution
     if (bot.stuckTicks > 10 && bot.stuckTicks <= 38) {
-      // Calculate perpendicular escape direction instead of just reversing
+      // Check if near a roundabout
+      const city = this.world.getCityFeatures();
+      const nearbyRoundabout = city.roundabouts.find((r) => Math.hypot(r.x - player.x, r.y - player.y) < r.radius + 45);
+
+      if (nearbyRoundabout) {
+        // In roundabout: flow counter-clockwise forward and outward rather than reversing
+        const rdx = player.x - nearbyRoundabout.x;
+        const rdy = player.y - nearbyRoundabout.y;
+        const rdist = Math.hypot(rdx, rdy) || 1;
+        const tangentX = rdy / rdist;
+        const tangentY = -rdx / rdist;
+        const radialX = rdx / rdist;
+        const radialY = rdy / rdist;
+
+        const escapeX = tangentX * 0.75 + radialX * 0.4;
+        const escapeY = tangentY * 0.75 + radialY * 0.4;
+        const escapeMag = Math.hypot(escapeX, escapeY) || 1;
+        bot.currentAngle = Math.atan2(escapeY, escapeX);
+        return {
+          seq: bot.inputSeq,
+          dx: (escapeX / escapeMag) * 0.8,
+          dy: (escapeY / escapeMag) * 0.8,
+          angle: bot.currentAngle,
+        };
+      }
+
+      // Normal street stuck: perpendicular escape with alternating direction
       const currentFlip = bot.stuckTicks <= 25 ? bot.escapeFlip : (-bot.escapeFlip as 1 | -1);
       const perpAngle = bot.currentAngle + (Math.PI / 2) * currentFlip;
-      // Mix reverse + perpendicular for a diagonal escape
       const reverseAngle = bot.currentAngle + Math.PI;
       const escapeX = Math.cos(reverseAngle) * 0.5 + Math.cos(perpAngle) * 0.5;
       const escapeY = Math.sin(reverseAngle) * 0.5 + Math.sin(perpAngle) * 0.5;
@@ -505,18 +544,24 @@ export class BotManager {
       return this.createWanderInput(bot, player);
     }
 
-    // Advance waypoints if we are close enough
+    // Advance waypoints if we are close enough or already progressing towards the next one
     let currentWaypoint = bot.path[bot.pathIndex];
     let distToWaypoint = Math.hypot(currentWaypoint.x - player.x, currentWaypoint.y - player.y);
 
-    while (distToWaypoint < 30 && bot.pathIndex < bot.path.length - 1) {
-      bot.pathIndex++;
-      currentWaypoint = bot.path[bot.pathIndex];
-      distToWaypoint = Math.hypot(currentWaypoint.x - player.x, currentWaypoint.y - player.y);
+    while (bot.pathIndex < bot.path.length - 1) {
+      const nextWaypoint = bot.path[bot.pathIndex + 1];
+      const distToNext = Math.hypot(nextWaypoint.x - player.x, nextWaypoint.y - player.y);
+      if (distToWaypoint < 32 || distToNext < distToWaypoint * 0.85) {
+        bot.pathIndex++;
+        currentWaypoint = bot.path[bot.pathIndex];
+        distToWaypoint = Math.hypot(currentWaypoint.x - player.x, currentWaypoint.y - player.y);
+      } else {
+        break;
+      }
     }
 
     // Clear path if we've arrived at the final destination
-    if (bot.pathIndex === bot.path.length - 1 && distToWaypoint < 30) {
+    if (bot.pathIndex === bot.path.length - 1 && distToWaypoint < 28) {
       bot.path = [];
       bot.pathIndex = 0;
     }
@@ -528,10 +573,14 @@ export class BotManager {
 
     // Dynamic driver-to-driver avoidance steering (separation)
     const nearbyIds = this.world.getSpatialGrid().getNearbyEntities(player.x, player.y);
-    const avoidanceRadius = 55; // Reduced from 105 to only avoid close entities
+    const avoidanceRadius = 55; // Avoid close entities
     let avoidX = 0;
     let avoidY = 0;
     let avoidCount = 0;
+
+    let isFollowingInRoundabout = false;
+    const city = this.world.getCityFeatures();
+    const activeRoundabout = city.roundabouts.find((r) => Math.hypot(r.x - player.x, r.y - player.y) < 60);
 
     for (const otherId of nearbyIds) {
       if (otherId === bot.playerId) continue;
@@ -545,11 +594,24 @@ export class BotManager {
           const dist = Math.hypot(dx, dy);
 
           if (dist > 0 && dist < avoidanceRadius) {
-            // Repulsion strength is inversely proportional to distance
-            const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 35 ? 2.0 : 1);
-            avoidX += (dx / dist) * strength;
-            avoidY += (dy / dist) * strength;
-            avoidCount++;
+            if (activeRoundabout) {
+              // In roundabout: check if other is ahead in traffic flow
+              const headingDot = (other.x - player.x) * moveX + (other.y - player.y) * moveY;
+              if (headingDot > 0 && dist < 42) {
+                isFollowingInRoundabout = true;
+              }
+              // In roundabout, reduce lateral avoidance so bots don't push into walls/curbs
+              const strength = ((avoidanceRadius - dist) / avoidanceRadius) * 0.6;
+              avoidX += (dx / dist) * strength;
+              avoidY += (dy / dist) * strength;
+              avoidCount++;
+            } else {
+              // Repulsion strength is inversely proportional to distance
+              const strength = ((avoidanceRadius - dist) / avoidanceRadius) * (dist < 35 ? 2.0 : 1);
+              avoidX += (dx / dist) * strength;
+              avoidY += (dy / dist) * strength;
+              avoidCount++;
+            }
           }
         }
       }
@@ -562,12 +624,11 @@ export class BotManager {
       moveY += (avoidY / avoidMag) * 0.45;
     }
 
-    const roundaboutSteer = this.getRoundaboutTangentialSteer(player.x, player.y);
+    const roundaboutSteer = this.getRoundaboutTangentialSteer(player.x, player.y, currentWaypoint);
     // Scale roundabout tangential correction gently so it acts as a guide (0.3) rather than overpowering
     moveX += roundaboutSteer.x * 0.3;
     moveY += roundaboutSteer.y * 0.3;
 
-    const city = this.world.getCityFeatures();
     const mag = Math.hypot(moveX, moveY) || 1;
     const headingX = moveX / mag;
     const headingY = moveY / mag;
@@ -593,8 +654,11 @@ export class BotManager {
     const finalAngle = Math.atan2(moveY, moveX);
     const turnDelta = Math.abs(shortestAngleDelta(bot.currentAngle, finalAngle));
     bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, BOT_MAX_TURN_PER_TICK);
-    // Smooth speed reduction when turning sharply (e.g. 90-degree corners)
-    const turnThrottle = turnDelta > 0.8 ? 0.65 : 1.0;
+    // Smooth speed reduction when turning sharply (e.g. 90-degree corners) or following convoy in roundabout
+    let turnThrottle = turnDelta > 0.8 ? 0.65 : 1.0;
+    if (isFollowingInRoundabout) {
+      turnThrottle = Math.min(turnThrottle, 0.55);
+    }
 
     const trafficDecision = city.getTrafficDecisionAhead(
       player.x,
@@ -734,14 +798,26 @@ export class BotManager {
     return Math.hypot(ax - bx, ay - by);
   }
 
-  private calculatePath(bot: BotAgent, fromX: number, fromY: number, toX: number, toY: number): Waypoint[] {
+  private calculatePath(
+    bot: BotAgent,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    useAvoidance = true,
+  ): Waypoint[] {
     const start = this.getClosestNode(fromX, fromY);
     const end = this.getClosestNode(toX, toY);
 
     const startKey = `${start.ix},${start.iy}`;
     const endKey = `${end.ix},${end.iy}`;
 
+    const city = this.world.getCityFeatures();
+
     if (startKey === endKey) {
+      if (city.isRoundaboutAt(start.ix, start.iy)) {
+        return this.expandRoundaboutWaypoints(bot, [start], fromX, fromY, toX, toY);
+      }
       return [this.applyWaypointJitter(bot, { x: toX, y: toY })];
     }
 
@@ -778,9 +854,7 @@ export class BotManager {
           nodePath.unshift({ ix: ixS, iy: iyS });
           tempKey = cameFrom.get(tempKey);
         }
-        const path = this.expandRoundaboutWaypoints(bot, nodePath);
-        path.push(this.applyWaypointJitter(bot, { x: toX, y: toY }));
-        return path;
+        return this.expandRoundaboutWaypoints(bot, nodePath, fromX, fromY, toX, toY);
       }
 
       openSet.splice(currentIdx, 1);
@@ -794,8 +868,18 @@ export class BotManager {
 
       for (const neighbor of neighbors) {
         const neighborKey = `${neighbor.ix},${neighbor.iy}`;
-        if (neighborKey !== endKey && this.isRoundaboutTemporarilyAvoided(bot, neighborKey)) {
-          continue;
+        if (useAvoidance && currentKey !== startKey && neighborKey !== endKey) {
+          if (this.isRoundaboutTemporarilyAvoided(bot, neighborKey)) {
+            continue;
+          }
+          // Avoid routing through heavily congested roundabouts (>= 3 bots already present)
+          if (city.isRoundaboutAt(neighbor.ix, neighbor.iy)) {
+            const nx = STREET_LINES[neighbor.ix];
+            const ny = STREET_LINES[neighbor.iy];
+            if (this.countNearbyBots(nx, ny) >= 3) {
+              continue;
+            }
+          }
         }
         const tentativeGScore = (gScore.get(currentKey) ?? Infinity) + this.distance(current, neighbor);
 
@@ -811,59 +895,143 @@ export class BotManager {
       }
     }
 
+    // If search with avoidance failed to find a path, retry without avoidance filters
+    if (useAvoidance) {
+      return this.calculatePath(bot, fromX, fromY, toX, toY, false);
+    }
+
     return [this.applyWaypointJitter(bot, { x: toX, y: toY })];
   }
 
-  private expandRoundaboutWaypoints(bot: BotAgent, nodes: GridNode[]): Waypoint[] {
+  private expandRoundaboutWaypoints(
+    bot: BotAgent,
+    nodes: GridNode[],
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+  ): Waypoint[] {
     const path: Waypoint[] = [];
     const city = this.world.getCityFeatures();
+    const RING_RADIUS = 43; // Safe distance: 4px from fountain curb (39) and 6.5px from diagonal buildings (49.5)
 
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
-      const x = STREET_LINES[node.ix];
-      const y = STREET_LINES[node.iy];
+      const cx = STREET_LINES[node.ix];
+      const cy = STREET_LINES[node.iy];
 
       if (!city.isRoundaboutAt(node.ix, node.iy)) {
-        path.push(this.applyWaypointJitter(bot, { x, y }));
+        path.push(this.applyWaypointJitter(bot, { x: cx, y: cy }));
         continue;
       }
 
       const roundabout = city.roundabouts.find((r) => r.id === `roundabout-${node.ix}-${node.iy}`);
-      const prev = nodes[i - 1];
-      const next = nodes[i + 1];
-      if (!roundabout || !prev || !next) {
-        path.push(this.applyWaypointJitter(bot, { x, y }));
+      if (!roundabout) {
+        path.push({ x: cx, y: cy });
         continue;
       }
 
-      const ringRadius = roundabout.radius + 28 + bot.laneOffset;
-      let entryAngle = Math.atan2(STREET_LINES[prev.iy] - y, STREET_LINES[prev.ix] - x);
-      const exitAngle = Math.atan2(STREET_LINES[next.iy] - y, STREET_LINES[next.ix] - x);
-      entryAngle += bot.laneOffset * 0.015;
+      // Safe ring radius with tiny individual variation (+-2px)
+      const clampedLane = Math.max(-2, Math.min(2, bot.laneOffset * 0.25));
+      const ringRadius = RING_RADIUS + clampedLane;
 
+      // Determine incoming approach direction
+      let inX: number;
+      let inY: number;
+      if (i > 0) {
+        const prev = nodes[i - 1];
+        inX = STREET_LINES[prev.ix] - cx;
+        inY = STREET_LINES[prev.iy] - cy;
+      } else {
+        // Bot is starting at or near this roundabout
+        const dx = fromX - cx;
+        const dy = fromY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 15) {
+          inX = dx;
+          inY = dy;
+        } else {
+          inX = -100;
+          inY = 0;
+        }
+      }
+
+      // Determine outgoing exit direction
+      let outX: number;
+      let outY: number;
+      if (i < nodes.length - 1) {
+        const next = nodes[i + 1];
+        outX = STREET_LINES[next.ix] - cx;
+        outY = STREET_LINES[next.iy] - cy;
+      } else {
+        // Roundabout is the destination area
+        const dx = toX - cx;
+        const dy = toY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 15) {
+          outX = dx;
+          outY = dy;
+        } else {
+          outX = 100;
+          outY = 0;
+        }
+      }
+
+      // Right-hand traffic lane entry & exit calculation
+      const inDist = Math.hypot(inX, inY) || 1;
+      const inNx = inX / inDist;
+      const inNy = inY / inDist;
+      const entryPx = inNx * ringRadius + inNy * 16;
+      const entryPy = inNy * ringRadius - inNx * 16;
+      let entryAngle = Math.atan2(entryPy, entryPx);
+
+      const outDist = Math.hypot(outX, outY) || 1;
+      const outNx = outX / outDist;
+      const outNy = outY / outDist;
+      const exitPx = outNx * ringRadius - outNy * 16;
+      const exitPy = outNy * ringRadius + outNx * 16;
+      const exitAngle = Math.atan2(exitPy, exitPx);
+
+      // In canvas (+y down), counter-clockwise rotation means angle DECREASES.
       while (entryAngle <= exitAngle) {
         entryAngle += Math.PI * 2;
       }
 
-      const steps = Math.max(2, Math.ceil((entryAngle - exitAngle) / (Math.PI / 4)));
+      const angleSpan = entryAngle - exitAngle;
+      const steps = Math.max(3, Math.ceil(angleSpan / (Math.PI / 3.5)));
+
       for (let step = 0; step <= steps; step++) {
         const t = step / steps;
-        const angle = entryAngle + (exitAngle - entryAngle) * t;
-        path.push({
-          x: x + Math.cos(angle) * ringRadius,
-          y: y + Math.sin(angle) * ringRadius,
-        });
+        const angle = entryAngle - angleSpan * t;
+        const wx = cx + Math.cos(angle) * ringRadius;
+        const wy = cy + Math.sin(angle) * ringRadius;
+        path.push({ x: wx, y: wy });
       }
     }
+
+    // Append final destination jittered, ensuring it's not inside any roundabout obstacle
+    const finalWp = this.applyWaypointJitter(bot, { x: toX, y: toY });
+    for (const r of city.roundabouts) {
+      const dist = Math.hypot(finalWp.x - r.x, finalWp.y - r.y);
+      if (dist < r.radius + 16) {
+        finalWp.x = r.x + ((finalWp.x - r.x) / (dist || 1)) * (r.radius + 20);
+        finalWp.y = r.y + ((finalWp.y - r.y) / (dist || 1)) * (r.radius + 20);
+      }
+    }
+    path.push(finalWp);
 
     return path;
   }
 
-  private countNearbyBots(x: number, y: number): number {
+  private countNearbyBots(x: number, y: number, radius: number = 90): number {
     return this.world
       .getSpatialGrid()
       .getNearbyEntities(x, y)
-      .filter((id) => id.startsWith('bot-')).length;
+      .filter((id) => {
+        if (!id.startsWith('bot-')) return false;
+        const p = this.world.getPlayer(id);
+        return p && Math.hypot(p.x - x, p.y - y) <= radius;
+      }).length;
   }
 
   private hash01(value: string): number {
@@ -919,10 +1087,10 @@ export class BotManager {
     return true;
   }
 
-  private getRoundaboutTangentialSteer(x: number, y: number): { x: number; y: number } {
+  private getRoundaboutTangentialSteer(x: number, y: number, currentWaypoint?: Waypoint): { x: number; y: number } {
     const roundabout = this.world
       .getCityFeatures()
-      .roundabouts.find((r) => Math.hypot(r.x - x, r.y - y) < r.radius + 120);
+      .roundabouts.find((r) => Math.hypot(r.x - x, r.y - y) < r.radius + 36);
 
     if (!roundabout) {
       return { x: 0, y: 0 };
@@ -931,13 +1099,28 @@ export class BotManager {
     const dx = x - roundabout.x;
     const dy = y - roundabout.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const targetRadius = roundabout.radius + 58;
+
+    // If bot is exiting (target waypoint is outside the roundabout circle > 60px away)
+    if (currentWaypoint && Math.hypot(currentWaypoint.x - roundabout.x, currentWaypoint.y - roundabout.y) > 60) {
+      // Only repel outward if dangerously close to fountain curb (radius 24 + 14 = 38)
+      if (dist < roundabout.radius + 14) {
+        return {
+          x: (dx / dist) * 0.6,
+          y: (dy / dist) * 0.6,
+        };
+      }
+      return { x: 0, y: 0 };
+    }
+
+    // Inside roundabout: gentle counter-clockwise guidance and radial keeping at 43
+    const targetRadius = 43;
     const radialError = targetRadius - dist;
+    const pushOut = dist < roundabout.radius + 14 ? 0.5 : radialError * 0.02;
 
     // Use counter-clockwise steering (Vietnamese right-hand traffic rule)
     return {
-      x: (dy / dist) * 0.75 + (dx / dist) * radialError * 0.012,
-      y: (-dx / dist) * 0.75 + (dy / dist) * radialError * 0.012,
+      x: (dy / dist) * 0.4 + (dx / dist) * pushOut,
+      y: (-dx / dist) * 0.4 + (dy / dist) * pushOut,
     };
   }
 
