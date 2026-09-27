@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "bench": "vitest bench"
+    "bench": "vitest bench --run"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

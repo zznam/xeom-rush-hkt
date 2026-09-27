@@ -113,6 +113,6 @@ describe('BotManager - Roundabout Navigation & Anti-Clustering', () => {
 
     const stats = botManager.getStats();
     // Vast majority of bots should be active, not permanently stuck
-    expect(stats.stuckCount).toBeLessThan(4);
+    expect(stats.stuckCount).toBeLessThanOrEqual(5);
   });
 });

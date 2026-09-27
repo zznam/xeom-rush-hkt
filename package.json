@@ -2,16 +2,16 @@
   "name": "xeom-rush-monorepo",
   "private": true,
   "scripts": {
-    "dev:server": "pnpm build:shared && pnpm --filter server dev",
-    "dev:client": "pnpm build:shared && pnpm --filter client dev",
-    "build:shared": "pnpm --filter shared build",
-    "build:server": "pnpm build:shared && pnpm --filter server build",
-    "build:client": "pnpm build:shared && pnpm --filter client build",
-    "start:server": "pnpm --filter server start",
-    "test": "pnpm --filter shared test && pnpm build:shared && pnpm --filter server test",
-    "test:e2e": "pnpm --filter e2e test",
-    "bench": "pnpm --filter shared bench",
-    "lint": "eslint . --max-warnings 0 && pnpm run lint:md",
+    "dev:server": "bun run build:shared && bun run --filter server dev",
+    "dev:client": "bun run build:shared && bun run --filter client dev",
+    "build:shared": "bun run --filter '@xeom-rush/shared' build",
+    "build:server": "bun run build:shared && bun run --filter server build",
+    "build:client": "bun run build:shared && bun run --filter client build",
+    "start:server": "bun run --filter server start",
+    "test": "bun run --filter '@xeom-rush/shared' test && bun run build:shared && bun run --filter server test",
+    "test:e2e": "bun run --filter e2e test",
+    "bench": "bun run --filter '@xeom-rush/shared' bench",
+    "lint": "eslint . --max-warnings 0 && bun run lint:md",
     "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore dist",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -43,5 +43,9 @@
       "prettier --write"
     ]
   },
-  "packageManager": "pnpm@10.28.2"
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "packageManager": "bun@1.4.0"
 }

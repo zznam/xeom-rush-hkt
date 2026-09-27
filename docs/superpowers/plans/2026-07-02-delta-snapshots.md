@@ -32,11 +32,11 @@
 - Test: `packages/shared/src/protocol.test.ts`
 
 - [x] Write failing tests for `encodeDeltaSnapshot` and `decodeDeltaSnapshot`.
-- [x] Run `pnpm --filter shared test -- protocol.test.ts` and confirm the new tests fail because the functions do not exist.
+- [x] Run `bun run --filter '@xeom-rush/shared' test -- protocol.test.ts` and confirm the new tests fail because the functions do not exist.
 - [x] Add `EMessageType.DELTA_SNAPSHOT = 6`.
 - [x] Implement delta encoding with changed records and removed ID lists.
 - [x] Implement delta decoding that applies changes/removals to a baseline and returns a complete `WorldSnapshot`.
-- [x] Run `pnpm --filter shared test -- protocol.test.ts` and confirm the tests pass.
+- [x] Run `bun run --filter '@xeom-rush/shared' test -- protocol.test.ts` and confirm the tests pass.
 
 ### Task 2: Server Per-Socket Baselines
 
@@ -48,7 +48,7 @@
 - [x] Send a full snapshot when no baseline exists or the resync interval has elapsed.
 - [x] Send a delta snapshot otherwise.
 - [x] Update the baseline after each successful send.
-- [x] Run `pnpm --filter server test` after building shared package.
+- [x] Run `bun run --filter server test` after building shared package.
 
 ### Task 3: Client Delta Reconstruction and Telemetry
 
@@ -63,7 +63,7 @@
 - [x] Decode delta snapshots against the baseline and deliver complete snapshots.
 - [x] Pass callback metadata `{ bytes, kind }`.
 - [x] Display actual packet bytes and latest packet kind in the debug overlay.
-- [x] Run `pnpm build:client`.
+- [x] Run `bun run build:client`.
 
 ### Task 4: Documentation and Full Verification
 
@@ -72,7 +72,7 @@
 - Modify: `README.md`
 
 - [x] Update the Binary Wire Protocol section with delta snapshot behavior.
-- [x] Run `pnpm test`.
-- [x] Run `pnpm build:server`.
-- [x] Run `pnpm build:client`.
-- [x] Run `pnpm test:e2e` if browsers/dependencies are available.
+- [x] Run `bun run test`.
+- [x] Run `bun run build:server`.
+- [x] Run `bun run build:client`.
+- [x] Run `bun run test:e2e` if browsers/dependencies are available.

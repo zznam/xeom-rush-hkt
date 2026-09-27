@@ -18,14 +18,14 @@ export default defineConfig({
   // Start server + client before running tests
   webServer: [
     {
-      command: 'MONGODB_URI=mongodb://127.0.0.1:1/test PORT=3003 BOT_COUNT=0 pnpm --filter server start',
+      command: 'MONGODB_URI=mongodb://127.0.0.1:1/test PORT=3003 BOT_COUNT=0 bun run --filter server start',
       port: 3003,
       reuseExistingServer: false,
       timeout: 15_000,
       cwd: '../..',
     },
     {
-      command: 'VITE_WS_URL=ws://localhost:3003 pnpm --filter client dev --port 5174',
+      command: 'VITE_WS_URL=ws://localhost:3003 bun run --filter client dev --port 5174',
       port: 5174,
       reuseExistingServer: false,
       timeout: 15_000,

@@ -3,6 +3,6 @@ services:
     name: xeom-rush-server
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build:shared && pnpm build:server
-    startCommand: pnpm start:server
+    buildCommand: npm install -g bun && bun install --frozen-lockfile && bun run build:shared && bun run build:server
+    startCommand: bun run start:server
     healthCheckPath: /api/health

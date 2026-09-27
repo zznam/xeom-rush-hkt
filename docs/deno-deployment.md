@@ -10,8 +10,8 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 
 - App directory: repository root.
 - Preset: none; dynamic runtime.
-- Install: `pnpm install --frozen-lockfile` (Deno provides pnpm; Corepack is not installed).
-- Build: `pnpm build:server`.
+- Install: `bun install --frozen-lockfile` (or configure build task using bun).
+- Build: `bun run build:server`.
 - Entrypoint: `deploy/deno-entry.ts`.
 - Working directory: repository root.
 - Free deployment regions; no paid region upgrade.
@@ -28,9 +28,9 @@ Keep the existing repository-root build/output configuration. Set production `VI
 
 ## Validation and rollback
 
-1. Run `pnpm test`, `pnpm build:client`, and `pnpm build:server`.
+1. Run `bun run test`, `bun run build:client`, and `bun run build:server`.
 2. Run `deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/deno-kv.test.ts`. Application types are checked in the preceding TypeScript build; this command verifies the native KV runtime behavior.
-3. Run `pnpm test:e2e` using its isolated local ports and memory-only test database target.
+3. Run `bun run test:e2e` using its isolated local ports and memory-only test database target.
 4. Check production `/api/health` returns `status: ok` and `database: connected`.
 5. Join with two browsers, verify movement and snapshots, complete a delivery, end the ride, and check saved scores. Check short reconnects and production admin endpoint denial.
 6. Compare deployed Git revisions, review Deno logs, and check free-tier usage.

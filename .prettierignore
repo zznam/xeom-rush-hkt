@@ -3,4 +3,5 @@ dist/
 build/
 test-results/
 playwright-report/
-pnpm-lock.yaml
+bun.lock
+bun.lockb

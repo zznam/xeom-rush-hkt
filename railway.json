@@ -3,15 +3,7 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
-    "watchPatterns": [
-      "railway.json",
-      "Dockerfile",
-      "package.json",
-      "pnpm-lock.yaml",
-      "pnpm-workspace.yaml",
-      "apps/server/**",
-      "packages/shared/**"
-    ]
+    "watchPatterns": ["railway.json", "Dockerfile", "package.json", "bun.lock", "apps/server/**", "packages/shared/**"]
   },
   "deploy": {
     "healthcheckPath": "/api/health",

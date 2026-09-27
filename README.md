@@ -125,10 +125,10 @@ The backend includes a headless client simulator capable of spinning up hundreds
 
 ```bash
 # Run headless stress bots (default 100 bots for 15s)
-pnpm --filter server stress
+bun run --filter server stress
 
 # Run stress bots with custom parameters
-pnpm --filter server stress -- --clients 250 --duration 30 --url ws://localhost:3002
+bun run --filter server stress -- --clients 250 --duration 30 --url ws://localhost:3002
 ```
 
 ---
@@ -150,33 +150,31 @@ The Deno deployment uses **Deno KV** for career totals, ranking, and idempotent 
 
 ### Prerequisites
 
-- Node.js 22+ (or Deno 2 for the production runtime)
-
-- pnpm
+- Bun 1.2+ (and Node.js 22+ or Deno 2 for alternate runtimes)
 
 ### Quick Start (Local Development)
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Start MongoDB service (runs on port 27018 to avoid port conflicts)
 docker compose up -d
 
 # Run the backend server
-pnpm dev:server
+bun run dev:server
 
 # Run the frontend web client
-pnpm dev:client
+bun run dev:client
 
 # Run automated unit tests (Vitest)
-pnpm test
+bun run test
 
 # Run automated E2E smoke tests (Playwright)
-pnpm test:e2e
+bun run test:e2e
 
 # Run performance benchmarks
-pnpm bench
+bun run bench
 ```
 
 ### Production Git Deployment
