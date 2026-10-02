@@ -75,6 +75,21 @@ jobs:
       - name: Test browser flows
         run: bun run test:e2e && bun run test:e2e:regional
 
+  deno-deploy-build:
+    name: Build in Deno-only environment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the configured deployment commands without preinstalled Bun or Node.js
+        run: |
+          docker run --rm -v "$PWD:/app" -w /app denoland/deno:2.7.14 eval '
+            const { deploy } = JSON.parse(await Deno.readTextFile("deno.json"));
+            for (const step of ["install", "build"]) {
+              const result = await new Deno.Command("sh", { args: ["-ec", deploy[step]] }).spawn().status;
+              if (!result.success) Deno.exit(result.code);
+            }
+          '
+
   infrastructure:
     name: Validate infrastructure and container
     runs-on: ubuntu-latest
