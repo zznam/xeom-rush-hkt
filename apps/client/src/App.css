@@ -562,3 +562,46 @@
     display: none;
   }
 }
+
+.region-picker {
+  margin-top: 16px;
+  max-width: 460px;
+}
+.region-picker select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c5cec7;
+  border-radius: 12px;
+  background: #fffdf7;
+  color: #183f35;
+  font: inherit;
+}
+.region-picker small {
+  display: block;
+  margin-top: 6px;
+  color: #465d54;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.join-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.city-label {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #183f35;
+  color: white;
+  font-size: 12px;
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .city-label {
+    bottom: 6px;
+    font-size: 10px;
+  }
+}

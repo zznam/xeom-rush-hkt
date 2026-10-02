@@ -6,6 +6,7 @@ import {
   decodeDeltaSnapshot,
   EMessageType,
   type WorldSnapshot,
+  type CityStatus,
   type ConfigPayload,
   type SnapshotPacketMeta,
 } from '@xeom-rush/shared';
@@ -16,6 +17,7 @@ export class GameNetwork {
   private ws: WebSocket | null = null;
   private onSnapshotCallbacks = new Set<(snapshot: WorldSnapshot, meta: SnapshotPacketMeta) => void>();
   private onConfigCallbacks = new Set<(config: ConfigPayload) => void>();
+  private onCityCallbacks = new Set<(status: CityStatus) => void>();
   private lastSnapshot: WorldSnapshot | null = null;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -35,7 +37,7 @@ export class GameNetwork {
   ): void {
     this.disconnect();
     const generation = this.generation;
-    const token = crypto.randomUUID();
+    const token = new URL(url).searchParams.get('session') || crypto.randomUUID();
     let failuresStarted = 0;
     let attempts = 0;
     const open = () => {
@@ -72,6 +74,19 @@ export class GameNetwork {
         lastReceived = Date.now();
         if (typeof event.data === 'string') {
           if (event.data.startsWith('pong:')) this.rtt = Math.max(0, Date.now() - Number(event.data.slice(5)));
+          if (event.data.startsWith('city:')) {
+            try {
+              const status = JSON.parse(event.data.slice(5)) as CityStatus;
+              if (
+                [status.tick, status.rushHourTicksRemaining, status.deliveries].every(
+                  (n) => Number.isInteger(n) && n >= 0,
+                )
+              )
+                this.onCityCallbacks.forEach((cb) => cb(status));
+            } catch {
+              /* Ignore malformed optional metadata; snapshots remain authoritative. */
+            }
+          }
           return;
         }
         try {
@@ -109,7 +124,7 @@ export class GameNetwork {
         if (this.heartbeat) clearInterval(this.heartbeat);
         this.heartbeat = null;
         if (!failuresStarted) failuresStarted = Date.now();
-        if (event.code === 1008 || Date.now() - failuresStarted >= 25000) {
+        if (event.code === 1000 || event.code === 1008 || Date.now() - failuresStarted >= 25000) {
           onDisconnect();
           return;
         }
@@ -120,7 +135,7 @@ export class GameNetwork {
             this.timers.delete(timer);
             open();
           },
-          Math.min(500 * 2 ** attempts, 3000),
+          Math.min(500 * 2 ** attempts, 3000) + Math.random() * 400,
         );
         this.timers.add(timer);
       };
@@ -145,6 +160,12 @@ export class GameNetwork {
     this.onConfigCallbacks.add(cb);
     return () => {
       this.onConfigCallbacks.delete(cb);
+    };
+  }
+  public registerCityCallback(cb: (status: CityStatus) => void): () => void {
+    this.onCityCallbacks.add(cb);
+    return () => {
+      this.onCityCallbacks.delete(cb);
     };
   }
   public disconnect(): void {

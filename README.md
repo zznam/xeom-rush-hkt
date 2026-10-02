@@ -2,7 +2,7 @@
 
 A cheerful Saigon motorbike taxi game with an authoritative multiplayer server. The toon release adds illustrated characters, pickup and delivery feedback, accessible controls, reconnect recovery, and Deno KV persistence.
 
-[Play the game](https://xeom-rush.vercel.app) · [16-feature roadmap](docs/roadmap.md) · [Art assets and prompts](docs/art-direction.md) · [Deno deployment guide](docs/deno-deployment.md)
+[Play the game](https://xeom-rush.vercel.app) · [16-feature roadmap](docs/roadmap.md) · [Art assets and prompts](docs/art-direction.md) · [Default Vercel/Deno deployment](docs/deno-deployment.md) · [Ad-hoc AWS deployment](docs/aws-deployment.md)
 
 ## 📌 The Pitch & Vietnamese Context
 
@@ -38,16 +38,16 @@ In Vietnam, motorbikes are the pulse of the city. _Xe Ôm_ (traditional motorbik
 
 ---
 
-## 🛠️ Engineering Depth (How we target 100k CCU)
+## 🛠️ Engineering Depth and Regional Capacity
 
-To build a true .io game at scale, sending standard JSON updates to every player is a performance bottleneck. This project demonstrates four key production-grade architecture patterns:
+To build a true .io game at scale, sending standard JSON updates to every player is a performance bottleneck. The architecture uses the following patterns. Production concurrency must be established by load tests; 100k CCU has not been validated. Regional capacity expands through independently owned cities, with a default limit of 64 human drivers per city:
 
 ### 1. Spatial Partitioning (Grid Chunks)
 
 A single server cannot broadcast position updates of all 100k players to everyone. We segment the map into a 2D grid of **Chunks** (each `500x500` units).
 
 - Players only receive updates for entities in their **current chunk + 8 neighboring chunks** (a 3x3 local grid).
-- Entity query time drops from $O(N)$ (broadcasting to everyone) to $O(1)$ lookup per player.
+- Entity queries visit nearby buckets instead of the entire world. Their cost depends on local entity density; they are not constant-time at arbitrary player counts.
 
 ### 2. Binary Wire Protocol
 
@@ -177,14 +177,35 @@ bun run test:e2e
 bun run bench
 ```
 
-### Production Git Deployment
+### Default deployment: legacy Vercel + Deno
 
-Production deploys from the `main` branch of this repository:
+Both deployment routes are supported. **Legacy is the default** for normal builds and the existing `main` Git deployments. AWS `regional-production` runs only when explicitly requested.
 
-- **Vercel** serves `apps/client/dist` using the existing `vercel.json` settings.
-- **Deno Deploy** runs the WebSocket/API backend and managed **Deno KV** persistence.
-- Set Vercel production `VITE_WS_URL` to `wss://xeom-rush.zznam.deno.net` and rebuild after changes.
-- Follow [the deployment guide](docs/deno-deployment.md) for exact build settings, validation, and rollback.
-- GitHub Actions runs unit, Deno persistence, build, and browser checks before merging release changes.
+| Target                         | Client and server                                           | Deployment trigger                           |
+| ------------------------------ | ----------------------------------------------------------- | -------------------------------------------- |
+| `legacy` (default)             | Vercel client, Deno Deploy backend and Deno KV              | Existing provider Git integrations on `main` |
+| `regional-production` (ad-hoc) | CloudFront/S3 client, regional ECS matchmaking and DynamoDB | Manually dispatched AWS workflows            |
+
+- **Vercel** uses `vercel.json`, which explicitly builds the legacy client. Set `VITE_WS_URL` to `wss://xeom-rush.zznam.deno.net`.
+- **Deno Deploy** uses `deno.json` and `deploy/deno-entry.ts`, which explicitly selects legacy production mode and Deno KV.
+- `bun run build:legacy` builds both legacy components. Ordinary `bun run build:client` also defaults to legacy unless `VITE_DEPLOY_TARGET=regional-production` is explicitly supplied.
+- A leftover `VITE_REGIONS_JSON`, `GAME_REGION`, or `DYNAMODB_TABLE` does not switch the default route to AWS.
+- GitHub CI validates both supported routes without deploying AWS or requiring AWS credentials.
+
+See [the default deployment guide](docs/deno-deployment.md) for provider configuration, validation, and rollback.
+
+### Ad-hoc deployment: AWS regional-production
+
+AWS remains independently deployable with regional matchmaking, reserved city seats, same-city reconnects, and careers keyed by signed guest identities. Its workflows are named **AWS regional-production - Build release**, **AWS regional-production - Deploy infrastructure**, and **AWS regional-production - Publish frontend**. All use `workflow_dispatch`; pushes and merges never trigger AWS deployment.
+
+To build its frontend explicitly:
+
+```bash
+VITE_REGIONS_JSON='[{"id":"ap-southeast-1","label":"Singapore","apiUrl":"https://sg.play.example.com"}]' bun run build:client:regional
+```
+
+AWS server tasks explicitly set `DEPLOY_TARGET=regional-production` through Terraform. An incomplete regional configuration fails instead of silently falling back to legacy. The manual workflows accept `main`, `regional-production`, or `codex/regional-production`; protect those branches in their AWS GitHub environments. AWS publishes to its own CloudFront site and does not change Vercel/Deno's default route.
+
+See [the AWS operations guide](docs/aws-deployment.md) for bootstrap, manual promotion, and rollback.
 
 The original Railway Docker configuration is retained as an optional paid-host fallback. The Railway trial expired; its MongoDB volume has not been removed or migrated. New Deno careers begin in the new database. The legacy `deploy.sh` helper describes Railway setup and is not used for Deno.

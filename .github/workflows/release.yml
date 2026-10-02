@@ -1,0 +1,61 @@
+name: AWS regional-production - Build release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aws-regional-production-release
+  cancel-in-progress: false
+jobs:
+  checks:
+    if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["refs/heads/main","refs/heads/regional-production","refs/heads/codex/regional-production"]'), github.ref)
+    uses: ./.github/workflows/ci.yml
+  publish:
+    needs: checks
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PUBLISHER_ROLE_ARN }}
+          aws-region: ${{ vars.ARTIFACT_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push immutable server
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Build regional frontend
+        env:
+          VITE_REGIONS_JSON: ${{ vars.REGIONS_JSON }}
+        run: |
+          node -e 'const r=JSON.parse(process.env.VITE_REGIONS_JSON); if(!r.length || r.some(x=>!x.apiUrl.startsWith("https://"))) process.exit(1)'
+          bun run build:client:regional
+      - name: Record release
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY }}@${{ steps.image.outputs.digest }}
+          REVISION: ${{ github.sha }}
+          REGIONS_JSON: ${{ vars.REGIONS_JSON }}
+        run: |
+          mkdir -p release
+          node -e 'require("fs").writeFileSync("release/manifest.json", JSON.stringify({target:"regional-production",image:process.env.IMAGE, revision:process.env.REVISION, regions:JSON.parse(process.env.REGIONS_JSON)},null,2))'
+          cp -R apps/client/dist release/client
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: release
+          retention-days: 90
+      - name: Deployment instructions
+        run: echo 'Build complete. Apply the image digest from the release manifest to staging, then each production region. Publish this frontend artifact only after regional smoke checks pass.' >> "$GITHUB_STEP_SUMMARY"

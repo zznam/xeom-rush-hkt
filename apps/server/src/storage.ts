@@ -1,5 +1,6 @@
 import { dbManager } from './db';
 import { savePlayerSession, type ISessionStats } from './persist';
+import { resolveDeploymentTarget } from '@xeom-rush/shared';
 
 type Key = (string | number)[];
 interface Entry<T> {
@@ -72,7 +73,15 @@ export class KvPersistence {
 }
 
 let kvPersistence: KvPersistence | null = null;
+let dynamoPersistence: import('./dynamo-storage').DynamoPersistence | null = null;
 export async function connectStorage(mongoUri: string): Promise<void> {
+  if (resolveDeploymentTarget(process.env.DEPLOY_TARGET) === 'regional-production' && process.env.DYNAMODB_TABLE) {
+    const { DynamoPersistence } = await import('./dynamo-storage.js');
+    dynamoPersistence = new DynamoPersistence(process.env.DYNAMODB_TABLE);
+    await dynamoPersistence.health();
+    console.log('[Storage] Connected to regional DynamoDB');
+    return;
+  }
   const deno = (globalThis as unknown as { Deno?: { openKv(path?: string): Promise<KvStore> } }).Deno;
   if (deno) {
     kvPersistence = new KvPersistence(await deno.openKv(process.env.DENO_KV_PATH || undefined));
@@ -82,6 +91,7 @@ export async function connectStorage(mongoUri: string): Promise<void> {
   }
 }
 export async function storageHealth(): Promise<void> {
+  if (dynamoPersistence) return dynamoPersistence.health();
   if (kvPersistence) return kvPersistence.health();
   await dbManager.getDb().command({ ping: 1 });
 }
@@ -90,7 +100,13 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
   const previous = writes.get(id) ?? Promise.resolve();
   const write = previous
     .catch(() => {})
-    .then(() => (kvPersistence ? kvPersistence.save(id, stats) : savePlayerSession(stats.username, stats)));
+    .then(() =>
+      dynamoPersistence
+        ? dynamoPersistence.save(id, stats)
+        : kvPersistence
+          ? kvPersistence.save(id, stats)
+          : savePlayerSession(stats.username, stats),
+    );
   writes.set(id, write);
   try {
     await write;
@@ -99,6 +115,7 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
   }
 }
 export async function getLeaderboard(): Promise<Profile[]> {
+  if (dynamoPersistence) return dynamoPersistence.leaderboard();
   if (kvPersistence) return kvPersistence.leaderboard();
   const rows = await dbManager.getDb().collection('players').find().sort({ careerScore: -1 }).limit(10).toArray();
   return rows.map((p) => ({
@@ -110,9 +127,10 @@ export async function getLeaderboard(): Promise<Profile[]> {
   }));
 }
 export function isKvStorage(): boolean {
-  return kvPersistence !== null;
+  return kvPersistence !== null || dynamoPersistence !== null;
 }
 export async function closeStorage(): Promise<void> {
-  if (kvPersistence) kvPersistence.close();
+  if (dynamoPersistence) dynamoPersistence.close();
+  else if (kvPersistence) kvPersistence.close();
   else await dbManager.close();
 }

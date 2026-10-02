@@ -102,3 +102,10 @@ export interface WorldSnapshot {
   rushHour: boolean;
   streaks: Record<string, number>; // playerId -> streak count
 }
+
+/** Low-frequency authoritative UI metadata; binary simulation packets stay compatible. */
+export interface CityStatus {
+  tick: number;
+  rushHourTicksRemaining: number;
+  deliveries: number;
+}

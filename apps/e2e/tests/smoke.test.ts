@@ -16,6 +16,9 @@ test.describe('Xeom Rush Smoke Tests', () => {
   test('2. Client login screen loads with username input and join button', async ({ page }) => {
     await page.goto('/');
 
+    // The default build stays legacy even when an AWS directory is present in the environment.
+    await expect(page.locator('#region')).toHaveCount(0);
+
     // Username input must be visible
     const usernameInput = page.locator('#username');
     await expect(usernameInput).toBeVisible({ timeout: 10_000 });

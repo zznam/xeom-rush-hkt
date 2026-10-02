@@ -2,8 +2,8 @@
   "nodeModulesDir": "manual",
   "unstable": ["kv"],
   "deploy": {
-    "install": "bun install --frozen-lockfile",
-    "build": "bun run build:server",
+    "install": "sh deploy/bun.sh install --frozen-lockfile",
+    "build": "sh deploy/bun.sh run --bun build:server",
     "runtime": {
       "type": "dynamic",
       "entrypoint": "deploy/deno-entry.ts"

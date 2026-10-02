@@ -8,3 +8,11 @@ packages/shared/node_modules
 dist
 mongo
 .env
+infra/
+docs/
+.github/
+tests/
+scripts/
+**/test-results/
+**/playwright-report/
+**/.env*

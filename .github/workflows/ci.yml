@@ -1,12 +1,16 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - main
   push:
     branches:
       - main
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -24,7 +28,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,17 +49,68 @@ jobs:
       - name: Run unit tests
         run: bun run test
 
-      - name: Build client
-        run: bun run build:client
+      - name: Build default legacy client
+        run: bun run build:client:legacy
+
+      - name: Validate opt-in AWS client build
+        env:
+          VITE_REGIONS_JSON: '[{"id":"ap-southeast-1","label":"Singapore","apiUrl":"https://sg.example.com"}]'
+        run: bun run build:client:regional
 
       - name: Build server
         run: bun run build:server
+
+      - name: Test legacy Deno deployment
+        run: node tests/legacy-smoke.mjs
+
+      - name: Test regional routing and matchmaking
+        run: node tests/regional-smoke.mjs
 
       - name: Test Deno persistence
         run: deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/deno-kv.test.ts
 
       - name: Install browser
-        run: bun x playwright install --with-deps chromium
+        run: bun run --filter e2e install:browsers
 
       - name: Test browser flows
-        run: bun run test:e2e
+        run: bun run test:e2e && bun run test:e2e:regional
+
+  deno-deploy-build:
+    name: Build in Deno-only environment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the configured deployment commands without preinstalled Bun or Node.js
+        run: |
+          docker run --rm -v "$PWD:/app" -w /app denoland/deno:2.7.14 eval '
+            const { deploy } = JSON.parse(await Deno.readTextFile("deno.json"));
+            for (const step of ["install", "build"]) {
+              const result = await new Deno.Command("sh", { args: ["-ec", deploy[step]] }).spawn().status;
+              if (!result.success) Deno.exit(result.code);
+            }
+          '
+
+  infrastructure:
+    name: Validate infrastructure and container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+      - run: terraform fmt -check -recursive infra
+      - run: terraform -chdir=infra/bootstrap init -backend=false -input=false -lockfile=readonly
+      - run: terraform -chdir=infra/bootstrap validate
+      - run: terraform -chdir=infra/region init -backend=false -input=false -lockfile=readonly
+      - run: terraform -chdir=infra/region validate
+      - run: terraform -chdir=infra/region test
+      - run: docker build -t xeom-ci .
+      - name: Verify production image starts with its runtime dependencies
+        run: |
+          docker run -d --name xeom-ci -p 3002:3002 -e NODE_ENV=development -e MONGODB_URI=mongodb://127.0.0.1:1/test -e BOT_COUNT=0 xeom-ci
+          trap 'docker logs xeom-ci; docker rm -f xeom-ci' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://localhost:3002/api/ready; then exit 0; fi
+            sleep 2
+          done
+          exit 1

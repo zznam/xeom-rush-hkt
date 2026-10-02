@@ -1,6 +1,7 @@
 import { dbManager } from './db';
 
 export interface ISessionStats {
+  profileId?: string;
   username: string;
   score: number;
   peakStreak: number;

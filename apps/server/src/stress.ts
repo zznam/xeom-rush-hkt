@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { encodeJoin, encodeInput, EMessageType, decodeSnapshot, decodeConfig } from '@xeom-rush/shared';
+import { encodeJoin, encodeInput, EMessageType } from '@xeom-rush/shared';
 
 // Parse CLI arguments
 const args = process.argv.slice(2);
@@ -63,12 +63,8 @@ function spawnBot(index: number) {
   ws.binaryType = 'arraybuffer';
   let seq = 0;
   let intervalId: NodeJS.Timeout | null = null;
-  let pingSentTime = 0;
 
   ws.on('open', () => {
-    clientStat.connected = true;
-    connectionsEstablished++;
-
     // 1. Send Join Payload
     const joinBuffer = encodeJoin(`Bot-${index}`);
     ws.send(joinBuffer);
@@ -76,6 +72,7 @@ function spawnBot(index: number) {
     // 2. Setup 20Hz Input loop (matches server tick rate)
     intervalId = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
+        if (!clientStat.connected) return;
         seq++;
         // Walk randomly
         const angle = Math.random() * Math.PI * 2;
@@ -88,30 +85,30 @@ function spawnBot(index: number) {
 
         // Periodically measure RTT (approx)
         if (seq % 20 === 0) {
-          pingSentTime = Date.now();
+          ws.send(`ping:${Date.now()}`);
         }
       }
     }, 50); // 50ms = 20 ticks/sec
   });
 
-  ws.on('message', (data: ArrayBuffer) => {
+  ws.on('message', (data: ArrayBuffer, isBinary: boolean) => {
+    if (!isBinary) {
+      const text = data.toString();
+      if (text.startsWith('pong:')) {
+        clientStat.rttList.push(Date.now() - Number(text.slice(5)));
+        if (clientStat.rttList.length > 50) clientStat.rttList.shift();
+      }
+      return;
+    }
     try {
       const view = new DataView(data);
       const msgType = view.getUint8(0);
 
-      if (msgType === EMessageType.SNAPSHOT) {
-        clientStat.packetsReceived++;
-
-        // Measure RTT response
-        if (pingSentTime > 0) {
-          const rtt = Date.now() - pingSentTime;
-          clientStat.rttList.push(rtt);
-          if (clientStat.rttList.length > 50) {
-            clientStat.rttList.shift();
-          }
-          pingSentTime = 0;
-        }
+      if (msgType === EMessageType.CONFIG) {
+        clientStat.connected = true;
+        connectionsEstablished++;
       }
+      if (msgType === EMessageType.SNAPSHOT || msgType === EMessageType.DELTA_SNAPSHOT) clientStat.packetsReceived++;
     } catch (e) {
       // Ignore parsing errors under high load simulation
     }
@@ -173,6 +170,7 @@ setTimeout(
     console.log('🏁 STRESS TEST COMPLETED — DIAGNOSTIC REPORT');
     console.log('====================================================');
 
+    const activeAtEnd = [...stats.values()].filter((s) => s.connected).length;
     // Close all sockets
     activeSockets.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
@@ -198,7 +196,7 @@ setTimeout(
     const p99 = finalRtts.length > 0 ? finalRtts[Math.floor(finalRtts.length * 0.99)] : 0;
 
     console.log(`Success Rate:      ${((connectionsEstablished / clientCount) * 100).toFixed(1)}%`);
-    console.log(`Lost Connections:  ${clientCount - connectionsEstablished} sockets`);
+    console.log(`Lost Connections:  ${clientCount - activeAtEnd} sockets`);
     console.log(`Total Packets Up:  ${totalSent} (Inputs)`);
     console.log(`Total Packets Down: ${totalReceived} (Snapshots)`);
     console.log(`Throughput Rate:   ${((totalSent + totalReceived) / finalElapsed).toFixed(1)} packets/sec`);
@@ -210,7 +208,7 @@ setTimeout(
     console.log(`95th Percentile:   ${p95} ms`);
     console.log(`99th Percentile:   ${p99} ms`);
     console.log('====================================================\n');
-    process.exit(0);
+    process.exit(activeAtEnd === clientCount && connectionsFailed === 0 ? 0 : 1);
   },
   durationSec * 1000 + 1000,
 ); // Allow brief buffer time for final print
