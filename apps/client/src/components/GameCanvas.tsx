@@ -23,10 +23,11 @@ import { DebugOverlay } from './DebugOverlay';
 interface GameCanvasProps {
   username: string;
   serverUrl: string;
+  cityLabel?: string;
   onDisconnect: (reason?: string) => void;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onDisconnect }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
@@ -71,7 +72,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
   const [rushHour, setRushHour] = useState(false);
   const [rushHourTicksRemaining, setRushHourTicksRemaining] = useState(0);
   const previousRushHourRef = useRef(false);
-  const rushHourStartedAtRef = useRef<number | null>(null); // ms timestamp when rush hour began client-side
+  const rushHourEndsAtTickRef = useRef(0);
 
   // Streak state
   const [myStreak, setMyStreak] = useState(0);
@@ -134,6 +135,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       console.log('Received config from server, my player ID is:', myPlayerId);
     });
 
+    const unsubscribeCity = network.registerCityCallback((status) => {
+      rushHourEndsAtTickRef.current = status.tick + status.rushHourTicksRemaining;
+      setRushHourTicksRemaining(status.rushHourTicksRemaining);
+      setDeliveries(status.deliveries);
+    });
     const unsubscribeSnapshot = network.registerSnapshotCallback((snapshot: WorldSnapshot, meta) => {
       // 1. Calculate received package size
       setLastBytes(meta.bytes);
@@ -150,23 +156,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       const wasRushHour = previousRushHourRef.current;
       if (snapshot.rushHour && !wasRushHour) {
         soundEngine.playRushHourSting();
-        rushHourStartedAtRef.current = Date.now();
       }
       if (!snapshot.rushHour) {
-        rushHourStartedAtRef.current = null;
+        rushHourEndsAtTickRef.current = 0;
       }
       previousRushHourRef.current = snapshot.rushHour;
       setRushHour(snapshot.rushHour);
 
-      // Estimate rush hour ticks remaining from elapsed time
-      const RUSH_HOUR_DURATION_MS = 60_000; // 60 seconds
-      if (snapshot.rushHour && rushHourStartedAtRef.current !== null) {
-        const elapsed = Date.now() - rushHourStartedAtRef.current;
-        const remainingMs = Math.max(0, RUSH_HOUR_DURATION_MS - elapsed);
-        setRushHourTicksRemaining(Math.ceil(remainingMs / 50)); // 50ms per tick
-      } else {
-        setRushHourTicksRemaining(0);
-      }
+      setRushHourTicksRemaining(snapshot.rushHour ? Math.max(0, rushHourEndsAtTickRef.current - snapshot.tick) : 0);
 
       // 4. Detect new VIP passengers and announce
       for (const passenger of snapshot.passengers) {
@@ -212,7 +209,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'delivery');
           const earned = Math.max(0, localStateFromServer.score - (localPlayerStateRef.current?.score ?? 0));
           setToast(`✦ Chuyến tốt! +${earned.toLocaleString('vi-VN')}đ`);
-          setDeliveries((count) => count + 1);
+
           setTutorialDone(true);
           writeStored('tutorial', 'done');
           if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -389,6 +386,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       cancelAnimationFrame(animationFrameId);
       unsubscribeConfig();
       unsubscribeSnapshot();
+      unsubscribeCity();
       if (toastTimer.current) clearTimeout(toastTimer.current);
       if (violationTimer.current) clearTimeout(violationTimer.current);
       network.disconnect();
@@ -401,7 +399,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
 
   const handleSpawnBots = async () => {
     // Spawn server-side AI bots that navigate, pick up passengers, and compete with players
-    const httpUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+    const httpUrl = serverUrl.split('?')[0].replace('ws://', 'http://').replace('wss://', 'https://');
     try {
       const res = await fetch(`${httpUrl}/api/spawn-bots`, {
         method: 'POST',
@@ -542,6 +540,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, onD
       `}</style>
 
       {/* HUD Layer */}
+      {cityLabel && (
+        <div className='city-label' aria-label='Thành phố hiện tại'>
+          {cityLabel}
+        </div>
+      )}
       <HUD
         localPlayer={localPlayer}
         players={players}

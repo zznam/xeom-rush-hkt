@@ -35,7 +35,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   useEffect(() => {
     if (activeTab !== 'logs') return;
 
-    const httpUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+    const httpUrl = serverUrl.split('?')[0].replace('ws://', 'http://').replace('wss://', 'https://');
     const fetchLogs = async () => {
       try {
         const res = await fetch(`${httpUrl}/api/bot-logs`);

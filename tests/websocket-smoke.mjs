@@ -31,7 +31,7 @@ function connect(token, username) {
   socket.on('open', () => socket.send(encodeJoin(username)));
   socket.on('message', (data, binary) => {
     if (!binary) {
-      state.pong = data.toString().startsWith('pong:');
+      if (data.toString().startsWith('pong:')) state.pong = true;
       return;
     }
     const type = new DataView(data).getUint8(0);

@@ -41,6 +41,8 @@ Room infrastructure is a prerequisite for friend rooms: Deno free regions can ru
 
 ## Hosting and operational defaults
 
+Legacy Vercel + Deno remains the default deployment. AWS `regional-production` is a separate ad-hoc route with manual workflows; see [AWS operations](aws-deployment.md). Regional matching, explicit city ownership, signed regional guest identities, and DynamoDB checkpoints are available only through that opt-in route. Friend invitations, private timed rounds, cross-device accounts, global careers, and automatic city fleet scaling remain future work. The defaults below continue to describe the legacy deployment.
+
 - Frontend: existing Vercel project and production domain. Backend: Deno Deploy with managed Deno KV, replacing the expired Railway trial at the user's request.
 - Deno KV stores career profiles, indexed leaderboard entries, and idempotent session contributions. Checkpoint every 30 seconds and flush on explicit exit or graceful shutdown. An abrupt crash can lose progress since the last checkpoint.
 - Live city state remains instance-local. Reconnection preserves a ride only while its original instance survives; saved careers are shared by the production KV timeline.

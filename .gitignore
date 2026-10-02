@@ -14,3 +14,12 @@ mongo/
 
 **/test-results/
 **/playwright-report/
+
+# Terraform state, provider caches, local plans and deployment inputs
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+!infra/examples/*.tfvars

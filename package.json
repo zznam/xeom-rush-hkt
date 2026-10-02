@@ -15,7 +15,13 @@
     "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore dist",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:regional": "bun run build:server && node tests/regional-smoke.mjs",
+    "test:e2e:regional": "bun run --filter e2e test --config=playwright.regional.config.ts",
+    "build:client:legacy": "VITE_DEPLOY_TARGET=legacy bun run build:client",
+    "build:client:regional": "VITE_DEPLOY_TARGET=regional-production bun run build:client",
+    "build:legacy": "bun run build:server && bun run build:client:legacy",
+    "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

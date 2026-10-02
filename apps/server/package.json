@@ -10,6 +10,8 @@
     "stress": "tsx src/stress.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1145.0",
+    "@aws-sdk/lib-dynamodb": "^3.1145.0",
     "@xeom-rush/shared": "workspace:*",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",

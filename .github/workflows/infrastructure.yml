@@ -1,0 +1,111 @@
+name: AWS regional-production - Deploy infrastructure
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        required: true
+      region:
+        description: AWS region, e.g. ap-southeast-1
+        required: true
+      run_id:
+        description: Successful AWS Build release workflow run ID
+        required: true
+      image:
+        description: ECR image URI with @sha256 digest from a tested release
+        required: true
+      release_sha:
+        description: Git revision from that release manifest (40 hex characters)
+        required: true
+      apply:
+        description: Apply the plan after validation
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: aws-regional-production-infrastructure-${{ inputs.environment }}-${{ inputs.region }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["refs/heads/main","refs/heads/regional-production","refs/heads/codex/regional-production"]'), github.ref)
+    environment: infra-${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+      TF_VAR_image: ${{ inputs.image }}
+      TF_VAR_release_sha: ${{ inputs.release_sha }}
+      TF_VAR_environment: ${{ inputs.environment }}
+      TF_VAR_region: ${{ inputs.region }}
+      STATE_BUCKET: ${{ vars.STATE_BUCKET }}
+      STATE_REGION: ${{ vars.ARTIFACT_REGION }}
+      DEPLOY_REGION: ${{ inputs.region }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      REGION_CONFIGS: ${{ vars.REGION_CONFIGS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tested release provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq 'select(.path == ".github/workflows/release.yml" and (.head_branch == "main" or .head_branch == "regional-production" or .head_branch == "codex/regional-production") and .conclusion == "success") | .id' | grep -qx "$RUN_ID"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Resolve regional inputs
+        run: |
+          python3 - <<'PY'
+          import os, json, re
+          release = json.load(open('release/manifest.json'))
+          assert release['target'] == 'regional-production'
+          assert release['image'] == os.environ['TF_VAR_image']
+          assert release['revision'] == os.environ['TF_VAR_release_sha']
+          region = os.environ['DEPLOY_REGION']
+          assert re.fullmatch(r'[a-z]{2}-[a-z]+-\d', region)
+          assert re.fullmatch(r'[a-f0-9]{40}', os.environ['TF_VAR_release_sha'])
+          configs = json.loads(os.environ['REGION_CONFIGS'])
+          config = configs[region]
+          assert config['region'] == region
+          assert config['environment'] == os.environ['DEPLOY_ENVIRONMENT']
+          assert not any(k in config for k in ['image', 'release_sha'])
+          if os.environ['DEPLOY_ENVIRONMENT'] == 'production':
+              assert sorted(config['regions'], key=lambda r:r['id']) == sorted(release['regions'], key=lambda r:r['id'])
+          with open('infra/region/deploy.auto.tfvars.json', 'w') as file: json.dump(config, file)
+          PY
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.INFRASTRUCTURE_ROLE_ARN }}
+          aws-region: ${{ inputs.region }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+      - name: Initialize isolated regional state
+        run: terraform -chdir=infra/region init -lockfile=readonly -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$STATE_REGION" -backend-config="key=regions/$DEPLOY_ENVIRONMENT/$DEPLOY_REGION.tfstate" -backend-config=encrypt=true -backend-config=use_lockfile=true
+      - run: terraform -chdir=infra/region validate
+      - run: terraform -chdir=infra/region plan -lock-timeout=5m -out=release.tfplan
+      - name: Apply planned configuration
+        if: inputs.apply
+        run: terraform -chdir=infra/region apply -parallelism=1 -lock-timeout=5m release.tfplan
+      - uses: oven-sh/setup-bun@v2
+        if: inputs.apply
+        with:
+          bun-version: 1.4.0
+      - name: Validate live regional routing
+        if: inputs.apply
+        run: |
+          bun install --frozen-lockfile
+          bun run build:shared
+          API_URL=$(terraform -chdir=infra/region output -raw api_url) GAME_REGION="$DEPLOY_REGION" EXPECTED_RELEASE="$TF_VAR_release_sha" node tests/regional-live.mjs

@@ -1,4 +1,6 @@
-# Vercel and Deno deployment
+# Default deployment: Vercel and Deno
+
+Legacy Vercel + Deno is the default deployment. Normal Git deployments continue from `main`; the separate [AWS regional-production route](aws-deployment.md) is available only through manual workflows and does not replace this route.
 
 The Railway trial expired on the account. Deno Deploy replaces the backend for the free-tier release; Vercel continues serving the static client. The Railway MongoDB volume must remain intact for a possible later export.
 
@@ -20,17 +22,17 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 - `BOT_COUNT=8` by default; supported range 0–20.
 - Do not set `DENO_KV_PATH` in production: the platform supplies the assigned database.
 
-The entrypoint enforces production mode. `deno.json` enables KV and records the tested build/runtime configuration; explicit CommonJS package types let Deno run the same compiled authoritative server as Node. Demo mutation endpoints are unavailable in production.
+The entrypoint enforces `NODE_ENV=production` and `DEPLOY_TARGET=legacy`. It keeps using Deno KV even if AWS environment variables were copied into the provider settings. `deno.json` enables KV and records the tested build/runtime configuration; explicit CommonJS package types let Deno run the same compiled authoritative server as Node. Demo mutation endpoints are unavailable in production.
 
 ## Vercel
 
-Keep the existing repository-root build/output configuration. Set production `VITE_WS_URL` to the deployed Deno app's `wss://` URL, then rebuild the frontend. A previously built Vite bundle retains its old URL until rebuilt.
+Keep the repository-root build/output configuration: `vercel.json` runs `bun run build:client:legacy`, explicitly setting `VITE_DEPLOY_TARGET=legacy`. A leftover `VITE_REGIONS_JSON` is ignored and never enables the AWS region picker. Set production `VITE_WS_URL` to the deployed Deno app's `wss://` URL, then rebuild the frontend. A previously built Vite bundle retains its old URL until rebuilt.
 
 ## Validation and rollback
 
-1. Run `bun run test`, `bun run build:client`, and `bun run build:server`.
+1. Run `bun run test` and `bun run build:legacy`.
 2. Run `deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/deno-kv.test.ts`. Application types are checked in the preceding TypeScript build; this command verifies the native KV runtime behavior.
-3. Run `bun run test:e2e` using its isolated local ports and memory-only test database target.
+3. Run `bun run test:legacy` to start the actual Deno entrypoint with temporary local KV and check direct WebSocket join/reconnect, persistence readiness, and AWS-variable isolation. Run `bun run test:e2e` for the default client flows.
 4. Check production `/api/health` returns `status: ok` and `database: connected`.
 5. Join with two browsers, verify movement and snapshots, complete a delivery, end the ride, and check saved scores. Check short reconnects and production admin endpoint denial.
 6. Compare deployed Git revisions, review Deno logs, and check free-tier usage.
