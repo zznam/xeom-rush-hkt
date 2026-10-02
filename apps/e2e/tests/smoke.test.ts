@@ -123,3 +123,72 @@ test('mobile layout keeps the join form and touch controls usable', async ({ pag
   await expect(page.getByRole('group', { name: 'Cần điều khiển lái xe' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Kết thúc', exact: true })).toBeInViewport();
 });
+
+for (const layout of [
+  { name: 'desktop', width: 1440, height: 900, touch: false },
+  { name: 'tablet', width: 820, height: 620, touch: false },
+  { name: 'desktop breakpoint', width: 769, height: 600, touch: false },
+  { name: 'phone', width: 390, height: 844, touch: true },
+  { name: 'small phone', width: 320, height: 568, touch: true },
+  { name: 'touch landscape', width: 844, height: 390, touch: true },
+]) {
+  test.describe(`Game HUD layout: ${layout.name}`, () => {
+    test.use({ viewport: { width: layout.width, height: layout.height }, hasTouch: layout.touch });
+
+    test('keeps the HUD and controls visible without overlapping', async ({ page }) => {
+      await page.goto('/');
+      await page.locator('#username').fill('LayoutDriver');
+      await page.locator('button[type="submit"]').click();
+      await expect(page.locator('.hud-summary')).toBeVisible();
+      await expect(page.locator('.connection-cover')).toHaveCount(0);
+
+      const selectors = ['.hud-summary', '.hud-minimap', '.game-dock', '.game-toolbar'];
+      if (layout.touch) {
+        selectors.push('.leaderboard-toggle-btn', '.joystick-mobile', '.honk-btn-mobile');
+      } else {
+        selectors.push('.hud-leaderboard', '.keyboard-hints');
+      }
+      const boxes = [];
+      for (const selector of selectors) {
+        const box = await page.locator(selector).boundingBox();
+        expect(box, `${selector} is rendered`).not.toBeNull();
+        expect(box!.x, `${selector} left edge`).toBeGreaterThanOrEqual(0);
+        expect(box!.y, `${selector} top edge`).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width, `${selector} right edge`).toBeLessThanOrEqual(layout.width);
+        expect(box!.y + box!.height, `${selector} bottom edge`).toBeLessThanOrEqual(layout.height);
+        boxes.push({ selector, ...box! });
+      }
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i];
+          const b = boxes[j];
+          // Hints and the toolbar share the dock, but must not overlap each other.
+          const pair = [a.selector, b.selector];
+          if (
+            pair.includes('.game-dock') &&
+            pair.some((selector) => ['.keyboard-hints', '.game-toolbar'].includes(selector))
+          )
+            continue;
+          const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+          expect(overlapX <= 0 || overlapY <= 0, `${a.selector} overlaps ${b.selector}`).toBe(true);
+        }
+      }
+      for (const button of await page.locator('.game-toolbar button').all()) {
+        await expect(button).toBeInViewport();
+        const box = await button.boundingBox();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(await button.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
+      if (layout.touch) {
+        const rankingButton = page.getByRole('button', { name: 'Tài xế quanh bạn' });
+        await rankingButton.click();
+        await expect(rankingButton).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#nearby-drivers')).toBeInViewport();
+        await rankingButton.click();
+        await expect(page.locator('#nearby-drivers')).toHaveCount(0);
+      }
+      await page.screenshot({ path: `test-results/hud-${layout.name.replaceAll(' ', '-')}.png` });
+    });
+  });
+}

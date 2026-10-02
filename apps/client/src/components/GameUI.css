@@ -1,0 +1,506 @@
+.game-shell {
+  --ui-gap: 20px;
+  --ui-top: max(var(--ui-gap), env(safe-area-inset-top));
+  --ui-left: max(var(--ui-gap), env(safe-area-inset-left));
+  --ui-right: max(var(--ui-gap), env(safe-area-inset-right));
+  --ui-bottom: max(var(--ui-gap), env(safe-area-inset-bottom));
+  --dock-height: 68px;
+  --hud-top: var(--ui-top);
+  --hud-bottom: calc(var(--ui-bottom) + var(--dock-height) + 16px);
+  user-select: none;
+}
+.hud-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #fffae9;
+}
+.hud-container.has-rush-hour {
+  --hud-top: calc(var(--ui-top) + 44px);
+}
+.hud-left {
+  position: absolute;
+  top: var(--hud-top);
+  bottom: var(--hud-bottom);
+  left: var(--ui-left);
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hud-summary {
+  padding: 18px;
+  min-height: 0;
+  overflow: auto;
+  pointer-events: auto;
+  scrollbar-width: thin;
+}
+.hud-label {
+  display: block;
+  color: #c0d1c7;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.5;
+  letter-spacing: 0.8px;
+}
+.hud-city {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a5e0c3;
+  font-size: 10px;
+  margin-bottom: 10px;
+}
+.hud-earnings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 5px 0 14px;
+}
+.hud-earnings > strong {
+  font-size: 32px;
+  font-weight: 900;
+  color: #ffe18b;
+  letter-spacing: -1px;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.hud-earnings > strong small {
+  font-size: 20px;
+}
+.streak-badge {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #5d9779;
+  border-radius: 8px;
+  background: #386448;
+  color: #baf2cb;
+  font-size: 9px;
+  font-weight: 800;
+}
+.streak-badge.streak-high {
+  color: #ffe18b;
+  border-color: #b69851;
+  background: #675733;
+}
+.driver-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #ffffff20;
+}
+.driver-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8fe1ae;
+  flex-shrink: 0;
+}
+.driver-status.is-carrying i {
+  background: #ffba91;
+}
+.driver-status strong {
+  color: #ffe18b;
+  font-variant-numeric: tabular-nums;
+}
+.trip-guide {
+  margin-top: 14px;
+}
+.trip-guide .hud-label {
+  font-size: 9px;
+  color: #a5e0c3;
+}
+.trip-guide h3 {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 6px 0;
+  line-height: 1.5;
+}
+.trip-guide p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #d1ded5;
+}
+.trip-progress {
+  color: #a5e0c3;
+  font-size: 10px;
+  margin-top: 12px;
+}
+.hud-minimap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 12px;
+  border: 2px solid #38544b;
+  border-radius: 14px;
+  background: #243b37ed;
+  box-shadow: 3px 4px 0 #24403740;
+  flex-shrink: 0;
+}
+.hud-left > .hud-minimap {
+  margin-top: auto;
+}
+.hud-minimap canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #ffffff20;
+  border-radius: 8px;
+}
+.minimap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 7px;
+  font-size: 8px;
+}
+.hud-right {
+  position: absolute;
+  top: var(--hud-top);
+  right: var(--ui-right);
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.hud-leaderboard {
+  width: 100%;
+  padding: 16px;
+  pointer-events: auto;
+}
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  list-style: none;
+}
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 11px;
+}
+.leaderboard-row.is-me {
+  background: #42735a70;
+  border-color: #7aa78b70;
+}
+.leaderboard-rank {
+  color: #afc3b5;
+  font-weight: 800;
+}
+.leaderboard-row:first-child .leaderboard-rank {
+  color: #ffe18b;
+}
+.leaderboard-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderboard-name small {
+  color: #a5e0c3;
+  font-size: inherit;
+}
+.leaderboard-row strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.game-dock {
+  position: absolute;
+  bottom: var(--ui-bottom);
+  left: var(--ui-left);
+  right: var(--ui-right);
+  min-height: var(--dock-height);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  z-index: 110;
+}
+.keyboard-hints {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  color: #d1ded5;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.keyboard-hints > span {
+  white-space: nowrap;
+}
+.keyboard-hints kbd {
+  display: inline-block;
+  padding: 4px 6px;
+  margin-right: 4px;
+  border: 1px solid #789686;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #ffffff0d;
+  color: #fffae9;
+  font:
+    700 10px 'Be Vietnam Pro',
+    sans-serif;
+}
+.game-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.game-toolbar button,
+.toon-button {
+  cursor: pointer;
+  border: 2px solid #263e3a;
+  border-radius: 10px;
+  background: #fff9e9;
+  color: #263e3a;
+  font:
+    700 11px 'Be Vietnam Pro',
+    sans-serif;
+  padding: 10px 12px;
+  box-shadow: 0 3px 0 #162b26;
+  min-height: 44px;
+  white-space: nowrap;
+}
+.game-toolbar button[aria-pressed='true'] {
+  background: #bfe8d5;
+}
+.game-toolbar .end-ride-button {
+  background: #ffcfb7;
+}
+.game-toolbar button:hover,
+.toon-button:hover {
+  filter: brightness(1.06);
+}
+.game-toolbar button:active,
+.toon-button:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.game-shell button:focus-visible {
+  outline: 3px solid #ffe18b;
+  outline-offset: 3px;
+}
+.rush-hour-banner {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  left: var(--ui-left);
+  right: var(--ui-right);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: #ffe18bf5;
+  border: 2px solid #38544b;
+  border-radius: 0 0 12px 12px;
+  color: #263e3a;
+  font-size: 11px;
+}
+.rush-hour-banner b {
+  font-variant-numeric: tabular-nums;
+}
+.debug-overlay-fixed {
+  position: absolute;
+  bottom: var(--hud-bottom);
+  right: var(--ui-right);
+  max-height: calc(100% - var(--hud-bottom) - 300px);
+  padding: 16px;
+  overflow: auto;
+  pointer-events: auto;
+  z-index: 50;
+}
+@media (max-width: 1100px) {
+  .delivery-hint,
+  .debug-overlay-fixed {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .arrow-keys {
+    display: none;
+  }
+}
+.hud-compact .hud-left {
+  width: min(280px, calc(100% - var(--ui-left) - var(--ui-right) - 130px));
+  bottom: calc(var(--hud-bottom) + 144px);
+}
+.hud-compact .hud-summary {
+  padding: 12px;
+}
+.hud-compact .hud-label {
+  font-size: 8px;
+  letter-spacing: 0.5px;
+}
+.hud-compact .hud-earnings {
+  margin-bottom: 10px;
+}
+.hud-compact .hud-earnings > strong {
+  font-size: 24px;
+}
+.hud-compact .hud-earnings > strong small {
+  font-size: 15px;
+}
+.hud-compact .driver-status {
+  font-size: 10px;
+  padding-bottom: 10px;
+}
+.hud-compact .trip-guide {
+  margin-top: 10px;
+}
+.hud-compact .trip-guide h3 {
+  font-size: 13px;
+}
+.hud-compact .trip-guide p {
+  font-size: 10px;
+}
+.hud-compact .hud-right {
+  width: 120px;
+}
+.hud-compact .hud-minimap {
+  width: 120px;
+  padding: 7px 3px;
+  gap: 5px;
+}
+.hud-compact .minimap-legend {
+  font-size: 7px;
+  gap: 3px 5px;
+}
+.leaderboard-toggle-btn {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 120px;
+  min-height: 44px;
+  border: 2px solid #38544b;
+  border-radius: 10px;
+  background: #243b37ed;
+  color: #ffe18b;
+  font:
+    700 10px 'Be Vietnam Pro',
+    sans-serif;
+  cursor: pointer;
+}
+.hud-compact .hud-leaderboard {
+  position: absolute;
+  top: 100%;
+  margin-top: 10px;
+  width: min(280px, calc(100vw - var(--ui-left) - var(--ui-right)));
+  max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom) - 220px);
+  overflow: auto;
+  z-index: 100;
+}
+.joystick-mobile {
+  position: absolute;
+  bottom: var(--hud-bottom);
+  left: calc(var(--ui-left) + 8px);
+  pointer-events: auto;
+  z-index: 100;
+}
+.honk-btn-mobile {
+  position: absolute;
+  bottom: calc(var(--hud-bottom) + 16px);
+  right: calc(var(--ui-right) + 8px);
+  width: 76px;
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #38544b;
+  border-radius: 50%;
+  background: #ffe18b;
+  color: #263e3a;
+  box-shadow: 0 4px 0 #24403740;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 100;
+}
+.honk-btn-mobile > span {
+  font-size: 26px;
+}
+.honk-btn-mobile small {
+  font:
+    900 10px 'Be Vietnam Pro',
+    sans-serif;
+}
+.honk-btn-mobile:active {
+  transform: translateY(2px);
+}
+@media (max-width: 768px), (pointer: coarse) {
+  .game-shell {
+    --ui-gap: 12px;
+    --dock-height: 64px;
+  }
+  .keyboard-hints,
+  .debug-overlay-fixed {
+    display: none;
+  }
+  .game-dock {
+    justify-content: center;
+    padding: 8px;
+    gap: 0;
+  }
+  .game-toolbar {
+    width: 100%;
+    justify-content: center;
+    gap: 6px;
+  }
+  .game-toolbar button {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 10px;
+  }
+  .rush-hour-banner {
+    gap: 8px;
+    font-size: 9px;
+  }
+}
+@media (max-height: 540px) {
+  .hud-left > .hud-minimap {
+    display: none;
+  }
+  .trip-toast {
+    top: 15%;
+  }
+}
+@media (max-height: 540px) {
+  .hud-compact .hud-minimap {
+    width: 90px;
+  }
+  .hud-compact .hud-minimap canvas {
+    width: 80px;
+  }
+  .hud-compact .minimap-legend {
+    display: none;
+  }
+}
+
+@media (max-height: 540px) and (min-width: 600px) {
+  .hud-compact .hud-leaderboard {
+    top: 0;
+    right: 130px;
+    margin-top: 0;
+    width: min(230px, calc(100vw - 390px));
+    max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom));
+  }
+}

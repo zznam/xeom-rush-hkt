@@ -22,7 +22,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   passengers,
   carriedPassengerId,
   size = 150,
-  className = 'minimap-container-fixed',
+  className = 'hud-minimap',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scale = size / MAP_SIZE;
@@ -128,33 +128,13 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   return (
     <div id='minimap-container' className={className}>
-      <span
-        style={{
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: '0.08em',
-          color: '#64748b',
-          textTransform: 'uppercase',
-        }}
-      >
-        🗺 BẢN ĐỒ
-      </span>
-      <canvas
-        id='minimap'
-        ref={canvasRef}
-        width={size}
-        height={size}
-        style={{
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 6,
-          display: 'block',
-        }}
-      />
-      <div style={{ display: 'flex', gap: 8, fontSize: 8, color: '#64748b' }}>
-        <span style={{ color: '#22c55e' }}>● Thường</span>
+      <span className='hud-label'>🗺 BẢN ĐỒ</span>
+      <canvas id='minimap' ref={canvasRef} width={size} height={size} aria-label='Bản đồ thành phố' />
+      <div className='minimap-legend'>
+        <span style={{ color: '#65d997' }}>● Thường</span>
         <span style={{ color: '#fbbf24' }}>● KD</span>
-        <span style={{ color: '#a855f7' }}>● VIP</span>
-        <span style={{ color: '#60a5fa' }}>● Bạn</span>
+        <span style={{ color: '#c084fc' }}>● VIP</span>
+        <span style={{ color: '#93c5fd' }}>● Bạn</span>
       </div>
     </div>
   );

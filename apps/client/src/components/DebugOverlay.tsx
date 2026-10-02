@@ -88,7 +88,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   const compressionRatio = lastSnapshotBytes > 0 ? (approxJsonBytes / lastSnapshotBytes).toFixed(1) : '0.0';
 
   return (
-    <div className='debug-overlay-fixed glass-panel p-4' style={{ width: 330 }}>
+    <div className='debug-overlay-fixed glass-panel' style={{ width: 330 }}>
       {/* Premium Tabs */}
       <div
         style={{
