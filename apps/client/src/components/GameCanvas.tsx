@@ -19,6 +19,7 @@ import {
 } from '@xeom-rush/shared';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
+import './GameUI.css';
 
 interface GameCanvasProps {
   username: string;
@@ -422,51 +423,52 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           {toast}
         </div>
       )}
-      {localPlayer && !showResults && (
-        <aside className='trip-guide'>
-          <small>{!tutorialDone ? 'CHUYẾN ĐẦU TIÊN CỦA BẠN' : 'NHẬT KÝ CHUYẾN XE'}</small>
-          <h3>{localPlayer.passengerId ? '🏁 Đưa khách đến đích' : '🙋 Có người đang đợi!'}</h3>
-          <p>
-            {localPlayer.passengerId
-              ? 'Theo dấu đỏ đến điểm trả. Lái lại gần để hoàn tất chuyến xe.'
-              : 'Lái đến vị khách đang vẫy tay để đón. WASD / phím mũi tên hoặc cần điều khiển.'}
-          </p>
-          {deliveries > 0 && (
-            <p>
-              ✦ Đã hoàn thành {deliveries} chuyến · Combo {myStreak}
-            </p>
-          )}
-        </aside>
-      )}
-      <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
-        <button
-          aria-label='Âm thanh'
-          aria-pressed={preferences.sound}
-          onClick={() => {
-            soundEngine.unlock();
-            setPreferences((p) => ({ ...p, sound: !p.sound }));
-          }}
-        >
-          {preferences.sound ? '♫ Bật' : '♫ Tắt'}
-        </button>
-        <button
-          aria-label='Giảm chuyển động'
-          aria-pressed={preferences.reducedMotion}
-          onClick={() => setPreferences((p) => ({ ...p, reducedMotion: !p.reducedMotion }))}
-        >
-          Chuyển động
-        </button>
-        <button
-          onClick={() => {
-            network.disconnect();
-            soundEngine.stopEngine();
-            inputHandler.clear();
-            setShowResults(true);
-          }}
-        >
-          Kết thúc
-        </button>
-      </nav>
+      <footer className='game-dock glass-panel'>
+        <div className='keyboard-hints' aria-label='Hướng dẫn lái xe'>
+          <span>
+            <kbd>WASD</kbd>
+            <span className='arrow-keys'>
+              {' '}
+              / <kbd>↑ ← ↓ →</kbd>
+            </span>{' '}
+            Lái xe
+          </span>
+          <span>
+            <kbd>H</kbd> Bấm còi
+          </span>
+          <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
+        </div>
+        <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
+          <button
+            aria-label='Âm thanh'
+            aria-pressed={preferences.sound}
+            onClick={() => {
+              soundEngine.unlock();
+              setPreferences((p) => ({ ...p, sound: !p.sound }));
+            }}
+          >
+            <span aria-hidden='true'>♫</span> {preferences.sound ? 'Âm thanh bật' : 'Âm thanh tắt'}
+          </button>
+          <button
+            aria-label='Giảm chuyển động'
+            aria-pressed={preferences.reducedMotion}
+            onClick={() => setPreferences((p) => ({ ...p, reducedMotion: !p.reducedMotion }))}
+          >
+            {preferences.reducedMotion ? 'Ít chuyển động' : 'Chuyển động'}
+          </button>
+          <button
+            className='end-ride-button'
+            onClick={() => {
+              network.disconnect();
+              soundEngine.stopEngine();
+              inputHandler.clear();
+              setShowResults(true);
+            }}
+          >
+            Kết thúc
+          </button>
+        </nav>
+      </footer>
       {connectionState !== 'connected' && !showResults && (
         <div className='connection-cover'>
           <div className='connection-card' role='status'>
@@ -540,11 +542,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       `}</style>
 
       {/* HUD Layer */}
-      {cityLabel && (
-        <div className='city-label' aria-label='Thành phố hiện tại'>
-          {cityLabel}
-        </div>
-      )}
       <HUD
         localPlayer={localPlayer}
         players={players}
@@ -552,6 +549,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         rushHour={rushHour}
         rushHourTicksRemaining={rushHourTicksRemaining}
         myStreak={myStreak}
+        deliveries={deliveries}
+        tutorialDone={tutorialDone}
+        cityLabel={cityLabel}
       />
 
       {/* Debug Telemetry Panel */}
