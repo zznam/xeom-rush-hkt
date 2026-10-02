@@ -12,8 +12,8 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 
 - App directory: repository root.
 - Preset: none; dynamic runtime.
-- Install: `bun install --frozen-lockfile` (or configure build task using bun).
-- Build: `bun run build:server`.
+- Install: `npx --yes --package=bun@1.4.0 bun install --frozen-lockfile`.
+- Build: `npx --yes --package=bun@1.4.0 bun run build:server`.
 - Entrypoint: `deploy/deno-entry.ts`.
 - Working directory: repository root.
 - Free deployment regions; no paid region upgrade.
@@ -23,6 +23,8 @@ Use the existing `zznam` organization and the `zznam/xeom-rush-hkt` GitHub repos
 - Do not set `DENO_KV_PATH` in production: the platform supplies the assigned database.
 
 The entrypoint enforces `NODE_ENV=production` and `DEPLOY_TARGET=legacy`. It keeps using Deno KV even if AWS environment variables were copied into the provider settings. `deno.json` enables KV and records the tested build/runtime configuration; explicit CommonJS package types let Deno run the same compiled authoritative server as Node. Demo mutation endpoints are unavailable in production.
+
+Deno Deploy provides `npx` but does not preinstall Bun. Both commands above obtain the pinned Bun version through npm and add it to the build process's PATH, including nested workspace scripts. See the [Deno build environment](https://docs.deno.com/deploy/reference/builds/#build-environment).
 
 ## Vercel
 

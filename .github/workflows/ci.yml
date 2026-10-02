@@ -70,7 +70,7 @@ jobs:
         run: deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/deno-kv.test.ts
 
       - name: Install browser
-        run: bun x playwright install --with-deps chromium
+        run: bun run --filter e2e install:browsers
 
       - name: Test browser flows
         run: bun run test:e2e && bun run test:e2e:regional
