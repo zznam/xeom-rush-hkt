@@ -12,7 +12,7 @@
     "test:e2e": "bun run --filter e2e test",
     "bench": "bun run --filter '@xeom-rush/shared' bench",
     "lint": "eslint . --max-warnings 0 && bun run lint:md",
-    "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore \"**/dist/**\"",
+    "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore \"**/dist/**\" --ignore \"**/test-results/**\" --ignore \"**/playwright-report/**\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
@@ -22,7 +22,8 @@
     "build:client:regional": "VITE_DEPLOY_TARGET=regional-production bun run build:client",
     "build:legacy": "bun run build:server && bun run build:client:legacy",
     "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs",
-    "build:core": "bun run build:shared && bun run --filter '@xeom-rush/game-core' build"
+    "build:core": "bun run build:shared && bun run --filter '@xeom-rush/game-core' build",
+    "test:soak": "node tests/release-soak.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

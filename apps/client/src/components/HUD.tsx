@@ -175,10 +175,10 @@ export const HUD: React.FC<HUDProps> = ({
             {carriedPassenger && <strong>+{carriedPassenger.reward.toLocaleString('vi-VN')}đ</strong>}
           </div>
           <TripGuide
+            key={`${room?.roundId ?? 'public'}:${room?.status ?? ''}:${localPlayer.passengerId ?? 'pickup'}:${Boolean(gameplay?.teamNavigation)}:${Boolean(gameplay?.practice)}`}
             state={gameplay}
             player={localPlayer}
             passengers={passengers}
-            streak={myStreak}
             tutorialDone={tutorialDone}
           />
           <p className='trip-progress'>✦ {deliveries} chuyến hoàn thành</p>

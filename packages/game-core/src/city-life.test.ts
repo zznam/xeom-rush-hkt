@@ -31,3 +31,13 @@ it('keeps landmarks reachable when a road closure activates', () => {
       expect(roadSegmentClear(path[i - 1], path[i], [state.closure!.rect])).toBe(true);
   }
 });
+it('validates an active closure before a later-season round and starts fresh waiting jobs', () => {
+  const world = new GameWorld({ enhanced: true, initialTick: 5100 });
+  const scheduled = world.getCityLife();
+  expect(scheduled.closure).toBeNull();
+  expect([...world.getPassengerMap().values()].every((p) => p.deadline === 0 || p.deadline > 5100)).toBe(true);
+  world.getPassengerMap().clear();
+  world.addPlayer('inside', 'Driver', 850, 1130);
+  world.tick(0.05);
+  expect(world.getCityLife().closure).toBeNull();
+});

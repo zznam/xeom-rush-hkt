@@ -129,3 +129,24 @@ it('ends an inactive elapsed round before admitting a new guest', () => {
   expect(room.view().hostId).toBe(b);
   expect(room.start()).toBe(true);
 });
+it('preserves natural city weather across rematches and owner replacement while resetting round scores', () => {
+  let now = 1000;
+  const room = new RoomOwner(invite, { now: () => now });
+  join(room, a);
+  room.start();
+  room.world.getPlayer(`room-${a}`)!.score = 10000;
+  now += 360000;
+  room.tick();
+  expect(room.state.status).toBe('results');
+  room.start();
+  room.tick();
+  expect(room.world.getCityLife().rain).toBe(true);
+  expect(room.world.getPlayer(`room-${a}`)!.score).toBe(0);
+  const replacement = new RoomOwner(invite, { persisted: room.durable(), now: () => now });
+  join(replacement, a);
+  now += 120000;
+  replacement.start();
+  replacement.tick();
+  expect(replacement.world.getCityLife().phase).toBe('night');
+  expect(replacement.state.remainingTicks).toBeLessThanOrEqual(6000);
+});

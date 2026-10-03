@@ -25,10 +25,22 @@ const VIOLATION_CODE_TO_TYPE: Record<number, ViolationType> = {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder('utf-8', { fatal: true });
-const byteLength = (value: string): number => textEncoder.encode(value).length;
+// IDs and names repeat across every peer's snapshot. Bound retained UTF-8 records.
+const encodedStrings = new Map<string, Uint8Array>();
+function stringBytes(value: string): Uint8Array {
+  const cached = encodedStrings.get(value);
+  if (cached) return cached;
+  const bytes = textEncoder.encode(value);
+  if (bytes.length <= 255) {
+    if (encodedStrings.size >= 2048) encodedStrings.delete(encodedStrings.keys().next().value!);
+    encodedStrings.set(value, bytes);
+  }
+  return bytes;
+}
+const byteLength = (value: string): number => stringBytes(value).length;
 
 function writeString(view: DataView, offset: number, str: string): number {
-  const bytes = textEncoder.encode(str);
+  const bytes = stringBytes(str);
   if (bytes.length > 255) throw new RangeError('Protocol string exceeds 255 bytes');
   view.setUint8(offset, bytes.length);
   new Uint8Array(view.buffer, view.byteOffset + offset + 1, bytes.length).set(bytes);
@@ -44,17 +56,51 @@ function readString(view: DataView, offset: number): { value: string; nextOffset
   };
 }
 
-function sameValue(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+function samePlayer(a: PlayerState, b: PlayerState): boolean {
+  return (
+    a.id === b.id &&
+    a.username === b.username &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.angle === b.angle &&
+    a.score === b.score &&
+    a.lastProcessedSeq === b.lastProcessedSeq &&
+    a.passengerId === b.passengerId &&
+    a.lastViolation?.type === b.lastViolation?.type &&
+    a.lastViolation?.amount === b.lastViolation?.amount &&
+    a.lastViolation?.tick === b.lastViolation?.tick
+  );
+}
+function samePassenger(a: PassengerState, b: PassengerState): boolean {
+  return (
+    a.id === b.id &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.destX === b.destX &&
+    a.destY === b.destY &&
+    a.reward === b.reward &&
+    a.isCarried === b.isCarried &&
+    a.tier === b.tier &&
+    a.deadline === b.deadline
+  );
+}
+function sameLight(a: TrafficLightState, b: TrafficLightState): boolean {
+  return a.id === b.id && a.x === b.x && a.y === b.y && a.isRedNS === b.isRedNS && a.isYellow === b.isYellow;
+}
+function samePedestrian(a: PedestrianState, b: PedestrianState): boolean {
+  return a.id === b.id && a.x === b.x && a.y === b.y && a.angle === b.angle;
 }
 
 function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
   return new Map(items.map((item) => [item.id, item]));
 }
 
-function getChangedItems<T extends { id: string }>(previous: T[], next: T[]): T[] {
+function getChangedItems<T extends { id: string }>(previous: T[], next: T[], equal: (a: T, b: T) => boolean): T[] {
   const previousById = indexById(previous);
-  return next.filter((item) => !sameValue(previousById.get(item.id), item));
+  return next.filter((item) => {
+    const old = previousById.get(item.id);
+    return !old || !equal(old, item);
+  });
 }
 
 function getRemovedIds<T extends { id: string }>(previous: T[], next: T[]): string[] {
@@ -485,13 +531,13 @@ export function decodeSnapshot(buffer: ArrayBuffer): WorldSnapshot {
 //   Changed entities use the same complete record encoding as full snapshots.
 //   Removed entity/streak lists are idLen(1)+id bytes.
 export function encodeDeltaSnapshot(previous: WorldSnapshot, next: WorldSnapshot): ArrayBuffer {
-  const changedPlayers = getChangedItems(previous.players, next.players);
+  const changedPlayers = getChangedItems(previous.players, next.players, samePlayer);
   const removedPlayerIds = getRemovedIds(previous.players, next.players);
-  const changedPassengers = getChangedItems(previous.passengers, next.passengers);
+  const changedPassengers = getChangedItems(previous.passengers, next.passengers, samePassenger);
   const removedPassengerIds = getRemovedIds(previous.passengers, next.passengers);
-  const changedTrafficLights = getChangedItems(previous.trafficLights, next.trafficLights);
+  const changedTrafficLights = getChangedItems(previous.trafficLights, next.trafficLights, sameLight);
   const removedTrafficLightIds = getRemovedIds(previous.trafficLights, next.trafficLights);
-  const changedPedestrians = getChangedItems(previous.pedestrians, next.pedestrians);
+  const changedPedestrians = getChangedItems(previous.pedestrians, next.pedestrians, samePedestrian);
   const removedPedestrianIds = getRemovedIds(previous.pedestrians, next.pedestrians);
   const changedStreaks = getChangedStreaks(previous.streaks, next.streaks);
   const changedStreakEntries = Object.entries(changedStreaks).filter(([, count]) => count > 0);

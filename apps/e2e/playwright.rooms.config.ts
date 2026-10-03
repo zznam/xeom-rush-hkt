@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
+  outputDir: './test-results/rooms',
   testMatch: 'rooms.test.ts',
   workers: 1,
   timeout: 45000,

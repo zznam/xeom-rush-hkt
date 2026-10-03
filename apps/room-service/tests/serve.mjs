@@ -18,6 +18,7 @@ const child = spawn(process.execPath, ['apps/server/dist/index.js'], {
     DEPLOY_TARGET: 'legacy',
     PORT: '3027',
     BOT_COUNT: '0',
+    MAX_PRIVATE_ROOMS: '20',
     MONGODB_URI: 'mongodb://127.0.0.1:1/test',
     ROOM_ADAPTER: 'local',
     ALLOW_ROOM_TESTS: 'true',

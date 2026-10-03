@@ -36,12 +36,13 @@ export class PassengerSpawner {
   constructor(
     physics: PhysicsEngine,
     private environmentAtDelivery = false,
+    initialTick = 0,
   ) {
     this.physics = physics;
 
     // Populate initial batch — all Regular to start
     for (let i = 0; i < MAX_PASSENGERS; i++) {
-      this.spawnPassenger(0);
+      this.spawnPassenger(initialTick);
     }
   }
 

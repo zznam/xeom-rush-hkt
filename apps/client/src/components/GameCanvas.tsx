@@ -157,14 +157,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
-      arrivalToastUntil = 0;
       prediction.clear();
       interpolation.clear();
-      if (myPlayerId && myPlayerId !== config.myId) {
+      arrivalToastUntil = 0;
+      if (myPlayerId) {
+        clientSeqRef.current = 0;
+        previousViolationTickRef.current = 0;
+        inputHandler.clear();
+        setViolationAlert(null);
         localPlayerStateRef.current = null;
         previousPassengerIdRef.current = null;
         setDeliveries(0);
-        setToast('Thành phố đã mở lại. Bắt đầu chuyến xe mới nhé!');
+        setToast(myPlayerId !== config.myId ? 'Thành phố đã mở lại. Bắt đầu chuyến xe mới nhé!' : null);
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToast(null), 3500);
       }
@@ -193,6 +197,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         renderer.setGameplay(message.data);
         if (message.data.city) prediction.setCityLife(message.data.city);
         setSummary(message.data.summary);
+        if (message.data.movement) prediction.setMovement(message.data.movement);
         setCityRanking(message.data.cityRanking);
       }
     });
@@ -406,7 +411,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           ...localPlayerStateRef.current,
           x: predictedPos.x,
           y: predictedPos.y,
-          angle: input.dx !== 0 || input.dy !== 0 ? input.angle : localPlayerStateRef.current.angle,
+          angle: predictedPos.angle,
         };
 
         // Send input payload to server
@@ -468,6 +473,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       network.disconnect();
       prediction.clear();
       interpolation.clear();
+      arrivalToastUntil = 0;
       inputHandler.clear();
       soundEngine.stopEngine();
     };
@@ -621,8 +627,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
               <dl className='shift-breakdown'>
                 <dt>Tiền chuyến</dt>
                 <dd>{summary.baseFares.toLocaleString('vi-VN')}đ</dd>
-                <dt>Thưởng / tiền tip</dt>
-                <dd>{(summary.bonuses + summary.tips).toLocaleString('vi-VN')}đ</dd>
+                <dt>Tiền thưởng</dt>
+                <dd>{summary.bonuses.toLocaleString('vi-VN')}đ</dd>
+                <dt>Tiền boa</dt>
+                <dd>{summary.tips.toLocaleString('vi-VN')}đ</dd>
+                <dt>Vi phạm</dt>
+                <dd>{Object.values(summary.violations ?? {}).reduce((sum, n) => sum + n, 0)}</dd>
                 <dt>Tiền phạt</dt>
                 <dd>{summary.fines.toLocaleString('vi-VN')}đ</dd>
                 <dt>Quãng đường</dt>

@@ -64,22 +64,44 @@ export function createCityMap() {
   return { buildings, features };
 }
 export const CITY_MAP = createCityMap();
+// Static geometry is indexed once; every runtime queries the same authored shapes.
+const roadBins = new Map<string, { buildings: Building[]; circles: MapFeature[] }>();
+function bin(x: number, y: number) {
+  const key = `${x}:${y}`;
+  let value = roadBins.get(key);
+  if (!value) {
+    value = { buildings: [], circles: [] };
+    roadBins.set(key, value);
+  }
+  return value;
+}
+for (const r of CITY_MAP.buildings)
+  for (let x = Math.floor(r.x / 100); x <= Math.floor((r.x + r.width) / 100); x++)
+    for (let y = Math.floor(r.y / 100); y <= Math.floor((r.y + r.height) / 100); y++) bin(x, y).buildings.push(r);
+for (const c of CITY_MAP.features.filter((f) => f.kind === 'roundabout'))
+  for (let x = Math.floor((c.x - c.radius!) / 100); x <= Math.floor((c.x + c.radius!) / 100); x++)
+    for (let y = Math.floor((c.y - c.radius!) / 100); y <= Math.floor((c.y + c.radius!) / 100); y++)
+      bin(x, y).circles.push(c);
 export function isRoadPoint(point: Vector2D, clearance = 16, closures: Building[] = []): boolean {
   if (point.x < clearance || point.y < clearance || point.x > MAP_SIZE - clearance || point.y > MAP_SIZE - clearance)
     return false;
-  if (
-    [...CITY_MAP.buildings, ...closures].some(
-      (r) =>
-        point.x >= r.x - clearance &&
-        point.x <= r.x + r.width + clearance &&
-        point.y >= r.y - clearance &&
-        point.y <= r.y + r.height + clearance,
-    )
-  )
-    return false;
-  return !CITY_MAP.features.some(
-    (f) => f.kind === 'roundabout' && Math.hypot(point.x - f.x, point.y - f.y) < f.radius! + clearance,
-  );
+  const blocked = (r: Building) =>
+    point.x >= r.x - clearance &&
+    point.x <= r.x + r.width + clearance &&
+    point.y >= r.y - clearance &&
+    point.y <= r.y + r.height + clearance;
+  if (closures.some(blocked)) return false;
+  for (let x = Math.floor((point.x - clearance) / 100); x <= Math.floor((point.x + clearance) / 100); x++)
+    for (let y = Math.floor((point.y - clearance) / 100); y <= Math.floor((point.y + clearance) / 100); y++) {
+      const nearby = roadBins.get(`${x}:${y}`);
+      if (
+        nearby &&
+        (nearby.buildings.some(blocked) ||
+          nearby.circles.some((c) => Math.hypot(point.x - c.x, point.y - c.y) < c.radius! + clearance))
+      )
+        return false;
+    }
+  return true;
 }
 export function roadSegmentClear(a: Vector2D, b: Vector2D, closures: Building[] = []): boolean {
   const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 8));

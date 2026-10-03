@@ -24,7 +24,19 @@ export interface CareerProfile {
   progress: Record<string, Record<string, number>>;
 }
 export function emptySummary(): ShiftSummary {
-  return { distance: 0, cleanTrips: 0, baseFares: 0, bonuses: 0, tips: 0, fines: 0, fastestTripTicks: 0, visited: [] };
+  return {
+    distance: 0,
+    cleanTrips: 0,
+    baseFares: 0,
+    bonuses: 0,
+    tips: 0,
+    fines: 0,
+    fastestTripTicks: 0,
+    visited: [],
+    violations: { redLights: 0, pedestrianHits: 0, driverCollisions: 0 },
+    bestFare: 0,
+    recentTrips: [],
+  };
 }
 export function newCareer(id: string, username = ''): CareerProfile {
   return {
@@ -65,6 +77,14 @@ export function applyContribution(
       result.summary.fastestTripTicks > 0
         ? Math.min(result.summary.fastestTripTicks, stats.fastestTripTicks)
         : stats.fastestTripTicks;
+  result.summary.violations ??= { redLights: 0, pedestrianHits: 0, driverCollisions: 0 };
+  for (const key of ['redLights', 'pedestrianHits', 'driverCollisions'] as const)
+    result.summary.violations[key] += (stats.violations?.[key] ?? 0) - (old.violations?.[key] ?? 0);
+  result.summary.bestFare = Math.max(result.summary.bestFare ?? 0, stats.bestFare ?? 0);
+  const records = new Map((result.summary.recentTrips ?? []).map((r) => [r.id, r]));
+  for (const record of stats.recentTrips ?? [])
+    records.set(`${session}:${record.id}`, { ...record, id: `${session}:${record.id}` });
+  result.summary.recentTrips = [...records.values()].sort((a, b) => b.completedAt - a.completedAt).slice(0, 8);
   result.summary.visited = [...new Set([...result.summary.visited, ...stats.visited])];
   for (const [period, counts] of Object.entries(next.progress ?? {}))
     for (const [key, count] of Object.entries(counts)) {

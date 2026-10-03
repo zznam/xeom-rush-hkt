@@ -418,3 +418,109 @@ describe('Vietnamese protocol names', () => {
     expect(() => decodeJoin(packet.slice(0, packet.byteLength - 1))).toThrow();
   });
 });
+
+describe('delta wire field comparisons and bounded UTF-8 reuse', () => {
+  const baseline = () =>
+    decodeSnapshot(
+      encodeSnapshot(
+        1,
+        [
+          {
+            id: 'driver',
+            username: 'Cô Ba 🛵',
+            x: 1000,
+            y: 1000,
+            angle: 0,
+            score: 1,
+            lastProcessedSeq: 1,
+            passengerId: null,
+            connected: true,
+          },
+        ],
+        [makeBasePassenger()],
+        [{ id: 'light', x: 100, y: 200, isRedNS: true, isYellow: false }],
+        [{ id: 'ped', x: 300, y: 400, angle: 0 }],
+        false,
+        {},
+      ),
+    );
+  const variants: Record<string, Record<string, unknown>[]> = {
+    players: [
+      { id: 'other' },
+      { username: 'Chú Tư' },
+      { x: 1100 },
+      { y: 1200 },
+      { angle: 1 },
+      { score: 20 },
+      { lastProcessedSeq: 3 },
+      { passengerId: 'pass-1' },
+      { lastViolation: { type: 'pedestrian', amount: 5000, tick: 2 } },
+    ],
+    passengers: [
+      { id: 'other' },
+      { x: 1100 },
+      { y: 1200 },
+      { destX: 3100 },
+      { destY: 3200 },
+      { reward: 20 },
+      { isCarried: true },
+      { tier: 2 },
+      { deadline: 50 },
+    ],
+    trafficLights: [{ id: 'other' }, { x: 1100 }, { y: 1200 }, { isRedNS: false }, { isYellow: true }],
+    pedestrians: [{ id: 'other' }, { x: 1100 }, { y: 1200 }, { angle: 1 }],
+  };
+  for (const [category, changes] of Object.entries(variants)) {
+    it(`preserves every encoded ${category} field through full and delta packets`, () => {
+      for (const change of changes) {
+        const before = baseline();
+        const next = { ...before, tick: 2, [category]: [{ ...(before as any)[category][0], ...change }] };
+        const expected = decodeSnapshot(
+          encodeSnapshot(
+            next.tick,
+            next.players,
+            next.passengers,
+            next.trafficLights,
+            next.pedestrians,
+            next.rushHour,
+            next.streaks,
+          ),
+        );
+        expect(decodeDeltaSnapshot(encodeDeltaSnapshot(before, next), before)).toEqual(expected);
+      }
+      if (category === 'players') {
+        const before = baseline();
+        before.players[0].lastViolation = { type: 'red-light', amount: 2000, tick: 1 };
+        for (const lastViolation of [undefined, { type: 'driver-collision' as const, amount: 1000, tick: 2 }]) {
+          const next = { ...before, tick: 2, players: [{ ...before.players[0], lastViolation }] };
+          const expected = decodeSnapshot(
+            encodeSnapshot(
+              next.tick,
+              next.players,
+              next.passengers,
+              next.trafficLights,
+              next.pedestrians,
+              next.rushHour,
+              next.streaks,
+            ),
+          );
+          expect(decodeDeltaSnapshot(encodeDeltaSnapshot(before, next), before)).toEqual(expected);
+        }
+      }
+    });
+  }
+  it('keeps Unicode records correct after cache eviction and ignores unencoded metadata', () => {
+    for (let i = 0; i < 2100; i++) expect(decodeJoin(encodeJoin(`Cô Ba ${i} 🛵`))).toBe(`Cô Ba ${i} 🛵`);
+    expect(decodeJoin(encodeJoin('Cô Ba 0 🛵'))).toBe('Cô Ba 0 🛵');
+    expect(() => encodeJoin('ế'.repeat(100))).toThrow();
+    const before = baseline();
+    const next = {
+      ...before,
+      tick: 2,
+      players: [{ ...before.players[0], connected: false }],
+      passengers: [{ ...before.passengers[0], spawnedAt: 999 }],
+    };
+    expect(encodeDeltaSnapshot(before, next).byteLength).toBe(28);
+    expect(decodeDeltaSnapshot(encodeDeltaSnapshot(before, next), before)).toEqual({ ...before, tick: 2 });
+  });
+});

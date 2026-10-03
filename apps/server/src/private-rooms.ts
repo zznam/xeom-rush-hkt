@@ -255,7 +255,8 @@ export function installPrivateRooms(
       res.status(404).end();
       return;
     }
-    if (req.body.action === 'restart') {
+    if (req.body.action === 'metrics-reset') owner.metrics.reset();
+    else if (req.body.action === 'restart') {
       owner.dirty = true;
       await persist(req.params.invite, owner);
       const durable = await careerRepository.readRoom(req.params.invite);
@@ -303,7 +304,11 @@ export function installPrivateRooms(
         p.y = req.body.y;
       }
     }
-    res.json({ ok: true, state: owners.get(req.params.invite)!.view() });
+    res.json({
+      ok: true,
+      state: owners.get(req.params.invite)!.view(),
+      metrics: owners.get(req.params.invite)!.metrics.snapshot(),
+    });
   });
   const loop = setInterval(() => {
     for (const [invite, owner] of owners) {
@@ -386,6 +391,7 @@ export function installPrivateRooms(
   }
   return {
     upgrade,
+    metrics: () => [...owners.values()].map((owner) => ({ mode: owner.state.mode, ...owner.metrics.snapshot() })),
     close: async () => {
       clearInterval(loop);
       clearInterval(flush);

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GameWorld } from './world';
 import { EPassengerTier, roadSegmentClear } from '@xeom-rush/shared';
-function fixture() {
-  const world = new GameWorld({ enhanced: true });
+function fixture(enhanced = true) {
+  const world = new GameWorld({ enhanced });
   world.addPlayer('a', 'Driver', 2050, 2050);
   world.getPassengerMap().clear();
   const passenger = {
-    id: 'pass-test',
+    id: enhanced ? 'pass-test' : 'pass-9',
     x: 2050,
     y: 2050,
     destX: 2050,
@@ -22,6 +22,20 @@ function fixture() {
   return { world, passenger };
 }
 describe('authoritative trip experience', () => {
+  it('quotes only the legacy passenger fare when content is disabled', () => {
+    const { world } = fixture(false);
+    expect(world.beginPractice('a')).toBe(false);
+    const offer = world.getGameplayState('a')!.offers[0];
+    expect(offer).toMatchObject({ kind: 'passenger', stops: 1, fare: { total: 10000, clean: 0, tip: 0 } });
+    world.tick(0.05);
+    const trip = world.getGameplayState('a')!.trip!;
+    expect(trip.kind).toBe('passenger');
+    expect(trip.stops).toHaveLength(1);
+    expect(trip.fare).toEqual(offer.fare);
+    world.getPlayer('a')!.y = 2200;
+    world.tick(0.05);
+    expect(world.getPlayer('a')!.score).toBe(offer.fare.total);
+  });
   it('pays the same clean fare quoted by the trip card', () => {
     const { world } = fixture();
     world.tick(0.05);
