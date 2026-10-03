@@ -1,5 +1,5 @@
 import { DriverPanel } from './DriverPanel';
-import type { CareerProfile, ShiftSummary } from '@xeom-rush/shared';
+import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
 import React, { useEffect, useRef, useState } from 'react';
 import { network, type ConnectionState } from '../game/network';
 import { loadPreferences, readStored, writeStored } from '../game/preferences';
@@ -31,6 +31,7 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
+  const [gameplay, setGameplay] = useState<GameplayState | null>(null);
   const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [cityRanking, setCityRanking] = useState<{ id: string; username: string; score: number; deliveries: number }[]>(
@@ -146,7 +147,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     const unsubscribeControl = network.registerControlCallback((message) => {
       if (message.kind === 'career') setCareer(message.data);
-      if (message.kind === 'shift') {
+      if (message.kind === 'gameplay') {
+        setGameplay(message.data);
+        renderer.setGameplay(message.data);
         setSummary(message.data.summary);
         setCityRanking(message.data.cityRanking);
       }
@@ -593,6 +596,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         myStreak={myStreak}
         deliveries={deliveries}
         tutorialDone={tutorialDone}
+        gameplay={gameplay}
         cityLabel={cityLabel}
       />
 

@@ -1,5 +1,9 @@
 import {
   LANDMARKS,
+  calculateFare,
+  findStreetRoute,
+  type GameplayState,
+  type Vector2D,
   emptySummary,
   type ShiftSummary,
   PlayerState,
@@ -36,6 +40,8 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export class GameWorld {
+  private selectedPickups = new Map<string, string>();
+  private routeCache = new Map<string, { key: string; from: Vector2D; route: Vector2D[] }>();
   private summaries = new Map<string, ShiftSummary>();
   private pickupTicks = new Map<string, number>();
   private dirtyTrips = new Set<string>();
@@ -65,11 +71,11 @@ export class GameWorld {
   private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> =
     new Map();
 
-  constructor() {
+  constructor(private options: { enhanced?: boolean } = {}) {
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
     this.cityFeatures = new CityFeatures(this.physics);
-    this.passengers = new PassengerSpawner(this.physics);
+    this.passengers = new PassengerSpawner(this.physics, !!options.enhanced);
   }
 
   public addPlayer(id: string, username: string, spawnX?: number, spawnY?: number): void {
@@ -111,6 +117,8 @@ export class GameWorld {
       if (player.passengerId) {
         this.passengers.updateCarriedStatus(player.passengerId, false);
       }
+      this.selectedPickups.delete(id);
+      this.routeCache.delete(id);
       this.summaries.delete(id);
       this.pickupTicks.delete(id);
       this.dirtyTrips.delete(id);
@@ -158,6 +166,85 @@ export class GameWorld {
     const player = this.players.get(id);
     if (player) player.connected = connected;
     this.inputQueues.set(id, []);
+  }
+
+  public selectPickup(id: string, target?: string): boolean {
+    if (!this.players.has(id) || this.players.get(id)!.passengerId) return false;
+    if (!target) {
+      this.selectedPickups.delete(id);
+      return true;
+    }
+    const p = this.passengers.getPassengerMap().get(target);
+    if (!p || p.isCarried || (p.deadline > 0 && p.deadline <= this.tickCount)) return false;
+    this.selectedPickups.set(id, target);
+    return true;
+  }
+  public getGameplayState(id: string): GameplayState | null {
+    const p = this.players.get(id);
+    if (!p) return null;
+    const passenger = p.passengerId
+      ? this.passengers.getPassengerMap().get(p.passengerId)
+      : (this.passengers.getPassengerMap().get(this.selectedPickups.get(id) ?? '') ??
+        [...this.passengers.getPassengerMap().values()]
+          .filter((t) => !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
+          .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]);
+    let navigation: GameplayState['navigation'] = null;
+    let trip: GameplayState['trip'] = null;
+    if (passenger) {
+      const target = p.passengerId ? { x: passenger.destX, y: passenger.destY } : { x: passenger.x, y: passenger.y };
+      const key = `${passenger.id}:${target.x}:${target.y}`;
+      let cached = this.routeCache.get(id);
+      if (!cached || cached.key !== key || Math.hypot(cached.from.x - p.x, cached.from.y - p.y) > 200) {
+        cached = { key, from: { x: p.x, y: p.y }, route: findStreetRoute(p, target) };
+        this.routeCache.set(id, cached);
+      }
+      const route = [...cached.route];
+      while (route.length > 2 && Math.hypot(route[1].x - p.x, route[1].y - p.y) < 70) route.shift();
+      const fare = calculateFare(
+        passenger.reward,
+        this.streakCounts.get(id) ?? 0,
+        this.options.enhanced && this.isRushHour() ? 1.5 : 1,
+        !!this.options.enhanced && (!p.passengerId || !this.dirtyTrips.has(id)),
+      );
+      navigation = {
+        targetId: passenger.id,
+        target,
+        route,
+        distance: route.reduce(
+          (sum, n, i) => (i ? sum + Math.hypot(n.x - route[i - 1].x, n.y - route[i - 1].y) : sum),
+          0,
+        ),
+        pickupExpiryTick: p.passengerId ? 0 : passenger.deadline,
+        fare,
+        tier: passenger.tier,
+      };
+      if (p.passengerId)
+        trip = {
+          passenger: { ...passenger },
+          route,
+          fare,
+          clean: !this.dirtyTrips.has(id),
+          pickedUpTick: this.pickupTicks.get(id) ?? this.tickCount,
+          stopIndex: 0,
+          stops: [target],
+          kind: 'passenger',
+          dialogue: '',
+          freshness: 1,
+          damage: 0,
+        };
+    }
+    return {
+      version: 1,
+      tick: this.tickCount,
+      trip,
+      navigation,
+      selectedPickup: this.selectedPickups.get(id) ?? null,
+      comboTicksRemaining: this.lastDeliveryTicks.has(id)
+        ? Math.max(0, STREAK_RESET_TICKS - (this.tickCount - this.lastDeliveryTicks.get(id)!))
+        : 0,
+      summary: structuredClone(this.summaries.get(id)!),
+      cityRanking: this.getCityRanking(),
+    };
   }
 
   public getCityRanking() {
@@ -237,6 +324,10 @@ export class GameWorld {
    */
   public tick(dt: number): void {
     this.tickCount++;
+    for (const [id, target] of this.selectedPickups) {
+      const p = this.passengers.getPassengerMap().get(target);
+      if (!p || p.isCarried || (p.deadline > 0 && p.deadline < this.tickCount)) this.selectedPickups.delete(id);
+    }
     this.cityFeatures.tick(this.tickCount, dt);
 
     // Auto-trigger rush hour on schedule
@@ -300,9 +391,6 @@ export class GameWorld {
         if (!summary.visited.includes(landmark.id) && Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80)
           summary.visited.push(landmark.id);
       this.checkCityRuleInteractions(player, prevX, prevY);
-
-      // Check actions: Pickup or Deliver
-      this.checkPlayerInteractions(player);
     }
 
     // 1.5. Check player-to-player collisions
@@ -346,20 +434,25 @@ export class GameWorld {
 
           const cooldown1 = this.collisionCooldowns.get(p1.id) || 0;
           if (currentTick > cooldown1) {
-            p1.score = Math.max(0, p1.score - DRIVER_COLLISION_PENALTY);
-            this.recordViolation(p1, 'driver-collision', DRIVER_COLLISION_PENALTY);
+            const amount = Math.min(p1.score, DRIVER_COLLISION_PENALTY);
+            p1.score -= amount;
+            this.recordViolation(p1, 'driver-collision', DRIVER_COLLISION_PENALTY, amount);
             this.collisionCooldowns.set(p1.id, currentTick + PENALTY_COOLDOWN_TICKS);
           }
 
           const cooldown2 = this.collisionCooldowns.get(p2.id) || 0;
           if (currentTick > cooldown2) {
-            p2.score = Math.max(0, p2.score - DRIVER_COLLISION_PENALTY);
-            this.recordViolation(p2, 'driver-collision', DRIVER_COLLISION_PENALTY);
+            const amount = Math.min(p2.score, DRIVER_COLLISION_PENALTY);
+            p2.score -= amount;
+            this.recordViolation(p2, 'driver-collision', DRIVER_COLLISION_PENALTY, amount);
             this.collisionCooldowns.set(p2.id, currentTick + PENALTY_COOLDOWN_TICKS);
           }
         }
       }
     }
+
+    // Resolve fares only after every collision and violation for this tick.
+    for (const player of this.players.values()) if (player.connected) this.checkPlayerInteractions(player);
 
     // 2. Refresh spatial grid positions for passengers
     const passMap = this.passengers.getPassengerMap();
@@ -400,7 +493,11 @@ export class GameWorld {
       for (const entityId of nearbyEntityIds) {
         if (entityId.startsWith('pass-')) {
           const passenger = passMap.get(entityId);
-          if (passenger && !passenger.isCarried) {
+          if (
+            passenger &&
+            !passenger.isCarried &&
+            (!this.selectedPickups.has(player.id) || this.selectedPickups.get(player.id) === passenger.id)
+          ) {
             // Check radius
             const dx = passenger.x - player.x;
             const dy = passenger.y - player.y;
@@ -408,6 +505,7 @@ export class GameWorld {
 
             if (dist < COLLISION_RADIUS) {
               // Pick up!
+              this.selectedPickups.delete(player.id);
               this.pickupTicks.set(player.id, this.tickCount);
               this.dirtyTrips.delete(player.id);
               player.passengerId = passenger.id;
@@ -430,7 +528,13 @@ export class GameWorld {
           // Success! Apply streak multiplier to reward
           const streak = this.streakCounts.get(player.id) ?? 0;
           const multiplier = getStreakMultiplier(streak);
-          const reward = Math.floor(passenger.reward * multiplier);
+          const fare = calculateFare(
+            passenger.reward,
+            streak,
+            this.options.enhanced && this.isRushHour() ? 1.5 : 1,
+            !!this.options.enhanced && !this.dirtyTrips.has(player.id),
+          );
+          const reward = this.options.enhanced ? fare.total : Math.floor(passenger.reward * multiplier);
 
           player.score += reward;
           const summary = this.summaries.get(player.id)!;
@@ -469,8 +573,9 @@ export class GameWorld {
     if (this.cityFeatures.checkRedLightViolation(player.x, player.y, prevX, prevY)) {
       const cooldown = this.redLightCooldowns.get(player.id) || 0;
       if (currentTick > cooldown) {
-        player.score = Math.max(0, player.score - RED_LIGHT_PENALTY);
-        this.recordViolation(player, 'red-light', RED_LIGHT_PENALTY);
+        const amount = Math.min(player.score, RED_LIGHT_PENALTY);
+        player.score -= amount;
+        this.recordViolation(player, 'red-light', RED_LIGHT_PENALTY, amount);
         this.redLightCooldowns.set(player.id, currentTick + PENALTY_COOLDOWN_TICKS);
       }
     }
@@ -492,8 +597,8 @@ export class GameWorld {
     }
   }
 
-  private recordViolation(player: PlayerState, type: ViolationType, amount: number): void {
-    this.summaries.get(player.id)!.fines += amount;
+  private recordViolation(player: PlayerState, type: ViolationType, amount: number, charged = amount): void {
+    this.summaries.get(player.id)!.fines += charged;
     if (player.passengerId) this.dirtyTrips.add(player.id);
     player.lastViolation = {
       type,

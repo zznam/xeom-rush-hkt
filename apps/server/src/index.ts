@@ -8,6 +8,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { Admission, isSessionId, issueGuest, verifyGuest, validRoomKey } from './admission';
 import {
+  parseGameCommand,
   EMessageType,
   resolveDeploymentTarget,
   TICK_INTERVAL_MS,
@@ -67,7 +68,7 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 
 // Instantiate authoritative world state
-const world = new GameWorld();
+const world = new GameWorld({ enhanced: process.env.CONTENT_RELEASE !== 'false' });
 const botManager = new BotManager(world, world.getPhysics());
 
 // HTTP JSON Endpoints for Judges/Dashboard
@@ -290,6 +291,8 @@ wss.on('connection', (ws: WebSocket, request) => {
   const token = requestedToken && /^[a-f0-9-]{36}$/.test(requestedToken) ? requestedToken : randomUUID();
   let playerId = `player-${randomUUID()}`;
   let joined = false;
+  const commandIds = new Set<string>();
+  let commandCount = 0;
   let received = 0;
   let windowStarted = Date.now();
   let lastPong = Date.now();
@@ -309,6 +312,7 @@ wss.on('connection', (ws: WebSocket, request) => {
   ws.on('message', (message: ArrayBuffer, isBinary: boolean) => {
     if (Date.now() - windowStarted >= 1000) {
       received = 0;
+      commandCount = 0;
       windowStarted = Date.now();
     }
     if (++received > 150) {
@@ -317,6 +321,18 @@ wss.on('connection', (ws: WebSocket, request) => {
     }
     if (!isBinary) {
       const text = message.toString();
+      if (joined && text.startsWith('control:')) {
+        const command = parseGameCommand(text.slice(8));
+        if (!command || ++commandCount > 10) {
+          ws.close(1008, 'Invalid game command');
+          return;
+        }
+        if (commandIds.has(command.id)) return;
+        commandIds.add(command.id);
+        if (commandIds.size > 128) commandIds.delete(commandIds.values().next().value!);
+        if (command.action === 'select-pickup') world.selectPickup(playerId, command.target);
+        return;
+      }
       if (joined && /^ping:[0-9]{13}$/.test(text)) ws.send(`pong:${text.slice(5)}`);
       return;
     }
@@ -397,7 +413,7 @@ wss.on('connection', (ws: WebSocket, request) => {
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
         ws.send(
-          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true } })}`,
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true } })}`,
         );
         const profileId = sessions.get(token)?.profileId;
         if (profileId)
@@ -515,7 +531,7 @@ const gameLoop = setInterval(() => {
       }
       if (world.getTick() % 20 === 0 || shouldSendFull)
         playerSocket.ws.send(
-          `control:${JSON.stringify({ version: 1, kind: 'shift', data: { summary: world.getSessionStatsForPlayer(playerId)?.summary, cityRanking: world.getCityRanking() } })}`,
+          `control:${JSON.stringify({ version: 1, kind: 'gameplay', data: world.getGameplayState(playerId) })}`,
         );
       playerSocket.lastDeliveries = deliveries;
       playerSocket.lastSnapshot = snapshot;

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   LANDMARKS,
   DISTRICTS,
+  type GameplayState,
   type PlayerState,
   type PassengerState,
   EPassengerTier,
@@ -15,6 +16,7 @@ const TIER_COLORS: Record<EPassengerTier, string> = {
 };
 
 interface MinimapProps {
+  navigation?: GameplayState['navigation'];
   localPlayerId: string | null;
   players: PlayerState[];
   passengers: PassengerState[];
@@ -24,6 +26,7 @@ interface MinimapProps {
 }
 
 export const Minimap: React.FC<MinimapProps> = ({
+  navigation,
   localPlayerId,
   players,
   passengers,
@@ -69,6 +72,18 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.stroke();
     }
 
+    if (navigation) {
+      ctx.strokeStyle = '#ffcf69';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      navigation.route.forEach((p, i) => {
+        if (i) ctx.lineTo(p.x * scale, p.y * scale);
+        else ctx.moveTo(p.x * scale, p.y * scale);
+      });
+      ctx.stroke();
+      ctx.strokeStyle = '#ff7967';
+      ctx.strokeRect(navigation.target.x * scale - 3, navigation.target.y * scale - 3, 6, 6);
+    }
     // Draw passengers (blips, color-coded by tier)
     for (const passenger of passengers) {
       if (passenger.isCarried) continue;
@@ -140,7 +155,7 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.lineTo(mx + Math.cos(localPlayer.angle) * dirLen, my + Math.sin(localPlayer.angle) * dirLen);
       ctx.stroke();
     }
-  }, [localPlayerId, players, passengers, carriedPassengerId, size, scale]);
+  }, [localPlayerId, players, passengers, carriedPassengerId, size, scale, navigation]);
 
   return (
     <div id='minimap-container' className={className}>
