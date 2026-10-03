@@ -1,3 +1,4 @@
+import { readStored, writeStored } from './preferences';
 import {
   encodeJoin,
   encodeInput,
@@ -15,6 +16,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'reconnecting';
 
 export class GameNetwork {
   private ws: WebSocket | null = null;
+  private controls = new Set<(message: { version: 1; kind: string; data: any }) => void>();
   private onSnapshotCallbacks = new Set<(snapshot: WorldSnapshot, meta: SnapshotPacketMeta) => void>();
   private onConfigCallbacks = new Set<(config: ConfigPayload) => void>();
   private onCityCallbacks = new Set<(status: CityStatus) => void>();
@@ -87,6 +89,14 @@ export class GameNetwork {
               /* Ignore malformed optional metadata; snapshots remain authoritative. */
             }
           }
+          if (event.data.startsWith('control:')) {
+            try {
+              const message = JSON.parse(event.data.slice(8));
+              if (message.version === 1 && typeof message.kind === 'string') this.controls.forEach((cb) => cb(message));
+            } catch {
+              /* optional control metadata */
+            }
+          }
           return;
         }
         try {
@@ -143,7 +153,43 @@ export class GameNetwork {
         /* onclose owns retries and user feedback. */
       };
     };
-    open();
+    void (async () => {
+      const target = new URL(url);
+      if (!target.searchParams.has('ticket')) {
+        const key = `guest:${target.host}`;
+        let guest = readStored(key);
+        if (!guest) {
+          const api = new URL(target);
+          api.protocol = target.protocol === 'wss:' ? 'https:' : 'http:';
+          api.search = '';
+          api.pathname = api.pathname.replace(/\/$/, '') + '/api/guest';
+          try {
+            const response = await fetch(api, { method: 'POST', signal: AbortSignal.timeout(5000) });
+            if (response.ok) {
+              guest = (await response.json()).guest;
+              if (typeof guest === 'string') writeStored(key, guest);
+            }
+          } catch {
+            /* An older backend still accepts the binary handshake. */
+          }
+        }
+        if (guest) {
+          target.searchParams.set('guest', guest);
+          url = target.toString();
+        }
+      }
+      if (generation === this.generation) open();
+    })();
+  }
+  public registerControlCallback(cb: (message: { version: 1; kind: string; data: any }) => void) {
+    this.controls.add(cb);
+    return () => {
+      this.controls.delete(cb);
+    };
+  }
+  public command(action: string, target?: string, value?: string) {
+    if (this.ready && this.ws?.readyState === WebSocket.OPEN)
+      this.ws.send(`control:${JSON.stringify({ version: 1, id: crypto.randomUUID(), action, target, value })}`);
   }
 
   public sendInput(seq: number, dx: number, dy: number, angle: number): void {

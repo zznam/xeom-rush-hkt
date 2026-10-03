@@ -43,7 +43,7 @@ Use the prior successful Deno revision and prior Vercel deployment for rollback;
 
 ## Limits and references
 
-Deno can evict or scale out instances. An active socket's traffic keeps its instance alive, but live game state is not durable or shared across instances. The client retries for up to 25 seconds; the server retains disconnected drivers for 30 seconds on that instance. KV checkpoints protect career totals, not the live city or passenger position. Name-based career ownership is legacy behavior, scheduled for replacement by stable guest identity in release 2.
+Deno can evict or scale out instances. An active socket's traffic keeps its instance alive, but live game state is not durable or shared across instances. The client retries for up to 25 seconds; the server retains disconnected drivers for 30 seconds on that instance. KV checkpoints protect career totals, not the live city or passenger position. New clients use server-issued guest identities for ID-based careers. Historical name-based scores remain separate.
 
 - [Deno runtime and WebSocket lifecycle](https://docs.deno.com/deploy/reference/runtime/)
 - [Managed Deno KV](https://docs.deno.com/deploy/reference/deno_kv/)

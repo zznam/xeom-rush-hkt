@@ -506,3 +506,61 @@
     max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom));
   }
 }
+
+.club-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1100;
+  background: #193b35a8;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.club-panel {
+  width: min(600px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 3px solid #466556;
+  border-radius: 22px;
+  background: #fff8e6;
+  color: #294a40;
+  box-shadow: 0 18px 50px #152c4050;
+}
+.club-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.club-panel h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.club-panel button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid #50705e;
+  border-radius: 12px;
+  background: #ffd17b;
+  color: #294a40;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.club-panel li {
+  padding: 5px 0;
+}
+.club-note {
+  font-size: 12px;
+}
+.shift-breakdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  text-align: left;
+  gap: 6px 16px;
+  margin: 16px 0;
+}
+.shift-breakdown dd {
+  margin: 0;
+}

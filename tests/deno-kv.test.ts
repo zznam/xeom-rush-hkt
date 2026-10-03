@@ -1,3 +1,4 @@
+import { CareerRepository, KvCareerBackend } from '../apps/server/dist/career-store.js';
 import { strict as assert } from 'node:assert';
 import { KvPersistence } from '../apps/server/dist/storage.js';
 
@@ -41,5 +42,21 @@ Deno.test('KV concurrent sessions update career totals atomically', async () => 
     assert.equal((await storage.leaderboard())[0].username, 'Chú Tư');
   } finally {
     storage.close();
+  }
+});
+
+Deno.test('ID careers keep the checkpoint ledger outside the bounded KV profile', async () => {
+  const kv = await Deno.openKv(':memory:');
+  const repository = new CareerRepository(new KvCareerBackend(kv));
+  try {
+    for (let i = 0; i < 300; i++) await repository.save('driver', `ride-${i}`, { ...stats, revision: 1 });
+    const p = await repository.profile('driver');
+    assert.equal(p.totalDeliveries, 600);
+    assert.equal(Object.keys(p.contributions).length, 0);
+    await repository.save('driver', 'ride-0', { ...stats, revision: 1 });
+    assert.equal((await repository.profile('driver')).totalDeliveries, 600);
+    assert.equal(await repository.secret(), await repository.secret());
+  } finally {
+    kv.close();
   }
 });

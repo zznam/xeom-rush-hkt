@@ -2,6 +2,15 @@ services:
   mongo-xeom:
     container_name: xeom-mongo-db
     image: mongo:latest
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]}) }'
+      interval: 5s
+      timeout: 5s
+      retries: 12
     ports:
       - '27018:27017'
     volumes:

@@ -1,3 +1,5 @@
+import { DriverPanel } from './DriverPanel';
+import type { CareerProfile, ShiftSummary } from '@xeom-rush/shared';
 import React, { useEffect, useRef, useState } from 'react';
 import { network, type ConnectionState } from '../game/network';
 import { loadPreferences, readStored, writeStored } from '../game/preferences';
@@ -29,6 +31,12 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
+  const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
+  const [summary, setSummary] = useState<ShiftSummary | null>(null);
+  const [cityRanking, setCityRanking] = useState<{ id: string; username: string; score: number; deliveries: number }[]>(
+    [],
+  );
+  const [showDriver, setShowDriver] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
@@ -136,6 +144,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       console.log('Received config from server, my player ID is:', myPlayerId);
     });
 
+    const unsubscribeControl = network.registerControlCallback((message) => {
+      if (message.kind === 'career') setCareer(message.data);
+      if (message.kind === 'shift') {
+        setSummary(message.data.summary);
+        setCityRanking(message.data.cityRanking);
+      }
+    });
     const unsubscribeCity = network.registerCityCallback((status) => {
       rushHourEndsAtTickRef.current = status.tick + status.rushHourTicksRemaining;
       setRushHourTicksRemaining(status.rushHourTicksRemaining);
@@ -388,6 +403,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       unsubscribeConfig();
       unsubscribeSnapshot();
       unsubscribeCity();
+      unsubscribeControl();
       if (toastTimer.current) clearTimeout(toastTimer.current);
       if (violationTimer.current) clearTimeout(violationTimer.current);
       network.disconnect();
@@ -416,6 +432,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
   return (
     <div ref={containerRef} className='game-shell'>
+      {showDriver && (
+        <DriverPanel
+          career={career}
+          summary={summary}
+          ranking={cityRanking}
+          serverUrl={serverUrl}
+          onClose={() => setShowDriver(false)}
+        />
+      )}
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
 
       {toast && (
@@ -439,6 +464,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
         </div>
         <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
+          <button onClick={() => setShowDriver(true)} aria-label='Hồ sơ'>
+            🛵 Hồ sơ
+          </button>
           <button
             aria-label='Âm thanh'
             aria-pressed={preferences.sound}
@@ -496,6 +524,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
               <br />
               Thành phố vẫn còn nhiều điều để khám phá.
             </p>
+            {summary && (
+              <dl className='shift-breakdown'>
+                <dt>Tiền chuyến</dt>
+                <dd>{summary.baseFares.toLocaleString('vi-VN')}đ</dd>
+                <dt>Thưởng / tiền tip</dt>
+                <dd>{(summary.bonuses + summary.tips).toLocaleString('vi-VN')}đ</dd>
+                <dt>Tiền phạt</dt>
+                <dd>{summary.fines.toLocaleString('vi-VN')}đ</dd>
+                <dt>Quãng đường</dt>
+                <dd>{Math.round(summary.distance)}m</dd>
+                <dt>Chuyến an toàn</dt>
+                <dd>{summary.cleanTrips}</dd>
+              </dl>
+            )}
             <button className='toon-button' onClick={() => onDisconnect()}>
               Chơi tiếp ↗
             </button>
