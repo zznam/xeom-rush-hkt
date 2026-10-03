@@ -115,3 +115,17 @@ it('includes competitive filler bots in round results without career checkpoints
   expect(room.state.results).toHaveLength(8);
   expect(room.checkpoints()).toHaveLength(1);
 });
+
+it('ends an inactive elapsed round before admitting a new guest', () => {
+  let now = 0;
+  const room = new RoomOwner(invite, { now: () => now });
+  const s = join(room, a);
+  room.start();
+  room.disconnect(a, s);
+  now = 300001;
+  join(room, b);
+  expect(room.state.status).toBe('results');
+  expect(room.view().players).toHaveLength(1);
+  expect(room.view().hostId).toBe(b);
+  expect(room.start()).toBe(true);
+});

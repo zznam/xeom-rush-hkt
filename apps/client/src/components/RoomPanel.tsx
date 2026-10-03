@@ -52,15 +52,45 @@ export function RoomPanel({
         >
           {copied ? 'Đã sao chép' : 'Sao chép lời mời'}
         </button>
+        {host && (
+          <label>
+            Chế độ vòng
+            <select
+              aria-label='Chế độ vòng'
+              value={state.mode}
+              onChange={(e) => network.command('room-mode', undefined, e.target.value)}
+            >
+              <option value='competitive'>Thi đua cá nhân</option>
+              <option value='co-op'>Co-op điều phối</option>
+              <option value='relay'>Tiếp sức hai đội</option>
+            </select>
+          </label>
+        )}
+        {state.mode === 'relay' && (
+          <div>
+            <p>Mỗi đội hai đến bốn người thật. Bạn thuộc đội {me?.team}.</p>
+            <button onClick={() => network.command('room-team', undefined, '1')}>Vào đội 1</button>
+            <button onClick={() => network.command('room-team', undefined, '2')}>Vào đội 2</button>
+          </div>
+        )}
         <ul>
           {state.players.map((p) => (
             <li key={p.id}>
               {p.connected ? '●' : '○'} {p.username}
               {p.id === state.hostId ? ' · Chủ phòng' : ''}
               {p.id === me?.id ? ' · Bạn' : ''}
+              {state.mode === 'relay' ? ` · Đội ${p.team}` : ''}
             </li>
           ))}
         </ul>
+        {state.teamPlay?.kind === 'relay' &&
+          state.status !== 'lobby' &&
+          state.teamPlay.teams.map((t) => (
+            <p key={t.id}>
+              Đội {t.id}: {t.score.toLocaleString('vi-VN')}đ ·{' '}
+              {t.failed || (t.completed ? 'Đã hoàn thành' : 'Chưa tới đích')}
+            </p>
+          ))}
         {!!state.results.length && (
           <ol className='room-results'>
             {state.results.map((p) => (
@@ -73,9 +103,10 @@ export function RoomPanel({
         <p>Điểm vòng chơi tính riêng. Thu nhập chuyến xe được ghi vào nghề nghiệp của bạn.</p>
         {host && (
           <>
-            <label>
+            <label className='room-bots-toggle'>
               <input
                 type='checkbox'
+                disabled={state.mode !== 'competitive'}
                 checked={state.fillBots}
                 onChange={(e) => network.command('room-bots', undefined, String(e.target.checked))}
               />{' '}

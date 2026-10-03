@@ -27,6 +27,18 @@ export function TripGuide({
 }) {
   const [choosing, setChoosing] = useState(false);
   const dialogRef = useGameDialog(choosing, () => setChoosing(false));
+  if (state?.teamNavigation)
+    return (
+      <div className='trip-guide'>
+        <small className='hud-label'>TIẾP SỨC HAI ĐỘI</small>
+        <h3>📦 {state.teamNavigation}</h3>
+        <p>
+          {state.navigation
+            ? `${Math.ceil(state.navigation.distance)}m · Lái theo GPS; trao gói khi hai người cách nhau dưới 70m.`
+            : 'Đợi kết quả vòng năm phút.'}
+        </p>
+      </div>
+    );
   const nav = state?.navigation,
     trip = state?.trip;
   const nearby = passengers

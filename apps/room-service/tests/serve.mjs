@@ -1,4 +1,6 @@
 /* global URL, process, console */
+import { once } from 'node:events';
+import { setTimeout as pause } from 'node:timers/promises';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -46,7 +48,10 @@ async function close() {
   if (closing) return;
   closing = true;
   await mf.dispose();
-  child.kill('SIGTERM');
+  if (child.exitCode === null) {
+    child.kill('SIGTERM');
+    await Promise.race([once(child, 'exit'), pause(5000).then(() => child.kill('SIGKILL'))]);
+  }
   process.exit(0);
 }
 process.on('SIGTERM', close);

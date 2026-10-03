@@ -3,7 +3,7 @@ import { TripGuide } from './TripGuide';
 import type { RoomState } from '@xeom-rush/shared';
 import type { GameplayState } from '@xeom-rush/shared';
 import React, { useMemo, useState, useEffect } from 'react';
-import { districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
+import { EMOTES, districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
 import { Minimap } from './Minimap';
 import { Joystick } from './Joystick';
 import { inputHandler } from '../game/input';
@@ -108,7 +108,22 @@ export const HUD: React.FC<HUDProps> = ({
       <div className='hud-left'>
         <section className='hud-summary glass-panel' aria-label='Chuyến xe của bạn'>
           {room?.status === 'running' && (
-            <p className='room-round-status'>🤝 Vòng bạn bè · {Math.ceil(room.remainingTicks / 20)}s</p>
+            <p className='room-round-status'>
+              🤝{' '}
+              {room.mode === 'co-op'
+                ? `Co-op ${room.teamPlay?.kind === 'co-op' ? `${room.teamPlay.earned.toLocaleString('vi-VN')}/${room.teamPlay.target.toLocaleString('vi-VN')}đ` : ''}`
+                : room.mode === 'relay'
+                  ? 'Tiếp sức hai đội'
+                  : 'Vòng bạn bè'}{' '}
+              · {Math.ceil(room.remainingTicks / 20)}s
+            </p>
+          )}
+          {!!room?.emotes?.length && (
+            <p className='room-round-status' role='status'>
+              {room.players.find((p) => p.id === room.emotes!.at(-1)!.profileId)?.username}:{' '}
+              {EMOTES.find((e) => e.id === room.emotes!.at(-1)!.id)?.icon}{' '}
+              {EMOTES.find((e) => e.id === room.emotes!.at(-1)!.id)?.text}
+            </p>
           )}
           {localPlayer && (
             <p className='hud-city' aria-label='Thành phố hiện tại' title={cityLabel}>

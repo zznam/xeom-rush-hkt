@@ -773,3 +773,41 @@
   box-sizing: border-box;
   user-select: text;
 }
+
+.emote-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.emote-options button {
+  white-space: normal;
+}
+.relay-team {
+  border-top: 1px solid #364b43;
+  padding-top: 12px;
+}
+.room-round-status {
+  font-size: 11px;
+  line-height: 1.4;
+}
+.club-panel select {
+  min-height: 44px;
+  padding: 8px;
+  max-width: 100%;
+}
+
+.room-mode-field {
+  display: block;
+  margin: 12px 0;
+}
+.room-mode-field select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.room-bots-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}

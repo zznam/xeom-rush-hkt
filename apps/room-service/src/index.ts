@@ -50,7 +50,7 @@ export default {
           available: healthy,
           apiUrl: url.origin,
           identityUrl: env.CAREER_API_URL,
-          modes: healthy ? ['competitive'] : [],
+          modes: healthy ? ['competitive', 'co-op', 'relay'] : [],
           adapter: 'cloudflare',
         },
         id ? 200 : 401,
@@ -343,6 +343,7 @@ export class PrivateRoom {
   }
   async alarm() {
     if (!this.owner) return;
+    if (!this.owner.active) this.owner.tick();
     if (this.owner.expired) {
       await this.expire();
       return;

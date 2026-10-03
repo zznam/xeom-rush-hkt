@@ -29,9 +29,9 @@ All rows begin pending. Implementation and validation evidence are recorded as e
 | 23  | Shift results           | Implemented    | Unit/build checks pass; combined journeys pending                                                                              |
 | 24  | City/career rankings    | Implemented    | Unit/build checks pass; combined journeys pending                                                                              |
 | 25  | Private rooms           | Implemented    | Portable lifecycle, two-browser delivery/rematch/recovery, actual Miniflare and routed DynamoDB owner, retry queue checks pass |
-| 26  | Co-op dispatch          | Pending        | Pending                                                                                                                        |
-| 27  | Delivery relay          | Pending        | Pending                                                                                                                        |
-| 28  | Quick emotes            | Pending        | Pending                                                                                                                        |
+| 26  | Co-op dispatch          | Implemented    | Portable team rules, browser journeys through both adapters, real 30-second disconnect checks pass                             |
+| 27  | Delivery relay          | Implemented    | Portable team rules, browser journeys through both adapters, real 30-second disconnect checks pass                             |
+| 28  | Quick emotes            | Implemented    | Portable team rules, browser journeys through both adapters, real 30-second disconnect checks pass                             |
 | 29  | Adaptive bots           | Implemented    | Reservation, no-reward, retirement and browser practice checks pass                                                            |
 | 30  | Protected practice      | Implemented    | Reservation, no-reward, retirement and browser practice checks pass                                                            |
 | 31  | Custom controls         | Implemented    | 15 browser tests, six viewports, saved settings and focus checks pass                                                          |

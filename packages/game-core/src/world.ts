@@ -57,6 +57,20 @@ export class GameWorld {
   private closedNavigator: StreetNavigator | null = null;
   private practice = new Map<string, string>();
   private practiceCompleted = new Set<string>();
+  private disabledJobs = new Set<string>();
+  public setJobParticipation(id: string, enabled: boolean) {
+    if (enabled) this.disabledJobs.delete(id);
+    else this.disabledJobs.add(id);
+  }
+  public reservePickup(playerId: string, target: string) {
+    const p = this.passengers.getPassengerMap().get(target);
+    if (!p || p.isCarried || !this.canCollect(playerId, target) || !this.selectPickup(playerId, target)) return false;
+    this.reservations.set(target, playerId);
+    return true;
+  }
+  public releasePickup(playerId: string, target: string) {
+    if (this.reservations.get(target) === playerId) this.reservations.delete(target);
+  }
   private reservations = new Map<string, string>();
   public canCollect(playerId: string, passengerId: string) {
     return !this.reservations.has(passengerId) || this.reservations.get(passengerId) === playerId;
@@ -208,6 +222,8 @@ export class GameWorld {
         this.jobs.delete(player.passengerId);
         this.passengers.updateCarriedStatus(player.passengerId, false);
       }
+      this.disabledJobs.delete(id);
+      for (const [target, owner] of this.reservations) if (owner === id) this.reservations.delete(target);
       this.selectedPickups.delete(id);
       this.routeCache.delete(id);
       this.summaries.delete(id);
@@ -658,6 +674,7 @@ export class GameWorld {
 
     // 2. Refresh spatial grid positions for passengers
     const passMap = this.passengers.getPassengerMap();
+    for (const target of this.reservations.keys()) if (!passMap.has(target)) this.reservations.delete(target);
     for (const passenger of passMap.values()) {
       if (passenger.isCarried) {
         // If passenger is carried, remove from spatial grid so other players can't pick them up
@@ -687,6 +704,7 @@ export class GameWorld {
    * Checks passenger pickups and dropoffs
    */
   private checkPlayerInteractions(player: PlayerState): void {
+    if (this.disabledJobs.has(player.id)) return;
     const passMap = this.passengers.getPassengerMap();
 
     if (!player.passengerId) {

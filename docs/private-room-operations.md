@@ -36,3 +36,9 @@ The Terraform template now omits a fixed `BOT_COUNT`, letting public cities targ
 Build shared/core/server/client, then dry-run the worker build. `bun run --filter @xeom-rush/room-service test` exercises invitation, round, host transfer, reconnect, results, rematch, and owner restart through the Node adapter and actual Miniflare runtime. Local fixtures require explicit test flags and are unavailable in production.
 
 To disable default-site rooms, remove Deno `ROOM_SERVICE_URL`; to disable AWS rooms, set `private_rooms_enabled=false` and apply manually. Preserve guest signers, career tables/KV, and the worker's durable queue during rollback. Let pending checkpoints drain before removing a room service. Public cities continue through their existing Vercel/Deno or AWS route. Rolling back gameplay can use `CONTENT_RELEASE=false`; do not delete saved profiles to roll back UI.
+
+## Team modes
+
+The host chooses competitive, co-op, or relay between rounds. Competitive may fill empty slots with bots. Co-op needs at least two humans and fixes its five-minute target at 20,000đ per starting participant. Dispatch reserves separate pickups, and disconnected contributions remain in the shared total.
+
+Relay needs two teams of two to four humans and four ordered landmark legs. The carrier and next rider must both reach the handoff landmark and be within 70m. Disconnect grace is thirty seconds; an eligible teammate receives the remaining leg, or that team's run ends. Relay leg scores stay separate from career fare totals. The fixed six-emote catalog has a three-second server cooldown. Both owner adapters advertise these modes only while the configured service is healthy.
