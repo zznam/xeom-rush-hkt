@@ -36,6 +36,9 @@ export interface TripMetadata {
   dialogue: string;
   freshness: number;
   damage: number;
+  goalLabel: string;
+  persona: string;
+  quickTicksRemaining: number;
 }
 export interface ShiftSummary {
   distance: number;
@@ -75,6 +78,14 @@ export interface GameplayState {
   comboTicksRemaining: number;
   summary: ShiftSummary;
   cityRanking: { id: string; username: string; score: number; deliveries: number }[];
+  offers: {
+    id: string;
+    kind: import('./jobs').JobKind;
+    persona: string;
+    goalLabel: string;
+    fare: Fare;
+    stops: number;
+  }[];
   navigation: {
     targetId: string;
     target: Vector2D;

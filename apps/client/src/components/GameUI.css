@@ -623,3 +623,18 @@
   display: block;
   margin-top: 5px;
 }
+
+.passenger-story blockquote {
+  margin: 6px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #526a56;
+}
+.passenger-story small {
+  font-size: 10px;
+  display: block;
+}
+.passenger-story p {
+  font-size: 10px;
+  margin: 4px 0;
+}
