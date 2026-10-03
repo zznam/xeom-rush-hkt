@@ -1,0 +1,60 @@
+{
+  "url": "http://localhost:5184/",
+  "checkedAt": "2026-10-03T18:44:55.756Z",
+  "webSocketOrigins": [
+    "ws://localhost:5184",
+    "ws://localhost:3014",
+    "ws://localhost:5184",
+    "ws://localhost:3014",
+    "ws://localhost:3014"
+  ],
+  "practice": true,
+  "paidTrip": true,
+  "guestReload": true,
+  "careerReload": true,
+  "results": true,
+  "unconfiguredRoomsHidden": true,
+  "errors": [],
+  "frameRate": {
+    "samples": 1807,
+    "median": 119.04761904764999,
+    "p05": 59.52380952380888
+  },
+  "summary": {
+    "distance": 2693.693460067246,
+    "cleanTrips": 0,
+    "baseFares": 14643,
+    "bonuses": 0,
+    "tips": 0,
+    "fines": 0,
+    "fastestTripTicks": 346,
+    "visited": [],
+    "violations": {
+      "redLights": 0,
+      "pedestrianHits": 2,
+      "driverCollisions": 0
+    },
+    "bestFare": 14643,
+    "recentTrips": [
+      {
+        "id": "pass-4",
+        "kind": "passenger",
+        "completedAt": 1791053094883,
+        "durationTicks": 346,
+        "distance": 2434.8033899961893,
+        "clean": false,
+        "fare": {
+          "base": 14643,
+          "combo": 0,
+          "environment": 0,
+          "clean": 0,
+          "tip": 0,
+          "total": 14643
+        }
+      }
+    ]
+  },
+  "source": "a0424704d2a310d1f42692b0e70fd3d3b2fa1712",
+  "method": "Ordinary UI and keyboard input; real generated passenger; no test position, reward or pickup endpoints",
+  "persistence": "Local Memory adapter in one server process; persistent Deno KV verified separately"
+}
