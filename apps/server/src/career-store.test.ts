@@ -33,3 +33,25 @@ describe('authenticated careers', () => {
     expect((await store.profile('a')).careerScore).toBe(30);
   });
 });
+it('claims objectives once under concurrency and rejects invented progress and locked equipment', async () => {
+  const store = new CareerRepository(new MemoryCareerBackend()),
+    now = Date.parse('2026-10-03T12:00:00Z');
+  const { activeObjectives } = await import('@xeom-rush/shared');
+  const o = activeObjectives(now)[0],
+    target = `${o.period}:${o.id}`;
+  await expect(store.claim('a', target, now)).rejects.toThrow('incomplete');
+  await expect(store.equip('a', 'paint-11')).rejects.toThrow('locked');
+  await store.save('a', 'session', {
+    username: 'A',
+    score: 100,
+    peakStreak: 1,
+    deliveriesCount: 3,
+    revision: 1,
+    progress: { [o.period]: { [o.metric]: o.goal } },
+  });
+  await Promise.all([store.claim('a', target, now), store.claim('a', target, now)]);
+  expect((await store.profile('a')).claimCount).toBe(1);
+  await store.equip('a', 'paint-1');
+  expect((await store.profile('a')).equipped.paint).toBe('paint-1');
+  await expect(store.claim('a', target, now + 86400000)).rejects.toThrow('expired');
+});

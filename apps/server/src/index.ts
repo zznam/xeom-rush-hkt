@@ -334,6 +334,28 @@ wss.on('connection', (ws: WebSocket, request) => {
         commandIds.add(command.id);
         if (commandIds.size > 128) commandIds.delete(commandIds.values().next().value!);
         if (command.action === 'select-pickup') world.selectPickup(playerId, command.target);
+        if (['profile', 'claim', 'equip'].includes(command.action)) {
+          const session = sessions.get(token);
+          if (session?.profileId)
+            void (async () => {
+              const stats = world.getSessionStatsForPlayer(playerId);
+              if (stats) await saveSession(session.saveId, { ...stats, profileId: session.profileId });
+              const p =
+                command.action === 'claim'
+                  ? await careerRepository.claim(session.profileId!, command.target ?? '')
+                  : command.action === 'equip'
+                    ? await careerRepository.equip(session.profileId!, command.target ?? '')
+                    : await careerRepository.profile(session.profileId!);
+              world.setAppearance(playerId, p.equipped);
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(`control:${JSON.stringify({ version: 1, kind: 'career', data: publicCareer(p) })}`);
+            })().catch(() => {
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(
+                  `control:${JSON.stringify({ version: 1, kind: 'notice', data: 'Chưa thể nhận quà. Kiểm tra tiến độ và thử lại nhé.' })}`,
+                );
+            });
+        }
         return;
       }
       if (joined && /^ping:[0-9]{13}$/.test(text)) ws.send(`pong:${text.slice(5)}`);
@@ -419,13 +441,14 @@ wss.on('connection', (ws: WebSocket, request) => {
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
         ws.send(
-          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true } })}`,
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true, progression: true } })}`,
         );
         const profileId = sessions.get(token)?.profileId;
         if (profileId)
           void careerRepository
             .profile(profileId)
             .then((p) => {
+              world.setAppearance(playerId, p.equipped);
               if (ws.readyState === WebSocket.OPEN)
                 ws.send(`control:${JSON.stringify({ version: 1, kind: 'career', data: publicCareer(p) })}`);
             })
@@ -548,6 +571,9 @@ const gameLoop = setInterval(() => {
       ) {
         playerSocket.ws.send(
           `control:${JSON.stringify({ version: 1, kind: 'gameplay', data: world.getGameplayState(playerId) })}`,
+        );
+        playerSocket.ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'appearance', data: world.getAppearances() })}`,
         );
         playerSocket.lastTripKey = tripKey;
         playerSocket.lastLifeKey = lifeKey;

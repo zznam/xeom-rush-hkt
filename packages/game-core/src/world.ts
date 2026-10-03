@@ -1,4 +1,6 @@
 import {
+  progressionPeriods,
+  districtAt,
   cityAtTick,
   environmentMultiplier,
   movementConditions,
@@ -53,6 +55,24 @@ export class GameWorld {
   private closureId = '';
   private closureAllowed = false;
   private closedNavigator: StreetNavigator | null = null;
+  private periods = progressionPeriods();
+  private progress = new Map<string, Record<string, Record<string, number>>>();
+  private appearances = new Map<string, Record<string, string>>();
+  public setAppearance(id: string, equipped: Record<string, string>) {
+    this.appearances.set(id, { ...equipped });
+  }
+  public getAppearances() {
+    return Object.fromEntries(this.appearances);
+  }
+  private trackProgress(id: string, metric: string, amount = 1) {
+    if (!this.options.enhanced || !amount) return;
+    const counts = this.progress.get(id) ?? {};
+    for (const period of Object.values(this.periods)) {
+      counts[period] ??= {};
+      counts[period][metric] = (counts[period][metric] ?? 0) + amount;
+    }
+    this.progress.set(id, counts);
+  }
   private jobs = new Map<string, JobState>();
   private getJob(passenger: PassengerState) {
     let job = this.jobs.get(passenger.id);
@@ -93,7 +113,7 @@ export class GameWorld {
   private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> =
     new Map();
 
-  constructor(private options: { enhanced?: boolean } = {}) {
+  constructor(private options: { enhanced?: boolean; now?: () => number } = {}) {
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
     this.cityFeatures = new CityFeatures(this.physics);
@@ -165,6 +185,8 @@ export class GameWorld {
       // Clean up session stats
       this.sessionPeakStreaks.delete(id);
       this.sessionDeliveries.delete(id);
+      this.progress.delete(id);
+      this.appearances.delete(id);
       this.sessionViolations.delete(id);
     }
   }
@@ -176,6 +198,7 @@ export class GameWorld {
     return {
       username: player.username,
       revision: this.tickCount,
+      progress: structuredClone(this.progress.get(playerId) ?? {}),
       summary: structuredClone(this.summaries.get(playerId) ?? emptySummary()),
       score: player.score,
       peakStreak: this.sessionPeakStreaks.get(playerId) ?? 0,
@@ -436,6 +459,7 @@ export class GameWorld {
    */
   public tick(dt: number): void {
     this.tickCount++;
+    this.periods = progressionPeriods(this.options.now?.() ?? Date.now());
     this.advanceCity();
     for (const [id, target] of this.selectedPickups) {
       const p = this.passengers.getPassengerMap().get(target);
@@ -499,7 +523,9 @@ export class GameWorld {
       this.spatialGrid.update(player.id, player.x, player.y);
 
       const summary = this.summaries.get(playerId)!;
-      summary.distance += Math.hypot(player.x - prevX, player.y - prevY);
+      const distance = Math.hypot(player.x - prevX, player.y - prevY);
+      summary.distance += distance;
+      this.trackProgress(playerId, 'distance', distance);
       for (const landmark of LANDMARKS)
         if (!summary.visited.includes(landmark.id) && Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80)
           summary.visited.push(landmark.id);
@@ -673,6 +699,13 @@ export class GameWorld {
           );
           const reward = this.options.enhanced ? fare.total : Math.floor(passenger.reward * multiplier);
 
+          this.trackProgress(player.id, 'deliveries');
+          this.trackProgress(player.id, job?.kind ?? 'passenger');
+          this.trackProgress(player.id, districtAt(player).id);
+          if (!this.dirtyTrips.has(player.id)) this.trackProgress(player.id, 'clean');
+          if (this.life.rain) this.trackProgress(player.id, 'rain');
+          if (this.life.phase === 'night') this.trackProgress(player.id, 'night');
+          if (fare.tip > 0) this.trackProgress(player.id, 'tipped');
           player.score += reward;
           const summary = this.summaries.get(player.id)!;
           summary.baseFares += passenger.reward;

@@ -35,6 +35,9 @@ it('delivers a multi-stop parcel only once after its final ordered stop', () => 
     }
   }
   expect(world.getSessionStatsForPlayer('a')!.deliveriesCount).toBe(1);
+  expect(
+    Object.values(world.getSessionStatsForPlayer('a')!.progress).every((p) => p.parcel === 1 && p.deliveries === 1),
+  ).toBe(true);
   expect(world.getPlayer('a')!.passengerId).toBeNull();
   expect(world.getPlayer('a')!.score).toBeGreaterThanOrEqual(10000);
 });

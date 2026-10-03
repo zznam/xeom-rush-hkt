@@ -1,4 +1,5 @@
 import {
+  COSMETICS,
   cityAtTick,
   jobIndex,
   type GameplayState,
@@ -30,6 +31,10 @@ interface StaticCrosswalk {
 }
 
 export class GameRenderer {
+  private appearances: Record<string, Record<string, string>> = {};
+  public setAppearances(value: Record<string, Record<string, string>>) {
+    this.appearances = value;
+  }
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private camera = { x: 2000, y: 2000 };
@@ -94,7 +99,15 @@ export class GameRenderer {
    * Main render method
    */
   public draw(
-    localPlayer: { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null },
+    localPlayer: {
+      id: string;
+      x: number;
+      y: number;
+      angle: number;
+      username: string;
+      score: number;
+      passengerId: string | null;
+    },
     otherPlayers: Map<
       string,
       { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }
@@ -150,8 +163,8 @@ export class GameRenderer {
     this.drawPassengers(ctx, passengers, localPlayer.passengerId);
 
     // 7. Draw other players
-    for (const op of otherPlayers.values()) {
-      this.drawMotorbike(ctx, op.x, op.y, op.angle, op.username, false, op.passengerId !== null);
+    for (const [id, op] of otherPlayers) {
+      this.drawMotorbike(ctx, op.x, op.y, op.angle, op.username, false, op.passengerId !== null, id);
     }
 
     // 8. Draw local player
@@ -163,6 +176,7 @@ export class GameRenderer {
       localPlayer.username,
       true,
       localPlayer.passengerId !== null,
+      localPlayer.id,
     );
 
     const now = performance.now();
@@ -719,6 +733,7 @@ export class GameRenderer {
     username: string,
     isLocal: boolean,
     hasPassenger: boolean,
+    playerId: string,
   ): void {
     ctx.save();
     ctx.translate(x, y);
@@ -745,6 +760,20 @@ export class GameRenderer {
       ctx.arc(-2, 0, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+    const appearance = this.appearances[playerId];
+    if (appearance) {
+      const color = (slot: string) => COSMETICS.find((c) => c.id === appearance[slot])?.color ?? '#2eaa90';
+      ctx.fillStyle = color('paint');
+      ctx.fillRect(9, -8, 17, 16);
+      ctx.fillStyle = color('jacket');
+      ctx.beginPath();
+      ctx.ellipse(-2, 0, 9, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color('helmet');
+      ctx.beginPath();
+      ctx.arc(1, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
     }
     if (hasPassenger) {
       ctx.fillStyle = '#ffd666';

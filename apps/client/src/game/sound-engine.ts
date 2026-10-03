@@ -4,6 +4,15 @@
  */
 
 class SoundEngine {
+  private horn = 'horn-0';
+  public setHorn(value: string) {
+    this.horn = value;
+  }
+  public honk() {
+    const i = Number(this.horn.split('-')[1]) || 0;
+    this.playTone(i === 1 ? 'sine' : i === 3 ? 'triangle' : 'square', [440, 880, 620, 220][i] ?? 440, 0.16, 0.1);
+    if (i === 2) this.playTone('square', 830, 0.14, 0.08, 0.18);
+  }
   private ctx: AudioContext | null = null;
   private enabled = true;
   private lastAmbient = 0;
@@ -144,8 +153,7 @@ class SoundEngine {
 
   /** Honk — short harsh buzz at ~300 Hz. */
   public playHonk(): void {
-    this.playTone('square', 300, 0.2, 0.5);
-    this.playTone('square', 260, 0.2, 0.3, 0.05);
+    this.honk();
   }
 
   /** Rush Hour sting — dramatic 4-note ascending fanfare on horns (sawtooth). */
