@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CareerProfile, ShiftSummary } from '@xeom-rush/shared';
+import { LANDMARKS, DISTRICTS, type CareerProfile, type ShiftSummary } from '@xeom-rush/shared';
 import { inputHandler } from '../game/input';
 
 type PublicCareer = Omit<CareerProfile, 'contributions'>;
@@ -79,6 +79,21 @@ export function DriverPanel({
             </li>
           ))}
         </ol>
+        <h3>Hộ chiếu Sài Gòn</h3>
+        <p>{DISTRICTS.map((d) => `${d.icon} ${d.name}`).join(' · ')}</p>
+        <ul className='passport-list'>
+          {LANDMARKS.map((l) => {
+            const found = summary?.visited.includes(l.id) || career?.summary.visited.includes(l.id);
+            return (
+              <li key={l.id} className={found ? 'is-discovered' : ''}>
+                <strong>
+                  {found ? '✓' : '○'} {l.icon} {l.name}
+                </strong>
+                <small>{l.story}</small>
+              </li>
+            );
+          })}
+        </ul>
         <h3>Nghề nghiệp đã lưu</h3>
         {error && <p role='status'>{error}</p>}
         <ol>

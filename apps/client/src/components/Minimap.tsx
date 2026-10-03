@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { type PlayerState, type PassengerState, EPassengerTier, MAP_SIZE } from '@xeom-rush/shared';
+import {
+  LANDMARKS,
+  DISTRICTS,
+  type PlayerState,
+  type PassengerState,
+  EPassengerTier,
+  MAP_SIZE,
+} from '@xeom-rush/shared';
 
 const TIER_COLORS: Record<EPassengerTier, string> = {
   [EPassengerTier.REGULAR]: '#22c55e', // green
@@ -38,6 +45,15 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.fillStyle = 'rgba(10, 15, 30, 0.92)';
     ctx.fillRect(0, 0, size, size);
 
+    DISTRICTS.forEach((district, i) => {
+      ctx.fillStyle = district.color + '22';
+      ctx.fillRect(((i % 2) * size) / 2, (Math.floor(i / 2) * size) / 2, size / 2, size / 2);
+    });
+    for (const landmark of LANDMARKS) {
+      ctx.strokeStyle = '#fff1ae';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(landmark.x * scale - 2, landmark.y * scale - 2, 4, 4);
+    }
     // Subtle grid lines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.lineWidth = 0.5;

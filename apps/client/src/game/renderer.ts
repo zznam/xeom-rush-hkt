@@ -1,5 +1,7 @@
 import {
   CITY_MAP,
+  LANDMARKS,
+  districtAt,
   type PassengerState,
   type TrafficLightState,
   type PedestrianState,
@@ -130,6 +132,7 @@ export class GameRenderer {
 
     // 5. Draw city realism layer
     this.drawCityFeatures(ctx, trafficLights, pedestrians);
+    this.drawLandmarks(ctx);
 
     // 6. Draw passengers
     this.drawPassengers(ctx, passengers, localPlayer.passengerId);
@@ -449,8 +452,34 @@ export class GameRenderer {
     ctx.restore();
   }
 
+  private drawLandmarks(ctx: CanvasRenderingContext2D): void {
+    for (const landmark of LANDMARKS) {
+      if (
+        landmark.x < this.viewport.minX ||
+        landmark.x > this.viewport.maxX ||
+        landmark.y < this.viewport.minY ||
+        landmark.y > this.viewport.maxY
+      )
+        continue;
+      ctx.save();
+      ctx.fillStyle = '#fff8dc';
+      ctx.strokeStyle = '#4b6b57';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(landmark.x - 24, landmark.y - 36, 48, 48, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.font = '26px sans-serif';
+      ctx.fillText(landmark.icon, landmark.x, landmark.y - 2);
+      ctx.fillStyle = '#24473b';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(landmark.name, landmark.x, landmark.y + 32);
+      ctx.restore();
+    }
+  }
+
   private drawBuildings(ctx: CanvasRenderingContext2D): void {
-    const colors = ['#e8a58a', '#e9cb80', '#93c5b4', '#b9b0ce', '#dfbc99'];
     for (const rect of prediction.getBuildings()) {
       if (
         rect.x + rect.width < this.viewport.minX ||
@@ -459,10 +488,10 @@ export class GameRenderer {
         rect.y > this.viewport.maxY
       )
         continue;
-      const index = Math.floor(rect.x / 400 + rect.y / 400) % colors.length;
+
       ctx.fillStyle = '#52654c35';
       ctx.fillRect(rect.x + 8, rect.y + 10, rect.width, rect.height);
-      ctx.fillStyle = colors[index];
+      ctx.fillStyle = districtAt(rect).color;
       ctx.strokeStyle = '#53634e';
       ctx.lineWidth = 3;
       ctx.beginPath();
