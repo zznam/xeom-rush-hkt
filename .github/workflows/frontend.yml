@@ -15,7 +15,7 @@ jobs:
   publish:
     if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["refs/heads/main","refs/heads/regional-production","refs/heads/codex/regional-production"]'), github.ref)
     environment: release
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.LOCAL_RUNNER_LABELS || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
