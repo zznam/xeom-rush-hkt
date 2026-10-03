@@ -8,6 +8,12 @@ const { GameWorld } = require(resolve(root, 'apps/server/dist/world.js'));
 const { BotManager } = require(resolve(root, 'apps/server/dist/bot-ai.js'));
 const shared = require('@xeom-rush/shared');
 const originalLog = console.log;
+const originalRandom = Math.random;
+let seed = 42;
+Math.random = () => {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 4294967296;
+};
 console.log = () => {};
 const world = new GameWorld({ enhanced: true }),
   bots = new BotManager(world, world.getPhysics());
@@ -38,8 +44,10 @@ for (let tick = 0; tick < 7200; tick++) {
   bytes.push(outgoing);
 }
 console.log = originalLog;
+Math.random = originalRandom;
 samples.sort((a, b) => a - b);
 const report = {
+  seed: 42,
   ticks: samples.length,
   humans: 64,
   bots: 8,
