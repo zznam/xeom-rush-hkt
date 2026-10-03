@@ -25,6 +25,10 @@ const { Miniflare, Log, LogLevel } = createRequire(resolve(root, 'apps/room-serv
 const { chromium } = createRequire(resolve(root, 'apps/e2e/package.json'))('@playwright/test');
 const { DynamoDBClient, CreateTableCommand, DeleteTableCommand } = require('@aws-sdk/client-dynamodb');
 const humans = Number(process.env.SOAK_PUBLIC_HUMANS || 64);
+const privateHumans = Number(process.env.SOAK_ROOM_HUMANS || 8);
+const nodeRooms = Number(process.env.SOAK_NODE_ROOMS || 4);
+assert.ok([4, 8].includes(privateHumans));
+assert.ok([3, 4].includes(nodeRooms));
 const duration = Number(process.env.SOAK_DURATION_MS || 1800000),
   secret = 'local-soak-guest-secret-with-32-characters';
 const checkpointSecret = 'local-soak-checkpoint-secret-with-32-characters';
@@ -320,7 +324,12 @@ try {
     }
   }
   for (const base of ['http://localhost:3037', 'http://localhost:3038'])
-    for (const mode of ['competitive', 'co-op', 'relay']) {
+    for (const [modeIndex, mode] of [
+      'competitive',
+      'co-op',
+      'relay',
+      ...(base.endsWith(':3037') && nodeRooms === 4 ? ['competitive'] : []),
+    ].entries()) {
       const guest = (await json('http://localhost:3040/api/guest', {})).guest;
       const room = await json(`${base}/api/rooms`, { guest }),
         endpoint =
@@ -330,7 +339,9 @@ try {
       // The ECS adapter returns its explicit API owner route; do not use spatial/public routing.
       const api = `${room.apiUrl || base}/api/rooms/${room.invite}`;
       const members = [];
-      for (let i = 0; i < 4; i++) {
+      // The fourth ECS room includes four filler bot slots; every full-load room runs eight drivers.
+      const memberCount = modeIndex === 3 ? 4 : privateHumans;
+      for (let i = 0; i < memberCount; i++) {
         const credential = i ? (await json('http://localhost:3040/api/guest', {})).guest : guest;
         const match = await json(`${api}/join`, { guest: credential });
         members.push(await open(match.serverUrl, `Team${mode}-${i}`));
@@ -407,7 +418,7 @@ try {
   for (const s of sockets) s.bytes = 0;
   const started = Date.now();
   console.log(
-    `SOAK_STARTED ${new Date(started).toISOString()} duration=${duration} public${humans}+8+2 browsers, 6 team/private rooms`,
+    `SOAK_STARTED ${new Date(started).toISOString()} duration=${duration} public${humans}+8+2 browsers, ${rooms.length} team/private rooms`,
   );
   timer = setInterval(() => {
     for (const s of sockets) drive(s);
@@ -457,10 +468,15 @@ try {
       startedAt: new Date(started).toISOString(),
       elapsedMs,
       configuredPublicCapacity: humans,
+      configuredPrivateRoomHumans: privateHumans,
+      configuredNodeRooms: nodeRooms,
       publicHumans: humans + 10,
       publicBots: 16,
-      roomHumans: 24,
-      roomBots: 8,
+      roomHumans: rooms.reduce((sum, room) => sum + room.members.length, 0),
+      roomBots: rooms.reduce(
+        (sum, room) => sum + (room.host.room?.mode === 'competitive' ? 8 - room.members.length : 0),
+        0,
+      ),
       adapters: ['ECS+DynamoDB', 'Cloudflare Durable Objects+Deno KV'],
       totalBytes,
       bytesPerPeerSecond: totalBytes / sockets.length / (elapsedMs / 1000),

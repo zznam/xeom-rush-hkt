@@ -94,6 +94,8 @@ jobs:
         env:
           TEST_DYNAMO_URL: http://127.0.0.1:8000
           SOAK_PUBLIC_HUMANS: 16
+          SOAK_ROOM_HUMANS: 4
+          SOAK_NODE_ROOMS: 3
           SOAK_DURATION_MS: 10000
           SOAK_OUTPUT: apps/e2e/test-results/load-smoke.json
         run: node tests/release-soak.mjs
