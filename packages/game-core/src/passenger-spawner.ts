@@ -32,7 +32,10 @@ export class PassengerSpawner {
   private physics: PhysicsEngine;
   private pendingVIPEvents: VIPSpawnEvent[] = [];
 
-  constructor(physics: PhysicsEngine) {
+  constructor(
+    physics: PhysicsEngine,
+    private environmentAtDelivery = false,
+  ) {
     this.physics = physics;
 
     // Populate initial batch — all Regular to start
@@ -172,7 +175,7 @@ export class PassengerSpawner {
     if (tier === EPassengerTier.BUSINESS) tierMultiplier = TIER_MULTIPLIER_BUSINESS;
     if (tier === EPassengerTier.VIP) tierMultiplier = TIER_MULTIPLIER_VIP;
 
-    const rushMultiplier = rushHourActive ? RUSH_HOUR_MULTIPLIER : 1;
+    const rushMultiplier = rushHourActive && !this.environmentAtDelivery ? RUSH_HOUR_MULTIPLIER : 1;
     const reward = Math.floor(baseReward * tierMultiplier * rushMultiplier);
 
     const deadline = this.calculateDeadline(currentTick, distance, tier);

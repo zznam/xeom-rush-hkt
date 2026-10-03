@@ -75,4 +75,13 @@ export interface GameplayState {
   comboTicksRemaining: number;
   summary: ShiftSummary;
   cityRanking: { id: string; username: string; score: number; deliveries: number }[];
+  navigation: {
+    targetId: string;
+    target: Vector2D;
+    route: Vector2D[];
+    distance: number;
+    pickupExpiryTick: number;
+    fare: Fare;
+    tier: number;
+  } | null;
 }

@@ -586,3 +586,40 @@
   margin-top: 4px;
   line-height: 1.5;
 }
+
+.pickup-choice-button {
+  min-height: 44px;
+  border: 1px solid #718873;
+  border-radius: 10px;
+  background: #ffdc91;
+  color: #315744;
+  padding: 5px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.trip-fare strong {
+  color: #286949;
+}
+.trip-guide .trip-timing,
+.trip-guide .combo-clock {
+  font-size: 11px;
+  line-height: 1.3;
+  margin: 4px 0;
+}
+.club-cover {
+  position: fixed;
+  pointer-events: auto;
+}
+.pickup-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pickup-list button {
+  text-align: left;
+}
+.pickup-list small {
+  display: block;
+  margin-top: 5px;
+}

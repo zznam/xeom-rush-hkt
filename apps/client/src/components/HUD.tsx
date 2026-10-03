@@ -1,3 +1,5 @@
+import { TripGuide } from './TripGuide';
+import type { GameplayState } from '@xeom-rush/shared';
 import React, { useMemo, useState, useEffect } from 'react';
 import { districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
 import { Minimap } from './Minimap';
@@ -6,6 +8,7 @@ import { inputHandler } from '../game/input';
 import { soundEngine } from '../game/sound-engine';
 
 interface HUDProps {
+  gameplay: GameplayState | null;
   localPlayer: PlayerState | null;
   players: PlayerState[];
   passengers: PassengerState[];
@@ -25,6 +28,7 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export const HUD: React.FC<HUDProps> = ({
+  gameplay,
   localPlayer,
   players,
   passengers,
@@ -64,6 +68,7 @@ export const HUD: React.FC<HUDProps> = ({
       carriedPassengerId={localPlayer.passengerId}
       size={isCompact ? 110 : 150}
       className='hud-minimap'
+      navigation={gameplay?.navigation ?? null}
     />
   );
 
@@ -118,15 +123,13 @@ export const HUD: React.FC<HUDProps> = ({
             <span>{isCarrying ? 'Đang chở khách' : 'Sẵn sàng đón khách'}</span>
             {carriedPassenger && <strong>+{carriedPassenger.reward.toLocaleString('vi-VN')}đ</strong>}
           </div>
-          <div className='trip-guide'>
-            <small className='hud-label'>{!tutorialDone ? 'CHUYẾN ĐẦU TIÊN' : 'CHUYẾN XE HIỆN TẠI'}</small>
-            <h3>{isCarrying ? '🏁 Đưa khách đến đích' : '🙋 Có người đang đợi!'}</h3>
-            <p>
-              {isCarrying
-                ? 'Theo dấu đỏ đến điểm trả. Lái lại gần để hoàn tất chuyến xe.'
-                : 'Lái lại gần khách đang vẫy tay để tự động đón.'}
-            </p>
-          </div>
+          <TripGuide
+            state={gameplay}
+            player={localPlayer}
+            passengers={passengers}
+            streak={myStreak}
+            tutorialDone={tutorialDone}
+          />
           <p className='trip-progress'>✦ {deliveries} chuyến hoàn thành</p>
         </section>
         {!isCompact && minimap}

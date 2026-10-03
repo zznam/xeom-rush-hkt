@@ -1,5 +1,5 @@
 import { DriverPanel } from './DriverPanel';
-import type { CareerProfile, ShiftSummary } from '@xeom-rush/shared';
+import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
 import React, { useEffect, useRef, useState } from 'react';
 import { network, type ConnectionState } from '../game/network';
 import { loadPreferences, readStored, writeStored } from '../game/preferences';
@@ -31,6 +31,7 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
+  const [gameplay, setGameplay] = useState<GameplayState | null>(null);
   const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [cityRanking, setCityRanking] = useState<{ id: string; username: string; score: number; deliveries: number }[]>(
@@ -127,9 +128,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Track config variables from server
     let myPlayerId = '';
+    let arrivalToastUntil = 0;
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
+      arrivalToastUntil = 0;
       prediction.clear();
       interpolation.clear();
       if (myPlayerId && myPlayerId !== config.myId) {
@@ -146,7 +149,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     const unsubscribeControl = network.registerControlCallback((message) => {
       if (message.kind === 'career') setCareer(message.data);
-      if (message.kind === 'shift') {
+      if (message.kind === 'gameplay') {
+        setGameplay(message.data);
+        renderer.setGameplay(message.data);
         setSummary(message.data.summary);
         setCityRanking(message.data.cityRanking);
       }
@@ -217,10 +222,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         if (!prevPassengerId && currPassengerId) {
           soundEngine.playPickup();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'pickup');
-          setToast('🙋 À, có khách rồi!');
-          if (toastTimer.current) clearTimeout(toastTimer.current);
-          toastTimer.current = setTimeout(() => setToast(null), 1800);
+          // A nearby automatic pickup must not erase the completed trip's fare feedback.
+          if (Date.now() >= arrivalToastUntil) {
+            setToast('🙋 À, có khách rồi!');
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setToast(null), 1800);
+          }
         } else if (prevPassengerId && !currPassengerId) {
+          arrivalToastUntil = Date.now() + 2400;
           soundEngine.playDropoff();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'delivery');
           const earned = Math.max(0, localStateFromServer.score - (localPlayerStateRef.current?.score ?? 0));
@@ -593,6 +602,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         myStreak={myStreak}
         deliveries={deliveries}
         tutorialDone={tutorialDone}
+        gameplay={gameplay}
         cityLabel={cityLabel}
       />
 

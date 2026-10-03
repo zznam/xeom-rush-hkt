@@ -1,4 +1,5 @@
 import {
+  type GameplayState,
   CITY_MAP,
   LANDMARKS,
   districtAt,
@@ -32,6 +33,10 @@ export class GameRenderer {
   private camera = { x: 2000, y: 2000 };
   private shakeMagnitude: number = 0;
   private reducedMotion = false;
+  private gameplay: GameplayState | null = null;
+  public setGameplay(state: GameplayState): void {
+    this.gameplay = state;
+  }
   private rider = new Image();
   private passengerArt = new Image();
   private particles: { x: number; y: number; vx: number; vy: number; born: number; color: string }[] = [];
@@ -133,6 +138,7 @@ export class GameRenderer {
     // 5. Draw city realism layer
     this.drawCityFeatures(ctx, trafficLights, pedestrians);
     this.drawLandmarks(ctx);
+    this.drawNavigation(ctx);
 
     // 6. Draw passengers
     this.drawPassengers(ctx, passengers, localPlayer.passengerId);
@@ -449,6 +455,53 @@ export class GameRenderer {
     ctx.fillText('CHỢ BẾN THÀNH', 2000, 1660);
     ctx.font = '700 13px "Be Vietnam Pro", sans-serif';
     ctx.fillText('ĐÓN KHÁCH · KHÁM PHÁ · LÊN ĐƯỜNG', 2000, 1685);
+    ctx.restore();
+  }
+
+  private drawNavigation(ctx: CanvasRenderingContext2D): void {
+    const nav = this.gameplay?.navigation;
+    if (!nav) return;
+    ctx.save();
+    ctx.strokeStyle = '#ffcb68';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    nav.route.forEach((p, i) => {
+      if (i) ctx.lineTo(p.x, p.y);
+      else ctx.moveTo(p.x, p.y);
+    });
+    ctx.stroke();
+    const target = nav.target;
+    ctx.strokeStyle = this.gameplay?.trip ? '#ed735f' : '#428b68';
+    ctx.fillStyle = this.gameplay?.trip ? '#ed735f25' : '#428b6825';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#264e3d';
+    ctx.fillText(this.gameplay?.trip ? '🏁' : '🙋', target.x, target.y + 7);
+    const dx = target.x - this.camera.x,
+      dy = target.y - this.camera.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 100) {
+      const x = this.camera.x + Math.max(-this.canvas.width / 2 + 70, Math.min(this.canvas.width / 2 - 70, dx)),
+        y = this.camera.y + Math.max(-this.canvas.height / 2 + 100, Math.min(this.canvas.height / 2 - 100, dy));
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(dy, dx));
+      ctx.fillStyle = '#ffcb68';
+      ctx.strokeStyle = '#385947';
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-8, -10);
+      ctx.lineTo(-8, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
