@@ -315,6 +315,16 @@ export class CareerRepository {
       return p;
     });
   }
+  async readRoom(invite: string) {
+    return (await this.backend.get<import('@xeom-rush/shared').DurableRoom>(`private-room:${invite}`)).value;
+  }
+  async writeRoom(invite: string, value: import('@xeom-rush/shared').DurableRoom) {
+    for (let i = 0; i < 8; i++) {
+      const row = await this.backend.get(`private-room:${invite}`);
+      if (await this.backend.set(`private-room:${invite}`, row.version, value)) return;
+    }
+    throw new Error('Room checkpoint contention');
+  }
   async secret() {
     const row = await this.backend.get<string>('identity-key');
     if (row.value) return row.value;

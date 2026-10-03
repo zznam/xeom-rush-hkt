@@ -13,3 +13,5 @@ export * from './jobs';
 export * from './city-life';
 
 export * from './progression';
+
+export * from './rooms';

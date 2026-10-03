@@ -1,3 +1,4 @@
+import { installPrivateRooms } from './private-rooms';
 import { careerRepository } from './career-store';
 import { publicCareer } from '@xeom-rush/shared';
 import express from 'express';
@@ -48,7 +49,7 @@ let storageReady = false;
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://xeom-rush.vercel.app').split(',').map((s) => s.trim());
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || !production || allowedOrigins.includes(origin)) }));
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1kb' }));
+app.use(express.json({ limit: '16kb' }));
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   const prefix = `/rooms/${roomId}`;
@@ -255,9 +256,21 @@ async function finishSession(token: string): Promise<void> {
     }
   }
 }
+const privateRooms = installPrivateRooms(app, {
+  secret: () => identitySecret,
+  ready,
+  production,
+  regional,
+  ownerId: roomId,
+  allowedOrigins,
+});
 const FULL_SNAPSHOT_INTERVAL_TICKS = 40;
 
 server.on('upgrade', (request, socket, head) => {
+  if ((request.url ?? '').includes('/private/')) {
+    void privateRooms.upgrade(request, socket, head).catch(() => socket.destroy());
+    return;
+  }
   if (
     !ready() ||
     wss.clients.size >= capacity + 16 ||
@@ -637,7 +650,7 @@ const startServer = () => {
 
 connectStorage(MONGODB_URI)
   .then(async () => {
-    identitySecret = regional ? guestSecret : await careerRepository.secret();
+    identitySecret = guestSecret || (await careerRepository.secret());
     storageReady = true;
     startServer();
   })
@@ -703,6 +716,7 @@ async function shutdown(): Promise<void> {
   await Promise.all([...sessions.keys()].map(finalizeSession));
   await Promise.all([...finalWrites]);
   for (const client of wss.clients) client.terminate();
+  await privateRooms.close();
   await closeStorage();
   server.close(() => process.exit(0));
 }

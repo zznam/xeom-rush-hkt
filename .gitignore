@@ -23,3 +23,5 @@ mongo/
 *.tfvars
 *.tfvars.json
 !infra/examples/*.tfvars
+
+.wrangler/

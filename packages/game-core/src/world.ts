@@ -434,9 +434,9 @@ export class GameWorld {
     };
   }
 
-  public getCityRanking() {
+  public getCityRanking(includeBots = false) {
     return [...this.players.values()]
-      .filter((p) => !p.id.startsWith('bot-'))
+      .filter((p) => includeBots || !p.id.startsWith('bot-'))
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
       .slice(0, 10)
       .map((p) => ({

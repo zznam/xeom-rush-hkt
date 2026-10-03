@@ -1,3 +1,4 @@
+import { RoomLauncher } from './components/RoomHub';
 import { useCallback, useEffect, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { readStored, writeStored } from './game/preferences';
@@ -29,8 +30,16 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState(defaultServerUrl);
+  const handleRoomJoin = useCallback((url: string, name?: string) => {
+    if (name) setUsername(name);
+    setMatchedUrl(url);
+    setCityLabel('Phòng bạn bè');
+    setIsPlaying(true);
+  }, []);
   const handleDisconnect = useCallback((reason?: string) => {
     setIsPlaying(false);
+    setMatchedUrl('');
+    setCityLabel('');
     setConnectionError(reason || null);
   }, []);
 
@@ -41,6 +50,7 @@ export default function App() {
         serverUrl={matchedUrl || serverUrl.trim()}
         cityLabel={cityLabel}
         onDisconnect={handleDisconnect}
+        onRoomJoin={handleRoomJoin}
       />
     );
 
@@ -176,6 +186,14 @@ export default function App() {
               </details>
             )}
           </form>
+          <RoomLauncher
+            serverUrl={
+              regions.length ? (regions.find((r) => r.id === selectedRegion)?.apiUrl ?? regions[0].apiUrl) : serverUrl
+            }
+            initialInvite={new URLSearchParams(location.search).get('room') ?? ''}
+            username={username}
+            onJoin={handleRoomJoin}
+          />
           <div className='play-notes'>
             <span>✦ Chơi miễn phí</span>
             <span>✦ Không cần tải</span>

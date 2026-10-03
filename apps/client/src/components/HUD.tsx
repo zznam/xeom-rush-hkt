@@ -1,5 +1,6 @@
 import type { GamePreferences } from '../game/preferences';
 import { TripGuide } from './TripGuide';
+import type { RoomState } from '@xeom-rush/shared';
 import type { GameplayState } from '@xeom-rush/shared';
 import React, { useMemo, useState, useEffect } from 'react';
 import { districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
@@ -9,6 +10,7 @@ import { inputHandler } from '../game/input';
 import { soundEngine } from '../game/sound-engine';
 
 interface HUDProps {
+  room?: RoomState | null;
   preferences: GamePreferences;
   gameplay: GameplayState | null;
   localPlayer: PlayerState | null;
@@ -30,6 +32,7 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export const HUD: React.FC<HUDProps> = ({
+  room,
   preferences,
   gameplay,
   localPlayer,
@@ -104,6 +107,9 @@ export const HUD: React.FC<HUDProps> = ({
 
       <div className='hud-left'>
         <section className='hud-summary glass-panel' aria-label='Chuyến xe của bạn'>
+          {room?.status === 'running' && (
+            <p className='room-round-status'>🤝 Vòng bạn bè · {Math.ceil(room.remainingTicks / 20)}s</p>
+          )}
           {localPlayer && (
             <p className='hud-city' aria-label='Thành phố hiện tại' title={cityLabel}>
               {cityLabel || 'Sài Gòn'} · {districtAt(localPlayer).name}

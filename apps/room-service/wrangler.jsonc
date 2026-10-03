@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xeom-private-rooms",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "PrivateRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PrivateRoom"] }],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://xeom-rush.vercel.app",
+    "CAREER_API_URL": "https://xeom-rush.zznam.deno.net",
+    "TEST_MODE": "false",
+  },
+  "observability": { "enabled": true },
+}
