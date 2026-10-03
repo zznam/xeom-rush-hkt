@@ -1,6 +1,6 @@
 import { DriverPanel } from './DriverPanel';
 import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { network, type ConnectionState } from '../game/network';
 import { loadPreferences, readStored, writeStored } from '../game/preferences';
 import { inputHandler } from '../game/input';
@@ -38,6 +38,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   const [cityRanking, setCityRanking] = useState<{ id: string; username: string; score: number; deliveries: number }[]>(
     [],
   );
+  const careerCommand = useCallback((action: string, target?: string) => network.command(action, target), []);
   const [showDriver, setShowDriver] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -149,7 +150,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     });
 
     const unsubscribeControl = network.registerControlCallback((message) => {
-      if (message.kind === 'career') setCareer(message.data);
+      if (message.kind === 'career') {
+        setCareer(message.data);
+        soundEngine.setHorn(message.data.equipped?.horn ?? 'horn-0');
+      }
+      if (message.kind === 'appearance') renderer.setAppearances(message.data);
+      if (message.kind === 'notice') {
+        setToast(message.data);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToast(null), 3500);
+      }
       if (message.kind === 'gameplay') {
         setGameplay(message.data);
         renderer.setGameplay(message.data);
@@ -451,6 +461,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     <div ref={containerRef} className='game-shell'>
       {showDriver && (
         <DriverPanel
+          onCommand={careerCommand}
           career={career}
           summary={summary}
           ranking={cityRanking}
@@ -481,6 +492,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
         </div>
         <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
+          <button onClick={() => soundEngine.honk()} aria-label='Bấm còi'>
+            📯
+          </button>
           <button onClick={() => setShowDriver(true)} aria-label='Hồ sơ'>
             🛵 Hồ sơ
           </button>

@@ -60,3 +60,25 @@ Deno.test('ID careers keep the checkpoint ledger outside the bounded KV profile'
     kv.close();
   }
 });
+
+Deno.test('KV objective claims and cosmetic equips are retry-safe', async () => {
+  const kv = await Deno.openKv(':memory:');
+  const repository = new CareerRepository(new KvCareerBackend(kv));
+  const { activeObjectives } = await import('../packages/shared/dist/index.js');
+  const now = Date.parse('2026-10-03T12:00:00Z'),
+    o = activeObjectives(now)[0],
+    target = `${o.period}:${o.id}`;
+  try {
+    await repository.save('driver', 'objective-ride', {
+      ...stats,
+      revision: 2,
+      progress: { [o.period]: { [o.metric]: o.goal } },
+    });
+    await Promise.all([repository.claim('driver', target, now), repository.claim('driver', target, now)]);
+    assert.equal((await repository.profile('driver')).claimCount, 1);
+    await repository.equip('driver', 'paint-1');
+    assert.equal((await repository.profile('driver')).equipped.paint, 'paint-1');
+  } finally {
+    kv.close();
+  }
+});

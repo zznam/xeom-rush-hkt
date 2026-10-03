@@ -11,3 +11,5 @@ export * from './career';
 export * from './atlas';
 export * from './jobs';
 export * from './city-life';
+
+export * from './progression';

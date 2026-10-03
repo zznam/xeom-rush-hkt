@@ -649,3 +649,46 @@
   display: block;
   margin-top: 3px;
 }
+
+.objective-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.objective-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #8ab4a6;
+  border-radius: 12px;
+}
+.objective-list small,
+.objective-list progress {
+  grid-column: 1;
+}
+.objective-list button {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  min-height: 44px;
+}
+.wardrobe {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.wardrobe label {
+  display: grid;
+  gap: 6px;
+}
+.wardrobe select {
+  min-height: 44px;
+  max-width: 100%;
+}
+.badge-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}

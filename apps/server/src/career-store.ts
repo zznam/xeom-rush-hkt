@@ -7,7 +7,15 @@ import {
   QueryCommand,
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { applyContribution, newCareer, type CareerContribution, type CareerProfile } from '@xeom-rush/shared';
+import {
+  activeObjectives,
+  COSMETICS,
+  unlockCosmetics,
+  applyContribution,
+  newCareer,
+  type CareerContribution,
+  type CareerProfile,
+} from '@xeom-rush/shared';
 import { dbManager } from './db';
 import type { KvStore } from './storage';
 
@@ -252,6 +260,16 @@ export class CareerRepository {
         return profile.value ?? newCareer(id);
       const next = applyContribution(profile.value ?? newCareer(id), session, stats, previous);
       next.contributions = {};
+      // Contributions remain in their separate ledger; retain only current/recent objective periods.
+      next.progress = Object.fromEntries(
+        ['d:', 'w:'].flatMap((prefix) =>
+          Object.entries(next.progress)
+            .filter(([key]) => key.startsWith(prefix))
+            .sort(([a], [b]) => b.localeCompare(a))
+            .slice(0, 8),
+        ),
+      );
+      unlockCosmetics(next);
       if (
         await this.backend.commit([
           { key: `player:${id}`, version: profile.version, value: next },
@@ -261,6 +279,41 @@ export class CareerRepository {
         return next;
     }
     throw new Error('Career contribution contention');
+  }
+  async claim(id: string, target: string, now = Date.now()) {
+    const objective = activeObjectives(now).find((o) => `${o.period}:${o.id}` === target);
+    if (!objective) throw new Error('Objective expired');
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const [row, claim] = await Promise.all([
+        this.backend.get<CareerProfile>(`player:${id}`),
+        this.backend.get(`claim:${id}:${target}`),
+      ]);
+      const profile = row.value ?? newCareer(id);
+      if (claim.value) return profile;
+      if ((profile.progress[objective.period]?.[objective.metric] ?? 0) < objective.goal)
+        throw new Error('Objective incomplete');
+      profile.claimCount = (profile.claimCount ?? profile.claims.length) + 1;
+      profile.claims = [...profile.claims, target].slice(-64);
+      unlockCosmetics(profile);
+      if (
+        await this.backend.commit([
+          { key: `player:${id}`, version: row.version, value: profile },
+          { key: `claim:${id}:${target}`, version: claim.version, value: { claimed: now } },
+        ])
+      )
+        return profile;
+    }
+    throw new Error('Claim contention');
+  }
+  async equip(id: string, cosmeticId: string) {
+    const cosmetic = COSMETICS.find((c) => c.id === cosmeticId);
+    if (!cosmetic) throw new Error('Unknown cosmetic');
+    return this.update(id, (p) => {
+      unlockCosmetics(p);
+      if (!p.unlocked.includes(cosmeticId)) throw new Error('Cosmetic locked');
+      p.equipped[cosmetic.slot] = cosmeticId;
+      return p;
+    });
   }
   async secret() {
     const row = await this.backend.get<string>('identity-key');

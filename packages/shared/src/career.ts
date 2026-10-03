@@ -20,6 +20,7 @@ export interface CareerProfile {
   unlocked: string[];
   equipped: Record<string, string>;
   claims: string[];
+  claimCount?: number;
   progress: Record<string, Record<string, number>>;
 }
 export function emptySummary(): ShiftSummary {
@@ -38,6 +39,7 @@ export function newCareer(id: string, username = ''): CareerProfile {
     unlocked: ['paint-0', 'helmet-0', 'jacket-0', 'horn-0'],
     equipped: { paint: 'paint-0', helmet: 'helmet-0', jacket: 'jacket-0', horn: 'horn-0' },
     claims: [],
+    claimCount: 0,
     progress: {},
   };
 }
