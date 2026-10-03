@@ -599,7 +599,7 @@
   font-weight: 700;
 }
 .trip-fare strong {
-  color: #286949;
+  color: #ffe18b;
 }
 .trip-guide .trip-timing,
 .trip-guide .combo-clock {
@@ -691,4 +691,65 @@
   gap: 8px;
   list-style: none;
   padding: 0;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+.settings-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.settings-grid input,
+.settings-grid select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.club-panel button,
+.club-panel select {
+  min-height: 44px;
+  min-width: 44px;
+}
+.game-toolbar button {
+  min-width: 44px;
+}
+.hud-compact .hud-left {
+  bottom: calc(var(--hud-bottom) + var(--joystick-size, 120px) + 24px);
+}
+.joystick-mobile {
+  left: calc(var(--ui-left) + var(--joystick-offset, 8px));
+}
+.game-shell[data-handedness='left'] .joystick-mobile {
+  left: auto;
+  right: calc(var(--ui-right) + var(--joystick-offset, 8px));
+}
+.game-shell[data-handedness='left'] .honk-btn-mobile {
+  right: auto;
+  left: calc(var(--ui-left) + 8px);
+}
+.hud-summary,
+.club-panel,
+.results-card {
+  font-size: calc(13px * var(--text-scale, 1));
+}
+.trip-guide h3 {
+  font-size: calc(15px * var(--text-scale, 1));
+}
+.trip-guide p,
+.hud-compact .trip-guide p {
+  font-size: calc(11px * var(--text-scale, 1));
+}
+@media (max-width: 400px) {
+  .settings-grid,
+  .wardrobe {
+    grid-template-columns: 1fr;
+  }
+  .game-toolbar button {
+    padding: 8px 4px;
+  }
 }

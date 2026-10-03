@@ -1,8 +1,10 @@
+import { SettingsPanel } from './SettingsPanel';
+import { useGameDialog } from './useGameDialog';
 import { DriverPanel } from './DriverPanel';
 import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { network, type ConnectionState } from '../game/network';
-import { loadPreferences, readStored, writeStored } from '../game/preferences';
+import { loadPreferences, savePreferences, readStored, writeStored } from '../game/preferences';
 import { inputHandler } from '../game/input';
 import { prediction } from '../game/prediction';
 import { interpolation } from '../game/interpolation';
@@ -39,6 +41,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     [],
   );
   const careerCommand = useCallback((action: string, target?: string) => network.command(action, target), []);
+  const [showSettings, setShowSettings] = useState(false);
   const [showDriver, setShowDriver] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -63,6 +66,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   const [deliveries, setDeliveries] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const resultsRef = useGameDialog(showResults, () => {
+    setShowResults(false);
+    onDisconnect();
+  });
   const [tutorialDone, setTutorialDone] = useState(() => readStored('tutorial') === 'done');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const violationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,8 +78,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     preferencesRef.current = preferences;
     soundEngine.setEnabled(preferences.sound);
     rendererRef.current?.setReducedMotion(preferences.reducedMotion);
-    writeStored('sound', String(preferences.sound));
-    writeStored('reducedMotion', String(preferences.reducedMotion));
+    inputHandler.configure(preferences);
+    rendererRef.current?.setQuality(preferences.graphics);
+    savePreferences(preferences);
   }, [preferences]);
   useEffect(() => {
     showDebugRef.current = showDebug;
@@ -112,6 +120,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     const renderer = new GameRenderer(canvas);
     rendererRef.current = renderer;
     renderer.setReducedMotion(preferencesRef.current.reducedMotion);
+    renderer.setQuality(preferencesRef.current.graphics);
     soundEngine.setEnabled(preferencesRef.current.sound);
 
     const handleResize = () => {
@@ -122,7 +131,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // H key → honk
     const handleHonk = (e: KeyboardEvent) => {
-      if (e.key === 'h' || e.key === 'H') {
+      if (
+        !inputHandler.suspended &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLSelectElement) &&
+        !e.repeat &&
+        e.key.toLowerCase() === preferencesRef.current.bindings.horn
+      ) {
         soundEngine.playHonk();
       }
     };
@@ -458,7 +473,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   };
 
   return (
-    <div ref={containerRef} className='game-shell'>
+    <div
+      ref={containerRef}
+      className='game-shell'
+      data-handedness={preferences.handedness}
+      style={
+        {
+          '--joystick-size': `${preferences.joystickSize}px`,
+          '--joystick-offset': `${preferences.joystickOffset}px`,
+          '--text-scale': preferences.textSize,
+        } as React.CSSProperties
+      }
+    >
+      {showSettings && (
+        <SettingsPanel preferences={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)} />
+      )}
       {showDriver && (
         <DriverPanel
           onCommand={careerCommand}
@@ -498,22 +527,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <button onClick={() => setShowDriver(true)} aria-label='Hồ sơ'>
             🛵 Hồ sơ
           </button>
-          <button
-            aria-label='Âm thanh'
-            aria-pressed={preferences.sound}
-            onClick={() => {
-              soundEngine.unlock();
-              setPreferences((p) => ({ ...p, sound: !p.sound }));
-            }}
-          >
-            <span aria-hidden='true'>♫</span> {preferences.sound ? 'Âm thanh bật' : 'Âm thanh tắt'}
-          </button>
-          <button
-            aria-label='Giảm chuyển động'
-            aria-pressed={preferences.reducedMotion}
-            onClick={() => setPreferences((p) => ({ ...p, reducedMotion: !p.reducedMotion }))}
-          >
-            {preferences.reducedMotion ? 'Ít chuyển động' : 'Chuyển động'}
+          <button aria-label='Tùy chỉnh' onClick={() => setShowSettings(true)}>
+            ⚙ Tùy chỉnh
           </button>
           <button
             className='end-ride-button'
@@ -546,7 +561,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       )}
       {showResults && (
         <div className='results-cover'>
-          <div className='results-card'>
+          <section ref={resultsRef} className='results-card' role='dialog' aria-modal='true' aria-label='Kết quả ca xe'>
             <span style={{ fontSize: 44 }}>✦</span>
             <h2>Một chuyến thật vui!</h2>
             <strong>{(localPlayer?.score ?? 0).toLocaleString('vi-VN')}đ</strong>
@@ -572,7 +587,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
             <button className='toon-button' onClick={() => onDisconnect()}>
               Chơi tiếp ↗
             </button>
-          </div>
+          </section>
         </div>
       )}
       {/* Collision Alert Banner */}
@@ -616,6 +631,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
       {/* HUD Layer */}
       <HUD
+        preferences={preferences}
         localPlayer={localPlayer}
         players={players}
         passengers={passengers}

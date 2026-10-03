@@ -8,6 +8,7 @@ import {
   type CareerProfile,
   type ShiftSummary,
 } from '@xeom-rush/shared';
+import { useGameDialog } from './useGameDialog';
 import { inputHandler } from '../game/input';
 
 type PublicCareer = Omit<CareerProfile, 'contributions'>;
@@ -26,6 +27,7 @@ export function DriverPanel({
   onClose: () => void;
   onCommand: (action: string, target?: string) => void;
 }) {
+  const dialogRef = useGameDialog(true, onClose);
   const [leaders, setLeaders] = useState<PublicCareer[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -46,16 +48,9 @@ export function DriverPanel({
       });
     return () => controller.abort();
   }, [serverUrl, onCommand]);
-  useEffect(() => {
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', escape);
-    return () => window.removeEventListener('keydown', escape);
-  }, [onClose]);
   return (
     <div className='club-cover'>
-      <section className='club-panel' role='dialog' aria-modal='true' aria-label='Hồ sơ tài xế'>
+      <section ref={dialogRef} className='club-panel' role='dialog' aria-modal='true' aria-label='Hồ sơ tài xế'>
         <header>
           <h2>🛵 Câu lạc bộ tài xế</h2>
           <button autoFocus onClick={onClose}>

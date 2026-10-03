@@ -1,3 +1,4 @@
+import { useGameDialog } from './useGameDialog';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -25,6 +26,7 @@ export function TripGuide({
   tutorialDone: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
+  const dialogRef = useGameDialog(choosing, () => setChoosing(false));
   const nav = state?.navigation,
     trip = state?.trip;
   const nearby = passengers
@@ -93,7 +95,7 @@ export function TripGuide({
       {choosing &&
         createPortal(
           <div className='club-cover'>
-            <section className='club-panel' role='dialog' aria-modal='true' aria-label='Chọn khách'>
+            <section ref={dialogRef} className='club-panel' role='dialog' aria-modal='true' aria-label='Chọn khách'>
               <header>
                 <h2>Ai đang chờ bạn?</h2>
                 <button autoFocus onClick={() => setChoosing(false)}>

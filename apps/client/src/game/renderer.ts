@@ -39,6 +39,18 @@ export class GameRenderer {
   private canvas: HTMLCanvasElement;
   private camera = { x: 2000, y: 2000 };
   private shakeMagnitude: number = 0;
+  private quality: 'auto' | 'high' | 'low' = 'auto';
+  private lowQuality = false;
+  private frameTime = 16;
+  private lastFrame = 0;
+  private healthyFrames = 0;
+  public setQuality(value: 'auto' | 'high' | 'low') {
+    this.quality = value;
+    if (value !== 'auto') this.lowQuality = value === 'low';
+  }
+  public get qualityLevel() {
+    return this.lowQuality ? 'low' : 'high';
+  }
   private reducedMotion = false;
   private tick = 0;
   public setTick(tick: number) {
@@ -59,7 +71,7 @@ export class GameRenderer {
     }
   }
   public celebrate(x: number, y: number, kind: 'pickup' | 'delivery'): void {
-    if (this.reducedMotion) return;
+    if (this.reducedMotion || this.lowQuality) return;
     for (let i = 0; i < (kind === 'delivery' ? 24 : 12); i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 100;
@@ -72,7 +84,7 @@ export class GameRenderer {
         color: ['#ffca5b', '#f47c65', '#5cbb99', '#fff8dc'][i % 4],
       });
     }
-    this.particles = this.particles.slice(-80);
+    this.particles = this.particles.slice(this.lowQuality ? -20 : -80);
   }
   private staticRoundabouts: StaticRoundabout[] = [];
   private staticCrosswalks: StaticCrosswalk[] = [];
@@ -117,6 +129,15 @@ export class GameRenderer {
     pedestrians: PedestrianState[],
     showDebug: boolean,
   ): void {
+    const frameNow = performance.now();
+    if (this.lastFrame) this.frameTime = this.frameTime * 0.97 + Math.min(100, frameNow - this.lastFrame) * 0.03;
+    this.lastFrame = frameNow;
+    if (this.quality === 'auto') {
+      if (this.frameTime > 25) {
+        this.lowQuality = true;
+        this.healthyFrames = 0;
+      } else if (this.frameTime < 19 && ++this.healthyFrames > 720) this.lowQuality = false;
+    }
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -501,7 +522,7 @@ export class GameRenderer {
       ctx.fillRect(left, top, this.canvas.width, this.canvas.height);
       ctx.strokeStyle = '#cee3ff70';
       ctx.lineWidth = 1.5;
-      const offset = this.reducedMotion ? 0 : (performance.now() / 6) % 70;
+      const offset = this.reducedMotion || this.lowQuality ? 0 : (performance.now() / 6) % 70;
       for (let x = left - 70; x < left + this.canvas.width; x += 70)
         for (let y = top - 70; y < top + this.canvas.height; y += 90) {
           ctx.beginPath();
@@ -623,7 +644,7 @@ export class GameRenderer {
       ctx.strokeStyle = '#ffffff55';
       ctx.lineWidth = 2;
       ctx.strokeRect(rect.x + 14, rect.y + 14, rect.width - 28, rect.height - 28);
-      for (let wx = rect.x + 35; wx < rect.x + rect.width - 25; wx += 75) {
+      for (let wx = rect.x + 35; wx < rect.x + rect.width - 25 && !this.lowQuality; wx += 75) {
         for (let wy = rect.y + 40; wy < rect.y + rect.height - 25; wy += 75) {
           ctx.fillStyle = '#3d656675';
           ctx.beginPath();
@@ -657,7 +678,7 @@ export class GameRenderer {
       if (p.isCarried) continue;
 
       const color = ['#248566', '#bf8c27', '#8860bd'][p.tier];
-      const bob = this.reducedMotion ? 0 : Math.sin(Date.now() / 240 + p.x) * 2;
+      const bob = this.reducedMotion || this.lowQuality ? 0 : Math.sin(Date.now() / 240 + p.x) * 2;
       ctx.fillStyle = color + '35';
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 2, 22, 9, 0, 0, Math.PI * 2);
@@ -680,7 +701,7 @@ export class GameRenderer {
       ctx.fillStyle = color;
       ctx.font = '900 10px "Be Vietnam Pro", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${p.tier === 2 ? '★ ' : ''}${(p.reward / 1000).toFixed(0)}kđ`, p.x, p.y - 46 + bob);
+      ctx.fillText(`${['○', '◆', '★'][p.tier]} ${(p.reward / 1000).toFixed(0)}kđ`, p.x, p.y - 46 + bob);
     }
 
     // If local player is carrying a passenger, draw a highlighted route to destination
