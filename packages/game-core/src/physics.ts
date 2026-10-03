@@ -15,6 +15,10 @@ export interface CircleObstacle {
 
 export class PhysicsEngine {
   private buildings: Rectangle[] = [];
+  private closures: Rectangle[] = [];
+  public setClosures(rectangles: Rectangle[]): void {
+    this.closures = rectangles;
+  }
   private circles: CircleObstacle[] = [];
 
   constructor() {
@@ -33,7 +37,7 @@ export class PhysicsEngine {
    */
   public isInsideBuilding(px: number, py: number): boolean {
     const padding = COLLISION_RADIUS;
-    for (const rect of this.buildings) {
+    for (const rect of [...this.buildings, ...this.closures]) {
       if (
         px >= rect.x - padding &&
         px <= rect.x + rect.width + padding &&
@@ -89,7 +93,7 @@ export class PhysicsEngine {
     let y = Math.max(radius, Math.min(MAP_SIZE - radius, newY));
 
     // 2. Obstacle collision check (rectangular buildings)
-    for (const rect of this.buildings) {
+    for (const rect of [...this.buildings, ...this.closures]) {
       if (this.checkCircleRectCollision(x, y, radius, rect)) {
         if (!this.checkCircleRectCollision(oldX, y, radius, rect)) {
           x = oldX;

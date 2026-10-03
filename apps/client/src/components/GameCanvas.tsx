@@ -16,6 +16,7 @@ import {
   type PedestrianState,
   type ConfigPayload,
   type SnapshotPacketKind,
+  districtAt,
   EPassengerTier,
   MOTORBIKE_SPEED,
 } from '@xeom-rush/shared';
@@ -152,6 +153,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       if (message.kind === 'gameplay') {
         setGameplay(message.data);
         renderer.setGameplay(message.data);
+        if (message.data.city) prediction.setCityLife(message.data.city);
         setSummary(message.data.summary);
         setCityRanking(message.data.cityRanking);
       }
@@ -162,6 +164,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       setDeliveries(status.deliveries);
     });
     const unsubscribeSnapshot = network.registerSnapshotCallback((snapshot: WorldSnapshot, meta) => {
+      prediction.setTick(snapshot.tick);
+      renderer.setTick(snapshot.tick);
+      inputHandler.setRain(prediction.raining);
       // 1. Calculate received package size
       setLastBytes(meta.bytes);
       setLastPacketKind(meta.kind);
@@ -342,6 +347,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           dy: input.dy,
           angle: input.angle,
           dt: inputDt,
+          speed: prediction.speedMultiplier,
         });
 
         // Run local prediction movement immediately (gives instant local reaction at 60fps)
@@ -351,6 +357,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           dy: input.dy,
           angle: input.angle,
           dt: inputDt,
+          speed: prediction.speedMultiplier,
         });
 
         localPlayerStateRef.current = {
@@ -365,6 +372,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
         // Engine hum — pitch scales with movement speed
         const isMoving = input.dx !== 0 || input.dy !== 0;
+        soundEngine.ambient(districtAt(localPlayerStateRef.current).id, prediction.raining);
         soundEngine.engineHum(isMoving ? MOTORBIKE_SPEED : MOTORBIKE_SPEED * 0.15, MOTORBIKE_SPEED);
 
         // Sync React HUD state periodically

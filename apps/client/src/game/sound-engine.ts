@@ -6,6 +6,37 @@
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private enabled = true;
+  private lastAmbient = 0;
+  public ambient(district: string, rain: boolean): void {
+    if (!this.enabled || performance.now() - this.lastAmbient < 15000) return;
+    this.lastAmbient = performance.now();
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    if (district === 'market' || district === 'old-town') {
+      this.playTone('triangle', district === 'market' ? 620 : 440, 0.3, 0.025);
+      this.playTone('triangle', 830, 0.25, 0.02, 0.4);
+    } else if (district === 'riverside') {
+      this.playTone('sine', 1400, 0.15, 0.018);
+      this.playTone('sine', 1800, 0.12, 0.014, 0.2);
+    } else this.playTone('sine', 220, 0.45, 0.012);
+    if (rain || district === 'riverside') {
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate),
+        data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.12;
+      const source = ctx.createBufferSource(),
+        filter = ctx.createBiquadFilter(),
+        gain = ctx.createGain();
+      source.buffer = buffer;
+      filter.type = 'lowpass';
+      filter.frequency.value = rain ? 1200 : 400;
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      source.start();
+    }
+  }
 
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;

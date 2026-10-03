@@ -106,6 +106,33 @@ export const HUD: React.FC<HUDProps> = ({
               {cityLabel || 'Sài Gòn'} · {districtAt(localPlayer).name}
             </p>
           )}
+          {gameplay?.city?.enabled && (
+            <p className='city-condition'>
+              {gameplay.city.rain
+                ? '🌦 Mưa · thưởng +15%'
+                : gameplay.city.phase === 'night'
+                  ? '🌙 Phố đêm'
+                  : gameplay.city.phase === 'sunset'
+                    ? '🌇 Chiều xuống'
+                    : gameplay.city.phase === 'dawn'
+                      ? '🌅 Bình minh'
+                      : '☀️ Ngày mới'}
+              {gameplay.city.event && (
+                <small>
+                  {gameplay.city.event.icon} {gameplay.city.event.name} ·{' '}
+                  {Math.max(0, Math.ceil((gameplay.city.event.endsAt - gameplay.tick) / 20))}s
+                </small>
+              )}
+              {gameplay.city.closure && (
+                <small>
+                  🚧{' '}
+                  {gameplay.city.closure.active
+                    ? 'Có đường đang đóng'
+                    : `Thi công sau ${Math.max(0, Math.ceil((gameplay.city.closure.startsAt - gameplay.tick) / 20))}s`}
+                </small>
+              )}
+            </p>
+          )}
           <span className='hud-label'>THU NHẬP ĐƯỜNG PHỐ</span>
           <div className='hud-earnings'>
             <strong>

@@ -1,4 +1,5 @@
 import {
+  cityAtTick,
   jobIndex,
   type GameplayState,
   CITY_MAP,
@@ -34,6 +35,10 @@ export class GameRenderer {
   private camera = { x: 2000, y: 2000 };
   private shakeMagnitude: number = 0;
   private reducedMotion = false;
+  private tick = 0;
+  public setTick(tick: number) {
+    this.tick = tick;
+  }
   private gameplay: GameplayState | null = null;
   public setGameplay(state: GameplayState): void {
     this.gameplay = state;
@@ -176,6 +181,7 @@ export class GameRenderer {
       this.drawChunkGrid(ctx, localPlayer.x, localPlayer.y);
     }
 
+    this.drawWeather(ctx);
     ctx.restore();
   }
 
@@ -456,6 +462,54 @@ export class GameRenderer {
     ctx.fillText('CHỢ BẾN THÀNH', 2000, 1660);
     ctx.font = '700 13px "Be Vietnam Pro", sans-serif';
     ctx.fillText('ĐÓN KHÁCH · KHÁM PHÁ · LÊN ĐƯỜNG', 2000, 1685);
+    ctx.restore();
+  }
+
+  private drawWeather(ctx: CanvasRenderingContext2D): void {
+    if (!this.gameplay?.city?.enabled) return;
+    const city = cityAtTick(this.tick);
+    ctx.save();
+    const left = this.camera.x - this.canvas.width / 2,
+      top = this.camera.y - this.canvas.height / 2;
+    if (city.phase !== 'day') {
+      ctx.fillStyle = city.phase === 'night' ? '#18264b80' : city.phase === 'sunset' ? '#ee936f30' : '#ecb4a425';
+      ctx.fillRect(left, top, this.canvas.width, this.canvas.height);
+      for (const landmark of LANDMARKS) {
+        const glow = ctx.createRadialGradient(landmark.x, landmark.y, 0, landmark.x, landmark.y, 65);
+        glow.addColorStop(0, '#ffde8e85');
+        glow.addColorStop(1, '#ffde8e00');
+        ctx.fillStyle = glow;
+        ctx.fillRect(landmark.x - 65, landmark.y - 65, 130, 130);
+      }
+    }
+    if (city.rain) {
+      ctx.fillStyle = '#7b99c320';
+      ctx.fillRect(left, top, this.canvas.width, this.canvas.height);
+      ctx.strokeStyle = '#cee3ff70';
+      ctx.lineWidth = 1.5;
+      const offset = this.reducedMotion ? 0 : (performance.now() / 6) % 70;
+      for (let x = left - 70; x < left + this.canvas.width; x += 70)
+        for (let y = top - 70; y < top + this.canvas.height; y += 90) {
+          ctx.beginPath();
+          ctx.moveTo(x + offset, y + offset);
+          ctx.lineTo(x + offset - 6, y + offset + 14);
+          ctx.stroke();
+        }
+    }
+    const closure = this.gameplay.city.closure;
+    if (closure) {
+      const r = closure.rect;
+      ctx.fillStyle = closure.active ? '#ecae57' : '#f6db9c';
+      ctx.strokeStyle = '#6f5637';
+      ctx.lineWidth = 3;
+      ctx.setLineDash(closure.active ? [] : [8, 6]);
+      ctx.strokeRect(r.x, r.y, r.width, r.height);
+      ctx.fillRect(r.x, r.y, r.width, r.height);
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#5b452d';
+      ctx.textAlign = 'center';
+      ctx.fillText(closure.active ? '🚧 ĐƯỜNG ĐÓNG' : '🚧 SẮP THI CÔNG', r.x + r.width / 2, r.y - 12);
+    }
     ctx.restore();
   }
 

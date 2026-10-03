@@ -179,6 +179,9 @@ interface PlayerSocket {
   lastSnapshot: WorldSnapshot | null;
   lastFullSnapshotTick: number;
   lastDeliveries: number;
+  metadataPhase: number;
+  lastTripKey: string;
+  lastLifeKey: string;
 }
 
 const activeSockets = new Map<string, PlayerSocket>();
@@ -404,6 +407,9 @@ wss.on('connection', (ws: WebSocket, request) => {
           lastSnapshot: null,
           lastFullSnapshotTick: 0,
           lastDeliveries: -1,
+          metadataPhase: activeSockets.size % 20,
+          lastTripKey: '',
+          lastLifeKey: '',
         });
         joined = true;
 
@@ -529,10 +535,23 @@ const gameLoop = setInterval(() => {
           `city:${JSON.stringify({ tick: world.getTick(), rushHourTicksRemaining: world.getRushHourTicksRemaining(), deliveries })}`,
         );
       }
-      if (world.getTick() % 20 === 0 || shouldSendFull)
+      const rider = world.getPlayer(playerId);
+      const trip = rider?.passengerId ? world.getPassengerMap().get(rider.passengerId) : undefined;
+      const tripKey = trip ? `${trip.id}:${trip.destX}:${trip.destY}` : '';
+      const life = world.getCityLife();
+      const lifeKey = `${life.phase}:${life.rain}:${life.event?.id}:${life.closure?.id}:${life.closure?.active}:${life.roadRevision}`;
+      if (
+        world.getTick() % 20 === playerSocket.metadataPhase ||
+        shouldSendFull ||
+        tripKey !== playerSocket.lastTripKey ||
+        lifeKey !== playerSocket.lastLifeKey
+      ) {
         playerSocket.ws.send(
           `control:${JSON.stringify({ version: 1, kind: 'gameplay', data: world.getGameplayState(playerId) })}`,
         );
+        playerSocket.lastTripKey = tripKey;
+        playerSocket.lastLifeKey = lifeKey;
+      }
       playerSocket.lastDeliveries = deliveries;
       playerSocket.lastSnapshot = snapshot;
       if (shouldSendFull) {

@@ -1,4 +1,5 @@
 import {
+  LANDMARKS,
   PassengerState,
   EPassengerTier,
   MAP_SIZE,
@@ -74,14 +75,19 @@ export class PassengerSpawner {
    * Generates a random position on a street (not inside any building).
    * Retries up to maxAttempts to find a valid position.
    */
-  private generateStreetPosition(nearCenter: boolean): { x: number; y: number } {
+  private generateStreetPosition(nearCenter: boolean, demandDistrict?: string): { x: number; y: number } {
     const maxAttempts = 50;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let x: number;
       let y: number;
 
-      if (nearCenter) {
+      if (demandDistrict) {
+        const landmarks = LANDMARKS.filter((l) => l.district === demandDistrict);
+        const landmark = landmarks[Math.floor(Math.random() * landmarks.length)];
+        x = landmark.x;
+        y = landmark.y + (Math.random() - 0.5) * 300;
+      } else if (nearCenter) {
         // Spawn near the middle market area (MAP_SIZE / 2)
         const center = MAP_SIZE / 2;
         x = center + (Math.random() - 0.5) * 650;
@@ -145,12 +151,13 @@ export class PassengerSpawner {
     currentTick: number,
     forceTier?: EPassengerTier,
     rushHourActive: boolean = false,
+    demandDistrict?: string,
   ): PassengerState {
     const id = `pass-${this.nextId++}`;
 
     // Choose spawn point: 30% chance near market hot-zones, 70% random
     const isMarket = Math.random() < 0.3;
-    const spawnPos = this.generateStreetPosition(isMarket);
+    const spawnPos = this.generateStreetPosition(isMarket, demandDistrict);
 
     // Set destination at least 1000 units away, also on a street
     let destPos = { x: 0, y: 0 };
@@ -212,18 +219,19 @@ export class PassengerSpawner {
     }
   }
 
-  public tick(currentTick: number, rushHourActive: boolean = false): void {
+  public tick(currentTick: number, rushHourActive: boolean = false, demandDistrict?: string): void {
     // Reap expired passengers first
     this.reapExpiredPassengers(currentTick);
 
     // Respawn up to limit — double spawn count during rush hour
     const spawnBatchSize = rushHourActive ? RUSH_HOUR_SPAWN_MULTIPLIER : 1;
 
-    if (this.passengers.size < MAX_PASSENGERS) {
-      const needed = MAX_PASSENGERS - this.passengers.size;
+    const limit = MAX_PASSENGERS + (demandDistrict ? 16 : 0);
+    if (this.passengers.size < limit) {
+      const needed = limit - this.passengers.size;
       const toSpawn = Math.min(needed, spawnBatchSize);
       for (let i = 0; i < toSpawn; i++) {
-        this.spawnPassenger(currentTick, undefined, rushHourActive);
+        this.spawnPassenger(currentTick, undefined, rushHourActive, demandDistrict);
       }
     }
   }
