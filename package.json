@@ -12,7 +12,7 @@
     "test:e2e": "bun run --filter e2e test",
     "bench": "bun run --filter '@xeom-rush/shared' bench",
     "lint": "eslint . --max-warnings 0 && bun run lint:md",
-    "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore \"**/dist/**\"",
+    "lint:md": "markdownlint \"**/*.md\" --ignore node_modules --ignore \"**/dist/**\" --ignore \"**/test-results/**\" --ignore \"**/playwright-report/**\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
