@@ -174,11 +174,11 @@ export class GameWorld {
 
   constructor(private options: { enhanced?: boolean; now?: () => number; initialTick?: number } = {}) {
     this.tickCount = Math.max(0, Math.floor(options.initialTick ?? 0));
-    this.life = { ...cityAtTick(this.tickCount), enabled: !!options.enhanced };
+    this.life = { ...cityAtTick(this.tickCount), closure: null, roadRevision: 0, enabled: !!options.enhanced };
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
     this.cityFeatures = new CityFeatures(this.physics);
-    this.passengers = new PassengerSpawner(this.physics, !!options.enhanced);
+    this.passengers = new PassengerSpawner(this.physics, !!options.enhanced, this.tickCount);
   }
 
   public addPlayer(id: string, username: string, spawnX?: number, spawnY?: number): void {
