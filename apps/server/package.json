@@ -17,7 +17,8 @@
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "mongodb": "^6.21.0",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "@xeom-rush/game-core": "workspace:*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

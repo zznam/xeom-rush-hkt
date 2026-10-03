@@ -17,7 +17,7 @@ export default defineConfig(({ mode, command }) => {
     optimizeDeps: {
       // Shared workspace exports can change without a lockfile change.
       force: true,
-      include: ['@xeom-rush/shared'],
+      include: ['@xeom-rush/shared', '@xeom-rush/game-core'],
     },
   };
 });

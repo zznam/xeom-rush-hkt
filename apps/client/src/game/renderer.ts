@@ -1,4 +1,5 @@
 import {
+  CITY_MAP,
   type PassengerState,
   type TrafficLightState,
   type PedestrianState,
@@ -8,10 +9,6 @@ import {
 import { prediction } from './prediction';
 
 const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
-const ROUNDABOUT_CHANCE = 0.12;
-const TRAFFIC_LIGHT_CHANCE = 0.3;
-const CROSSWALK_CHANCE = 0.4;
-const ROUNDABOUT_RADIUS = 24;
 
 interface StaticRoundabout {
   id: string;
@@ -173,31 +170,12 @@ export class GameRenderer {
   }
 
   private generateStaticCityFeatures(): void {
-    const rng = new SeededRng(42);
-
-    for (let xi = 0; xi < STREET_LINES.length; xi++) {
-      for (let yi = 0; yi < STREET_LINES.length; yi++) {
-        const cx = STREET_LINES[xi];
-        const cy = STREET_LINES[yi];
-        const inCenter = Math.abs(cx - MAP_SIZE / 2) < 400 && Math.abs(cy - MAP_SIZE / 2) < 400;
-        const nearEdge = cx < 150 || cy < 150 || cx > MAP_SIZE - 150 || cy > MAP_SIZE - 150;
-        if (inCenter || nearEdge) continue;
-
-        const roll = rng.next();
-        if (roll < ROUNDABOUT_CHANCE) {
-          this.staticRoundabouts.push({ id: `roundabout-${xi}-${yi}`, x: cx, y: cy, radius: ROUNDABOUT_RADIUS });
-        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE) {
-          rng.next();
-        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE + CROSSWALK_CHANCE) {
-          this.staticCrosswalks.push({
-            id: `cw-${xi}-${yi}`,
-            x: cx,
-            y: cy,
-            direction: rng.next() < 0.5 ? 'horizontal' : 'vertical',
-          });
-        }
-      }
-    }
+    this.staticRoundabouts = CITY_MAP.features
+      .filter((f) => f.kind === 'roundabout')
+      .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius! }));
+    this.staticCrosswalks = CITY_MAP.features
+      .filter((f) => f.kind === 'crosswalk')
+      .map((f) => ({ id: f.id, x: f.x, y: f.y, direction: f.direction! }));
   }
 
   private drawCityFeatures(
@@ -691,14 +669,5 @@ export class GameRenderer {
       }
     }
     ctx.restore();
-  }
-}
-
-class SeededRng {
-  constructor(private seed: number) {}
-
-  public next(): number {
-    this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
-    return this.seed / 0xffffffff;
   }
 }

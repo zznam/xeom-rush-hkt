@@ -22,6 +22,7 @@
       "name": "client",
       "version": "0.0.0",
       "dependencies": {
+        "@xeom-rush/game-core": "workspace:*",
         "@xeom-rush/shared": "workspace:*",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -48,6 +49,7 @@
       "dependencies": {
         "@aws-sdk/client-dynamodb": "^3.1145.0",
         "@aws-sdk/lib-dynamodb": "^3.1145.0",
+        "@xeom-rush/game-core": "workspace:*",
         "@xeom-rush/shared": "workspace:*",
         "cors": "^2.8.5",
         "dotenv": "^16.6.1",
@@ -63,6 +65,17 @@
         "mongodb-memory-server": "^11.2.0",
         "tsx": "^4.7.1",
         "typescript": "^5.3.3",
+        "vitest": "^2.0.0",
+      },
+    },
+    "packages/game-core": {
+      "name": "@xeom-rush/game-core",
+      "version": "1.0.0",
+      "dependencies": {
+        "@xeom-rush/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
         "vitest": "^2.0.0",
       },
     },
@@ -395,6 +408,8 @@
     "@vitest/spy": ["@vitest/spy@2.1.9", "", { "dependencies": { "tinyspy": "3.0.2" } }, "sha512-E1B35FwzXXTs9FHNK6bDszs7mtydNi5MIfUWpceJ8Xbfb1gBMscAnwLbEu+B44ed6W3XjL9/ehLPHR1fkf1KLQ=="],
 
     "@vitest/utils": ["@vitest/utils@2.1.9", "", { "dependencies": { "@vitest/pretty-format": "2.1.9", "loupe": "3.2.1", "tinyrainbow": "1.2.0" } }, "sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ=="],
+
+    "@xeom-rush/game-core": ["@xeom-rush/game-core@workspace:packages/game-core"],
 
     "@xeom-rush/shared": ["@xeom-rush/shared@workspace:packages/shared"],
 

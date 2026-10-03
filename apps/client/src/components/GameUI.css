@@ -469,6 +469,8 @@
     flex: 1;
     padding: 8px 6px;
     font-size: 10px;
+    white-space: normal;
+    line-height: 1.2;
   }
   .rush-hour-banner {
     gap: 8px;
