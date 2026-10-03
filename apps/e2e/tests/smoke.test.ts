@@ -206,11 +206,25 @@ for (const layout of [
       await expect(page.locator('.connection-cover')).toHaveCount(0);
       const port = process.env.E2E_SERVER_PORT || '3003';
       const guest = await page.evaluate((key) => localStorage.getItem(key), `xeom:guest:localhost:${port}`);
-      const response = await request.post(`http://localhost:${port}/api/test/gameplay`, {
-        data: { guest, action: 'job', kind: 9, x: 2050, y: 2200 },
-      });
-      expect(response.ok()).toBe(true);
-      const targetId = (await response.json()).gameplay.selectedPickup;
+      const fixtureUrl = `http://localhost:${port}/api/test/gameplay`;
+      let response;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        response = await request.post(fixtureUrl, {
+          data: { guest, action: 'job', kind: 9, x: 2050, y: 2200 },
+        });
+        if (response.status() !== 409) break;
+        // Automatic pickup can precede fixture setup. Complete its real ordered stops first.
+        const current = await request.post(fixtureUrl, { data: { guest, action: 'inspect' } });
+        expect(current.ok()).toBe(true);
+        const target = (await current.json()).gameplay.navigation.target;
+        const positioned = await request.post(fixtureUrl, {
+          data: { guest, action: 'position', x: target.x, y: target.y },
+        });
+        expect(positioned.ok()).toBe(true);
+        await page.waitForTimeout(120); // Let the authoritative 20Hz simulation process arrival.
+      }
+      expect(response!.ok()).toBe(true);
+      const targetId = (await response!.json()).gameplay.selectedPickup;
       await expect(page.locator('.trip-fare')).toContainText('Gốc 10.000đ');
       await page.getByRole('button', { name: /^Chọn khách/ }).click();
       const dialog = page.getByRole('dialog', { name: 'Chọn khách', exact: true });

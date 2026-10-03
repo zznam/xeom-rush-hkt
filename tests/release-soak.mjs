@@ -502,8 +502,9 @@ try {
       assert.ok(value.p95Ms < 40, `p95 ${value.p95Ms}ms exceeds 40ms`);
   if (duration >= 1800000) {
     assert.ok(metrics.length >= 60, 'Thirty continuous minutes require sixty measurement samples');
-    for (const node of metrics.at(-1).nodes)
-      assert.ok(node.public.ticks >= (duration / 1000) * 18, 'Public city did not sustain at least 18Hz');
+    const final = metrics.at(-1);
+    for (const owner of [...final.nodes.flatMap((node) => [node.public, ...node.private]), ...final.cloud])
+      assert.ok(owner.ticks >= (duration / 1000) * 18, 'Simulation did not sustain at least 18Hz');
     assert.ok(observations.rain);
     assert.ok(observations.phases.has('night'));
     assert.ok(observations.closures.size);
