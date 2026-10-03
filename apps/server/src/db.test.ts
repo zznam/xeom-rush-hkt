@@ -13,12 +13,12 @@ describe('MongoDB Integration Tests', () => {
 
     // Connect dbManager to the test instance
     await dbManager.connect(testUri);
-  });
+  }, 90_000); // Cold CI runners download MongoDB and initialize a replica set before assertions.
 
   afterAll(async () => {
     // Close dbManager connection and stop MongoMemoryServer
     await dbManager.close();
-    await mongoServer.stop();
+    await mongoServer?.stop();
   });
 
   beforeEach(async () => {
