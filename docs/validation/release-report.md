@@ -16,11 +16,11 @@ The deterministic sample uses seed 42, 7,200 simulated ticks, 64 humans and eigh
 
 | Measurement                                      | Baseline | Enhanced release |
 | ------------------------------------------------ | -------: | ---------------: |
-| Simulation and encoding p95                      |  3.645ms |          4.198ms |
-| Mean work per tick                               |  2.531ms |          2.921ms |
+| Simulation and encoding p95                      |  4.462ms |          1.788ms |
+| Mean work per tick                               |  2.824ms |          1.380ms |
 | Full snapshot/control bytes per human per second |   23,012 |           27,523 |
-| Process RSS at sample end                        | 118.5MiB |         178.7MiB |
-| JavaScript heap used at sample end               |  11.8MiB |          26.8MiB |
+| Process RSS at sample end                        | 114.2MiB |         135.6MiB |
+| JavaScript heap used at sample end               |  11.9MiB |          27.5MiB |
 
 Raw evidence: [baseline simulation](baseline-performance.json), [enhanced simulation](release-performance.json), [baseline browser sample](baseline-browser.json). Full snapshots in this deterministic comparison differ from the live adapter's full/delta and control traffic. Memory figures are end-of-sample observations, not reserved capacity or leak proof.
 
@@ -32,6 +32,6 @@ The baseline browser run lasts sixty seconds on the shared macOS host; the full 
 
 ## Deployment and recovery
 
-Cloudflare and AWS provisioning remains manual. Local/hosted emulation verifies adapters, not live cloud availability. Default public deployment health and browser play must be checked after final main merges. Vercel exhausted its deployment budget during verification; the READY complete-release preview is retained for an attempted production promotion after source/configuration equivalence checks. No account upgrade is authorized or performed. Private/team launchers remain hidden until their backend advertises healthy supported capabilities. Preserve guest signing keys, career stores and durable pending contributions during rollback; `CONTENT_RELEASE=false` has a separate real-browser compatibility check.
+Cloudflare and AWS provisioning remains manual. Local/hosted emulation verifies adapters, not live cloud availability. Default public deployment health and browser play must be checked after final main merges. Vercel exhausted its deployment budget during verification. The READY complete-release preview uses the historical Railway preview backend, so it is unsuitable for production promotion. A prebuilt artifact using production environment settings builds successfully and embeds the Deno WebSocket endpoint; deployment will be attempted after final main validation. No account upgrade is authorized or performed. Private/team launchers remain hidden until their backend advertises healthy supported capabilities. Preserve guest signing keys, career stores and durable pending contributions during rollback; `CONTENT_RELEASE=false` has a separate real-browser compatibility check.
 
 See [release operations](../complete-release-operations.md) and [private-room operations](../private-room-operations.md) for configuration, secret requirements, health checks, Free-plan capacity illustrations, failure handling and rollback.
