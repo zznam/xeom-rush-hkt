@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
+  outputDir: './test-results/rollback',
   testMatch: 'rollback.test.ts',
   workers: 1,
   use: { baseURL: 'http://localhost:5186', headless: true },

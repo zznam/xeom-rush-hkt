@@ -1,14 +1,7 @@
 import { useGameDialog } from './useGameDialog';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  JOB_LABELS,
-  PERSONAS,
-  calculateFare,
-  type GameplayState,
-  type PassengerState,
-  type PlayerState,
-} from '@xeom-rush/shared';
+import { JOB_LABELS, PERSONAS, type GameplayState, type PassengerState, type PlayerState } from '@xeom-rush/shared';
 import { network } from '../game/network';
 import { inputHandler } from '../game/input';
 const TIERS = ['Thường', 'Công việc', 'VIP'];
@@ -16,13 +9,11 @@ export function TripGuide({
   state,
   player,
   passengers,
-  streak,
   tutorialDone,
 }: {
   state: GameplayState | null;
   player: PlayerState;
   passengers: PassengerState[];
-  streak: number;
   tutorialDone: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
@@ -133,10 +124,12 @@ export function TripGuide({
               <div className='pickup-list'>
                 {nearby.map((p) => {
                   const offer = state?.offers?.find((o) => o.id === p.id);
-                  const fare = offer?.fare ?? calculateFare(p.reward, streak, 1, true);
+                  const fare = offer?.fare;
                   return (
                     <button
                       key={p.id}
+                      data-pickup-id={p.id}
+                      disabled={!offer}
                       aria-pressed={state?.selectedPickup === p.id}
                       onClick={() => {
                         network.command('select-pickup', p.id);
@@ -144,7 +137,8 @@ export function TripGuide({
                       }}
                     >
                       <strong>
-                        {offer ? JOB_LABELS[offer.kind] : TIERS[p.tier]} · {fare.total.toLocaleString('vi-VN')}đ
+                        {offer ? JOB_LABELS[offer.kind] : TIERS[p.tier]} ·{' '}
+                        {fare ? `${fare.total.toLocaleString('vi-VN')}đ` : 'Đang cập nhật cước…'}
                       </strong>
                       <small>
                         {offer ? `${offer.stops} điểm · ${offer.goalLabel} · ` : ''}Gốc{' '}

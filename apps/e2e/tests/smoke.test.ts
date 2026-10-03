@@ -193,6 +193,55 @@ for (const layout of [
       }
       await page.screenshot({ path: `test-results/hud-${layout.name.replaceAll(' ', '-')}.png` });
     });
+
+    test('keeps pickup selection, Close and keyboard focus inside the viewport', async ({ page, request }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('xeom:tutorial', 'done');
+        localStorage.setItem('xeom:controls', JSON.stringify({ textSize: 1.3 }));
+      });
+      await page.goto('/');
+      await page.locator('#username').fill('PickupLayout');
+      await page.locator('button[type="submit"]').click();
+      await expect(page.locator('.hud-summary')).toBeVisible();
+      await expect(page.locator('.connection-cover')).toHaveCount(0);
+      const port = process.env.E2E_SERVER_PORT || '3003';
+      const guest = await page.evaluate((key) => localStorage.getItem(key), `xeom:guest:localhost:${port}`);
+      const response = await request.post(`http://localhost:${port}/api/test/gameplay`, {
+        data: { guest, action: 'job', kind: 9, x: 2050, y: 2200 },
+      });
+      expect(response.ok()).toBe(true);
+      const targetId = (await response.json()).gameplay.selectedPickup;
+      await expect(page.locator('.trip-fare')).toContainText('Gốc 10.000đ');
+      await page.getByRole('button', { name: /^Chọn khách/ }).click();
+      const dialog = page.getByRole('dialog', { name: 'Chọn khách', exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.pickup-list')).toContainText('Giao kiện hàng');
+      await expect(dialog.locator('.pickup-list')).toContainText('3 điểm');
+      const box = (await dialog.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(layout.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(layout.height);
+      for (const button of [
+        dialog.getByRole('button', { name: 'Đóng', exact: true }),
+        dialog.getByRole('button', { name: 'Tự động đón khách gần', exact: true }),
+        dialog.locator(`[data-pickup-id="${targetId}"]`),
+      ]) {
+        await button.scrollIntoViewIfNeeded();
+        await expect(button).toBeInViewport();
+        const target = (await button.boundingBox())!;
+        expect(target.width).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+      }
+      await page.keyboard.press('Tab');
+      expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+      await page.screenshot({ path: `test-results/pickup-${layout.name.replaceAll(' ', '-')}.png` });
+      await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await page.getByRole('button', { name: /^Chọn khách/ }).click();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    });
   });
 }
 
