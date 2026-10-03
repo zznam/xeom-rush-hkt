@@ -374,20 +374,20 @@ export class GameWorld {
       .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))
       .slice(0, 8)
       .map((t) => {
-        const job = this.getJob(t);
+        const job = this.options.enhanced ? this.getJob(t) : null;
         return {
           id: t.id,
-          kind: job.kind,
-          persona: job.persona,
-          goalLabel: job.goalLabel,
+          kind: job?.kind ?? 'passenger',
+          persona: job?.persona ?? '',
+          goalLabel: job?.goalLabel ?? 'Đưa khách đến nơi',
           fare: calculateFare(
             t.reward,
             this.streakCounts.get(id) ?? 0,
             this.options.enhanced ? environmentMultiplier(this.life, t, this.isRushHour()) : 1,
-            true,
-            Math.floor(t.reward * 0.15),
+            !!this.options.enhanced,
+            this.options.enhanced ? Math.floor(t.reward * 0.15) : 0,
           ),
-          stops: job.stops.length,
+          stops: job?.stops.length ?? 1,
         };
       });
     let navigation: GameplayState['navigation'] = null;

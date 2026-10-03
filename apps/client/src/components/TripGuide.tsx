@@ -66,9 +66,11 @@ export function TripGuide({
           </p>
           <p className='trip-timing'>
             {trip
-              ? trip.clean
-                ? '✓ Đang giữ thưởng an toàn'
-                : 'Chuyến đã có va chạm / vi phạm'
+              ? !state?.city.enabled
+                ? 'Chuyến thường · nhận cước khi đến nơi'
+                : trip.clean
+                  ? '✓ Đang giữ thưởng an toàn'
+                  : 'Chuyến đã có va chạm / vi phạm'
               : nav.pickupExpiryTick
                 ? `Khách chờ thêm ${Math.max(0, Math.ceil((nav.pickupExpiryTick - state!.tick) / 20))}s`
                 : 'Khách đang chờ bạn'}
@@ -77,7 +79,7 @@ export function TripGuide({
       ) : (
         <p>Lái lại gần khách đang vẫy tay để tự động đón.</p>
       )}
-      {trip && (
+      {trip?.dialogue && (
         <div className='passenger-story'>
           <blockquote>“{trip.dialogue}”</blockquote>
           <small>

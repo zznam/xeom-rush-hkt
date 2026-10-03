@@ -71,7 +71,8 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 
 // Instantiate authoritative world state
-const world = new GameWorld({ enhanced: process.env.CONTENT_RELEASE !== 'false' });
+const contentRelease = process.env.CONTENT_RELEASE !== 'false';
+const world = new GameWorld({ enhanced: contentRelease });
 const botManager = new BotManager(world, world.getPhysics());
 
 // HTTP JSON Endpoints for Judges/Dashboard
@@ -459,7 +460,7 @@ wss.on('connection', (ws: WebSocket, request) => {
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
         ws.send(
-          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true, practice: true, progression: true } })}`,
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: contentRelease, practice: contentRelease, progression: contentRelease } })}`,
         );
         const profileId = sessions.get(token)?.profileId;
         if (profileId)
