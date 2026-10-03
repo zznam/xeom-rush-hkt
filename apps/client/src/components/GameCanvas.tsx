@@ -128,9 +128,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Track config variables from server
     let myPlayerId = '';
+    let arrivalToastUntil = 0;
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
+      arrivalToastUntil = 0;
       prediction.clear();
       interpolation.clear();
       if (myPlayerId && myPlayerId !== config.myId) {
@@ -220,10 +222,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         if (!prevPassengerId && currPassengerId) {
           soundEngine.playPickup();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'pickup');
-          setToast('🙋 À, có khách rồi!');
-          if (toastTimer.current) clearTimeout(toastTimer.current);
-          toastTimer.current = setTimeout(() => setToast(null), 1800);
+          // A nearby automatic pickup must not erase the completed trip's fare feedback.
+          if (Date.now() >= arrivalToastUntil) {
+            setToast('🙋 À, có khách rồi!');
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setToast(null), 1800);
+          }
         } else if (prevPassengerId && !currPassengerId) {
+          arrivalToastUntil = Date.now() + 2400;
           soundEngine.playDropoff();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'delivery');
           const earned = Math.max(0, localStateFromServer.score - (localPlayerStateRef.current?.score ?? 0));
