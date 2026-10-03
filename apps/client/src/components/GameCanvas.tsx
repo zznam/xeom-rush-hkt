@@ -157,7 +157,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
-      arrivalToastUntil = 0;
       prediction.clear();
       interpolation.clear();
       arrivalToastUntil = 0;
