@@ -43,6 +43,9 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     await request.post(`${endpoint}/test`, { data: { action: 'position', profileId, x: 2050, y: 2200 } });
     await a.bringToFront();
     await expect(a.locator('.trip-guide')).toContainText('Dự kiến');
+    await a.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
     await a.keyboard.down('s');
     await expect(a.locator('.trip-toast')).toContainText('Chuyến tốt! +12.500đ', { timeout: 15000 });
     await a.keyboard.up('s');
