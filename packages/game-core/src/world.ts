@@ -1,4 +1,5 @@
 import {
+  LANDMARKS,
   emptySummary,
   type ShiftSummary,
   PlayerState,
@@ -295,6 +296,9 @@ export class GameWorld {
 
       const summary = this.summaries.get(playerId)!;
       summary.distance += Math.hypot(player.x - prevX, player.y - prevY);
+      for (const landmark of LANDMARKS)
+        if (!summary.visited.includes(landmark.id) && Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80)
+          summary.visited.push(landmark.id);
       this.checkCityRuleInteractions(player, prevX, prevY);
 
       // Check actions: Pickup or Deliver

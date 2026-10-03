@@ -27,7 +27,13 @@ export function createCityMap() {
   for (let x = 100; x < MAP_SIZE - 100; x += 400)
     for (let y = 100; y < MAP_SIZE - 100; y += 400) {
       if (Math.abs(x - MAP_SIZE / 2) < 400 && Math.abs(y - MAP_SIZE / 2) < 400) continue;
-      buildings.push({ x, y, width: 300, height: 300 });
+      if (x < 2000 && y < 2000) {
+        for (const dx of [0, 190])
+          for (const dy of [0, 190]) buildings.push({ x: x + dx, y: y + dy, width: 110, height: 110 });
+      } else if (x >= 2000 && y < 2000) buildings.push({ x, y, width: 300, height: 260 });
+      else if (x < 2000) {
+        buildings.push({ x, y, width: 120, height: 300 }, { x: x + 180, y, width: 120, height: 300 });
+      } else buildings.push({ x, y, width: 260, height: 300 });
     }
   const features: MapFeature[] = [];
   const rng = new SeededRandom();

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
+import { districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
 import { Minimap } from './Minimap';
 import { Joystick } from './Joystick';
 import { inputHandler } from '../game/input';
@@ -96,9 +96,9 @@ export const HUD: React.FC<HUDProps> = ({
 
       <div className='hud-left'>
         <section className='hud-summary glass-panel' aria-label='Chuyến xe của bạn'>
-          {cityLabel && (
+          {localPlayer && (
             <p className='hud-city' aria-label='Thành phố hiện tại' title={cityLabel}>
-              {cityLabel}
+              {cityLabel || 'Sài Gòn'} · {districtAt(localPlayer).name}
             </p>
           )}
           <span className='hud-label'>THU NHẬP ĐƯỜNG PHỐ</span>

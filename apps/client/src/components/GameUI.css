@@ -564,3 +564,25 @@
 .shift-breakdown dd {
   margin: 0;
 }
+
+.passport-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.passport-list li {
+  padding: 10px;
+  border: 1px dashed #8da08b;
+  border-radius: 12px;
+}
+.passport-list .is-discovered {
+  background: #e1f1d7;
+  border-style: solid;
+}
+.passport-list small {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.5;
+}
