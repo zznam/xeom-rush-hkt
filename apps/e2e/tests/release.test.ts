@@ -17,14 +17,42 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
   const port = process.env.E2E_SERVER_PORT || '3003';
   const base = `http://localhost:${port}`;
   const guest = (await page.evaluate((host) => localStorage.getItem(`xeom:guest:${host}`), `localhost:${port}`))!;
-  const fixture = async (data: Record<string, unknown>) => {
+  const fixture = async (data: Record<string, unknown>, allowBusy = false) => {
     const r = await request.post(`${base}/api/test/gameplay`, { data: { guest, ...data } });
+    if (allowBusy && r.status() === 409) return null;
     expect(r.ok()).toBe(true);
     return r.json();
   };
   const deliver = async (kind: number, x = 2050, y = 2200) => {
-    const before = await fixture({ action: 'state' });
-    await fixture({ action: 'job', kind, x, y });
+    // Automatic pickup can begin another legitimate trip immediately after arrival.
+    // Finish that trip through ordered authoritative ticks before seeding the next authored job.
+    let before = await fixture({ action: 'state' });
+    let seeded = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const active = before.gameplay.trip;
+      if (active) {
+        for (let stop = active.stopIndex; stop < active.stops.length; stop++) {
+          await fixture({ action: 'position', ...active.stops[stop] });
+          await expect
+            .poll(
+              async () => {
+                const state = await fixture({ action: 'state' });
+                return stop === active.stops.length - 1
+                  ? state.gameplay.summary.recentTrips?.some((r: { id: string }) => r.id === active.passenger.id)
+                  : state.gameplay.trip?.passenger.id !== active.passenger.id || state.gameplay.trip.stopIndex > stop;
+              },
+              { timeout: 7000 },
+            )
+            .toBe(true);
+        }
+        before = await fixture({ action: 'state' });
+        continue;
+      }
+      seeded = !!(await fixture({ action: 'job', kind, x, y }, true));
+      if (seeded) break;
+      before = await fixture({ action: 'state' });
+    }
+    expect(seeded, 'The authored job was seeded after any incidental automatic trip').toBe(true);
     await expect(page.locator('.trip-guide')).toContainText('Dự kiến');
     await page.evaluate(() => {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -35,6 +63,7 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
       .toBe(kind < 6 ? 'passenger' : kind < 8 ? 'food' : 'parcel');
     await page.keyboard.up('s');
     let state = await fixture({ action: 'state' });
+    const tripId = state.gameplay.trip.passenger.id;
     const stops = state.gameplay.trip.stops;
     expect(stops.length).toBe(kind === 9 ? 3 : kind === 8 ? 2 : 1);
     await expect(page.locator('.passenger-story')).toBeVisible();
@@ -52,7 +81,15 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
         );
         expect(state.gameplay.summary.baseFares).toBe(before.gameplay.summary.baseFares);
       } else {
-        await expect.poll(async () => (await fixture({ action: 'state' })).gameplay.trip, { timeout: 7000 }).toBeNull();
+        await expect
+          .poll(
+            async () =>
+              (await fixture({ action: 'state' })).gameplay.summary.recentTrips.some(
+                (r: { id: string }) => r.id === tripId,
+              ),
+            { timeout: 7000 },
+          )
+          .toBe(true);
       }
       await page.keyboard.up('s');
     }
@@ -89,6 +126,7 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
     for (let i = 0; i < objective.goal; i++)
       await deliver(objective.metric === 'food' ? 6 : objective.metric === 'parcel' ? 8 : 0, position[0], position[1]);
   }
+  const expectedRecentTrips = (await fixture({ action: 'state' })).gameplay.summary.recentTrips.length;
   await page.getByRole('button', { name: 'Hồ sơ', exact: true }).click();
   const item = page.locator('.objective-list li').filter({ hasText: objective.title });
   await expect(item.getByRole('button', { name: 'Nhận quà', exact: true })).toBeEnabled();
@@ -107,8 +145,6 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
   await page.getByRole('button', { name: 'Hồ sơ', exact: true }).click();
   await expect(page.getByLabel(/^Màu xe/)).toHaveValue('paint-1');
   await expect(page.locator('.objective-list li').filter({ hasText: objective.title })).toContainText('Đã nhận');
-  await expect(page.locator('.recent-trip-list li')).toHaveCount(
-    Math.min(8, 4 + (objective.metric === 'distance' ? 0 : objective.goal)),
-  );
+  await expect(page.locator('.recent-trip-list li')).toHaveCount(expectedRecentTrips);
   expect(errors).toEqual([]);
 });
