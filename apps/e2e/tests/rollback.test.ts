@@ -38,7 +38,15 @@ test('content rollback advertises its supported modes and quotes the actual pass
   await expect(page.locator('.trip-timing')).toContainText('Chuyến thường');
   await fixture({ action: 'position', x: trip.stops[0].x, y: trip.stops[0].y - 55 });
   await page.keyboard.down('s');
-  await expect.poll(async () => (await fixture({ action: 'state' })).gameplay.trip, { timeout: 7000 }).toBeNull();
+  await expect
+    .poll(
+      async () =>
+        (await fixture({ action: 'state' })).gameplay.summary.recentTrips.some(
+          (record: { id: string }) => record.id === trip.passenger.id,
+        ),
+      { timeout: 7000 },
+    )
+    .toBe(true);
   await page.keyboard.up('s');
   const summary = (await fixture({ action: 'state' })).gameplay.summary;
   expect(summary.baseFares).toBe(10000);
