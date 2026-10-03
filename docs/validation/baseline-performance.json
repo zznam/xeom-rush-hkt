@@ -3,15 +3,15 @@
   "ticks": 7200,
   "humans": 64,
   "bots": 8,
-  "p95Ms": 3.6449579999998605,
-  "maxMs": 11.197582999999995,
-  "meanMs": 2.5306978541666663,
+  "p95Ms": 4.4618329999993875,
+  "maxMs": 63.24070800000027,
+  "meanMs": 2.824048960833315,
   "fullSnapshotBytesPerPeerSecond": 23011.901258680555,
   "memory": {
-    "rss": 124272640,
-    "heapTotal": 46546944,
-    "heapUsed": 12332696,
-    "external": 1753839,
-    "arrayBuffers": 125451
+    "rss": 119799808,
+    "heapTotal": 46809088,
+    "heapUsed": 12451872,
+    "external": 1773856,
+    "arrayBuffers": 145468
   }
 }

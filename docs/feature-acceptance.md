@@ -1,6 +1,6 @@
 # Complete city release acceptance
 
-All 32 features have implemented gameplay and the authored content below. Combined unit, persistence, runtime and browser journeys pass. The final continuous thirty-minute soak remains pending; its evidence will be recorded before any release PR merges. Cloudflare/AWS publication remains a separate manual operation.
+All 32 features have implemented gameplay and the authored content below. Combined unit, persistence, runtime and browser journeys pass. The complete continuous thirty-minute capacity soak passed before any release PR merges: all 32 acceptance items pass combined local/hosted verification. See the [release report](validation/release-report.md) and [raw soak evidence](validation/release-soak.json). Cloudflare/AWS publication remains a separate manual operation.
 
 See [release operations](complete-release-operations.md) for test commands and deployment requirements. Evidence paths refer to repository files; browser suites are in `apps/e2e/tests/`.
 
