@@ -73,7 +73,7 @@ test.describe('Xeom Rush Smoke Tests', () => {
     const canvas = page.locator('canvas').first();
     await expect(canvas).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.getByText('DELTA')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('DELTA', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 });
 
