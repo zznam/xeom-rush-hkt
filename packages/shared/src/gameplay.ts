@@ -73,6 +73,7 @@ export function parseGameCommand(text: string): GameCommand | null {
 export interface GameplayState {
   version: 1;
   tick: number;
+  city: import('./city-life').CityLifeState;
   trip: TripMetadata | null;
   selectedPickup: string | null;
   comboTicksRemaining: number;

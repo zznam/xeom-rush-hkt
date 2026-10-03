@@ -1,4 +1,4 @@
-import { MOTORBIKE_SPEED } from '@xeom-rush/shared';
+import { cityAtTick, movementConditions, type CityLifeState, MOTORBIKE_SPEED } from '@xeom-rush/shared';
 import { PhysicsEngine } from '@xeom-rush/game-core';
 export type { Rectangle } from '@xeom-rush/game-core';
 
@@ -8,9 +8,25 @@ export interface PendingInput {
   dy: number;
   angle: number;
   dt: number;
+  speed?: number;
 }
 
 export class ClientPrediction extends PhysicsEngine {
+  private life: CityLifeState | null = null;
+  private tick = 0;
+  public setCityLife(life: CityLifeState) {
+    this.life = life;
+    this.setClosures(life.closure?.active ? [life.closure.rect] : []);
+  }
+  public setTick(tick: number) {
+    this.tick = tick;
+  }
+  public get raining() {
+    return !!this.life?.enabled && cityAtTick(this.tick).rain;
+  }
+  public get speedMultiplier() {
+    return movementConditions(this.raining).speed;
+  }
   private pendingInputs: PendingInput[] = [];
   public addInput(input: PendingInput): void {
     this.pendingInputs.push(input);
@@ -29,8 +45,8 @@ export class ClientPrediction extends PhysicsEngine {
     const ndx = input.dx / mag;
     const ndy = input.dy / mag;
 
-    const deltaX = ndx * MOTORBIKE_SPEED * throttle * input.dt;
-    const deltaY = ndy * MOTORBIKE_SPEED * throttle * input.dt;
+    const deltaX = ndx * MOTORBIKE_SPEED * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
+    const deltaY = ndy * MOTORBIKE_SPEED * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
 
     return this.resolveMove(currentX, currentY, currentX + deltaX, currentY + deltaY);
   }

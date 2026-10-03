@@ -1,4 +1,9 @@
 import {
+  cityAtTick,
+  environmentMultiplier,
+  movementConditions,
+  StreetNavigator,
+  type CityLifeState,
   createJob,
   jobTip,
   freshness,
@@ -44,6 +49,10 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export class GameWorld {
+  private life: CityLifeState = cityAtTick(0);
+  private closureId = '';
+  private closureAllowed = false;
+  private closedNavigator: StreetNavigator | null = null;
   private jobs = new Map<string, JobState>();
   private getJob(passenger: PassengerState) {
     let job = this.jobs.get(passenger.id);
@@ -189,6 +198,56 @@ export class GameWorld {
     this.inputQueues.set(id, []);
   }
 
+  public getCityLife(): CityLifeState {
+    return structuredClone(this.life);
+  }
+  public getNavigationRoute(from: Vector2D, to: Vector2D): Vector2D[] {
+    return this.life.closure?.active && this.closedNavigator
+      ? this.closedNavigator.route(from, to)
+      : findStreetRoute(from, to);
+  }
+  private advanceCity(): void {
+    if (!this.options.enhanced) {
+      this.life = { ...cityAtTick(0), tick: this.tickCount, enabled: false };
+      return;
+    }
+    const life = cityAtTick(this.tickCount),
+      closure = life.closure;
+    const inside = (point: Vector2D, padding = 70) =>
+      !!closure &&
+      point.x > closure.rect.x - padding &&
+      point.x < closure.rect.x + closure.rect.width + padding &&
+      point.y > closure.rect.y - padding &&
+      point.y < closure.rect.y + closure.rect.height + padding;
+    if (closure && closure.id !== this.closureId) {
+      this.closureId = closure.id;
+      this.closureAllowed = false;
+      const targets = [
+        ...LANDMARKS,
+        ...this.passengers.getPassengers().flatMap((p) => [
+          { x: p.x, y: p.y },
+          { x: p.destX, y: p.destY },
+        ]),
+        ...[...this.jobs.values()].flatMap((j) => j.stops),
+      ];
+      if (!targets.some((p) => inside(p))) {
+        const navigator = new StreetNavigator([closure.rect]);
+        this.closureAllowed = targets.every((target) => navigator.route({ x: 2050, y: 2050 }, target).length > 1);
+        if (this.closureAllowed) this.closedNavigator = navigator;
+      }
+    }
+    if (
+      closure?.active &&
+      !this.life.closure?.active &&
+      ([...this.players.values()].some((p) => inside(p)) ||
+        this.passengers.getPassengers().some((p) => inside(p, 35) || inside({ x: p.destX, y: p.destY }, 35)))
+    )
+      this.closureAllowed = false;
+    if (!this.closureAllowed) life.closure = null;
+    this.life = life;
+    this.physics.setClosures(life.closure?.active ? [life.closure.rect] : []);
+  }
+
   public selectPickup(id: string, target?: string): boolean {
     if (!this.players.has(id) || this.players.get(id)!.passengerId) return false;
     if (!target) {
@@ -223,7 +282,7 @@ export class GameWorld {
           fare: calculateFare(
             t.reward,
             this.streakCounts.get(id) ?? 0,
-            this.isRushHour() ? 1.5 : 1,
+            this.options.enhanced ? environmentMultiplier(this.life, t, this.isRushHour()) : 1,
             true,
             Math.floor(t.reward * 0.15),
           ),
@@ -234,10 +293,10 @@ export class GameWorld {
     let trip: GameplayState['trip'] = null;
     if (passenger) {
       const target = p.passengerId ? { x: passenger.destX, y: passenger.destY } : { x: passenger.x, y: passenger.y };
-      const key = `${passenger.id}:${target.x}:${target.y}`;
+      const key = `${passenger.id}:${target.x}:${target.y}:${this.life.roadRevision}`;
       let cached = this.routeCache.get(id);
       if (!cached || cached.key !== key || Math.hypot(cached.from.x - p.x, cached.from.y - p.y) > 200) {
-        cached = { key, from: { x: p.x, y: p.y }, route: findStreetRoute(p, target) };
+        cached = { key, from: { x: p.x, y: p.y }, route: this.getNavigationRoute(p, target) };
         this.routeCache.set(id, cached);
       }
       const route = [...cached.route];
@@ -246,7 +305,7 @@ export class GameWorld {
       const fare = calculateFare(
         passenger.reward,
         this.streakCounts.get(id) ?? 0,
-        this.options.enhanced && this.isRushHour() ? 1.5 : 1,
+        this.options.enhanced ? environmentMultiplier(this.life, p, this.isRushHour()) : 1,
         !!this.options.enhanced && (!p.passengerId || !this.dirtyTrips.has(id)),
         job
           ? p.passengerId
@@ -287,6 +346,7 @@ export class GameWorld {
     return {
       version: 1,
       tick: this.tickCount,
+      city: this.getCityLife(),
       trip,
       navigation,
       offers,
@@ -376,6 +436,7 @@ export class GameWorld {
    */
   public tick(dt: number): void {
     this.tickCount++;
+    this.advanceCity();
     for (const [id, target] of this.selectedPickups) {
       const p = this.passengers.getPassengerMap().get(target);
       if (!p || p.isCarried || (p.deadline > 0 && p.deadline < this.tickCount)) this.selectedPickups.delete(id);
@@ -419,8 +480,8 @@ export class GameWorld {
             const ndx = input.dx / mag;
             const ndy = input.dy / mag;
 
-            const deltaX = ndx * MOTORBIKE_SPEED * throttle * stepDt;
-            const deltaY = ndy * MOTORBIKE_SPEED * throttle * stepDt;
+            const deltaX = ndx * MOTORBIKE_SPEED * movementConditions(this.life.rain).speed * throttle * stepDt;
+            const deltaY = ndy * MOTORBIKE_SPEED * movementConditions(this.life.rain).speed * throttle * stepDt;
 
             const resolved = this.physics.resolveMove(player.x, player.y, player.x + deltaX, player.y + deltaY);
             player.x = resolved.x;
@@ -524,7 +585,7 @@ export class GameWorld {
     }
 
     // 3. Tick passenger spawner (handles expiry + respawn)
-    this.passengers.tick(this.tickCount, this.isRushHour());
+    this.passengers.tick(this.tickCount, this.isRushHour(), this.life.event?.district);
     for (const id of this.jobs.keys()) if (!this.passengers.getPassengerMap().has(id)) this.jobs.delete(id);
   }
 
@@ -606,7 +667,7 @@ export class GameWorld {
           const fare = calculateFare(
             passenger.reward,
             streak,
-            this.options.enhanced && this.isRushHour() ? 1.5 : 1,
+            this.options.enhanced ? environmentMultiplier(this.life, player, this.isRushHour()) : 1,
             !!this.options.enhanced && !this.dirtyTrips.has(player.id),
             job ? jobTip(passenger.reward, job, this.tickCount, this.dirtyTrips.has(player.id)) : 0,
           );

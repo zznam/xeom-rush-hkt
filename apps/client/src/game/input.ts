@@ -1,10 +1,12 @@
-import { clampVectorMagnitude, rotateTowardAngle, smoothVectorToward } from '@xeom-rush/shared';
+import { movementConditions, clampVectorMagnitude, rotateTowardAngle, smoothVectorToward } from '@xeom-rush/shared';
 
-const INPUT_ACCELERATION_PER_SECOND = 8;
-const INPUT_TURN_RATE_RAD_PER_SECOND = 10;
 const INPUT_DEADZONE = 0.015;
 
 export class InputHandler {
+  private rain = false;
+  public setRain(rain: boolean) {
+    this.rain = rain;
+  }
   private keys: { [key: string]: boolean } = {};
 
   private joystickInput: { dx: number; dy: number } | null = null;
@@ -43,7 +45,7 @@ export class InputHandler {
 
   public getInputVector(dt: number = 1 / 60): { dx: number; dy: number; angle: number } {
     const target = this.readRawInputVector();
-    this.smoothedInput = smoothVectorToward(this.smoothedInput, target, dt, INPUT_ACCELERATION_PER_SECOND);
+    this.smoothedInput = smoothVectorToward(this.smoothedInput, target, dt, movementConditions(this.rain).acceleration);
 
     if (Math.hypot(this.smoothedInput.x, this.smoothedInput.y) < INPUT_DEADZONE) {
       this.smoothedInput = { x: 0, y: 0 };
@@ -51,7 +53,7 @@ export class InputHandler {
 
     if (this.smoothedInput.x !== 0 || this.smoothedInput.y !== 0) {
       const targetAngle = Math.atan2(this.smoothedInput.y, this.smoothedInput.x);
-      this.smoothedAngle = rotateTowardAngle(this.smoothedAngle, targetAngle, INPUT_TURN_RATE_RAD_PER_SECOND * dt);
+      this.smoothedAngle = rotateTowardAngle(this.smoothedAngle, targetAngle, movementConditions(this.rain).turn * dt);
     }
 
     return {
