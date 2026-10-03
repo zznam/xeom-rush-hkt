@@ -31,3 +31,12 @@ describe('movement smoothing helpers', () => {
     expect(next.y).toBeCloseTo(0, 5);
   });
 });
+import { limitMovementInput } from './movement';
+it('enforces slower rain acceleration and turning on raw input, but releases controls immediately', () => {
+  const previous = { dx: 0, dy: 0, angle: 0 },
+    intent = { dx: 1, dy: 0, angle: Math.PI };
+  expect(limitMovementInput(previous, intent, 0.05, false)).toEqual({ dx: 0.4, dy: 0, angle: 0.5 });
+  expect(limitMovementInput(previous, intent, 0.05, true)).toEqual({ dx: 0.30000000000000004, dy: 0, angle: 0.4 });
+  expect(limitMovementInput(intent, previous, 0.01, true)).toEqual({ dx: 0, dy: 0, angle: Math.PI });
+  expect(Number.isFinite(limitMovementInput(previous, { ...intent, angle: 1e300 }, 0.05, true).angle)).toBe(true);
+});

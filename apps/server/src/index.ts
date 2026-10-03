@@ -575,6 +575,14 @@ app.post('/api/test/gameplay', (req, res) => {
 const dt = TICK_INTERVAL_MS / 1000; // 0.05 seconds
 let lastTickTime = Date.now();
 const tickMetrics = new TickMetrics();
+app.post('/api/test/metrics-reset', (_req, res) => {
+  if (production || process.env.ALLOW_ROOM_TESTS !== 'true') {
+    res.status(404).end();
+    return;
+  }
+  tickMetrics.reset();
+  res.json({ ok: true });
+});
 app.get('/api/metrics', (_req, res) => {
   if (production) {
     res.status(404).end();

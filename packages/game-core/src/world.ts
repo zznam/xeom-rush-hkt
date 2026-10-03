@@ -1,4 +1,6 @@
 import {
+  limitMovementInput,
+  type MovementInputState,
   progressionPeriods,
   districtAt,
   cityAtTick,
@@ -143,6 +145,7 @@ export class GameWorld {
   private pickupTicks = new Map<string, number>();
   private dirtyTrips = new Set<string>();
   private players: Map<string, PlayerState> = new Map();
+  private movement = new Map<string, MovementInputState>();
   private inputQueues: Map<string, InputPayload[]> = new Map();
   private spatialGrid: SpatialGrid;
   private physics: PhysicsEngine;
@@ -199,6 +202,7 @@ export class GameWorld {
     this.summaries.set(id, emptySummary());
     this.players.set(id, player);
     this.inputQueues.set(id, []);
+    this.movement.delete(id);
     this.spatialGrid.insert(id, startX, startY);
     this.streakCounts.set(id, 0);
 
@@ -233,6 +237,7 @@ export class GameWorld {
       this.dirtyTrips.delete(id);
       this.players.delete(id);
       this.inputQueues.delete(id);
+      this.movement.delete(id);
       this.spatialGrid.remove(id);
       this.collisionCooldowns.delete(id);
       this.redLightCooldowns.delete(id);
@@ -285,6 +290,7 @@ export class GameWorld {
     const player = this.players.get(id);
     if (player) player.connected = connected;
     this.inputQueues.set(id, []);
+    this.movement.delete(id);
   }
 
   public getCityLife(): CityLifeState {
@@ -438,6 +444,7 @@ export class GameWorld {
     }
     return {
       version: 1,
+      movement: { seq: p.lastProcessedSeq, ...(this.movement.get(id) ?? { dx: 0, dy: 0, angle: p.angle }) },
       practice: this.practice.has(id),
       practiceCompleted: this.practiceCompleted.has(id),
       reservations: Object.fromEntries(this.reservations),
@@ -568,7 +575,17 @@ export class GameWorld {
       if (inputs.length > 0) {
         const stepDt = dt / inputs.length;
         while (inputs.length > 0) {
-          const input = inputs.shift()!;
+          const rawInput = inputs.shift()!;
+          const shaped = this.options.enhanced
+            ? limitMovementInput(
+                this.movement.get(playerId) ?? { dx: 0, dy: 0, angle: player.angle },
+                rawInput,
+                stepDt,
+                this.life.rain,
+              )
+            : rawInput;
+          const input = { ...rawInput, ...shaped };
+          this.movement.set(playerId, isStunned ? { dx: 0, dy: 0, angle: player.angle } : shaped);
           lastAngle = input.angle;
           lastSeq = input.seq;
 

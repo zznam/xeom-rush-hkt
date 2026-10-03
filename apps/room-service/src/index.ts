@@ -243,7 +243,8 @@ export class PrivateRoom {
     if (url.pathname === '/state') return json({ state: this.owner.view() });
     if (url.pathname === '/test' && this.env.TEST_MODE === 'true') {
       const body = (await request.json()) as any;
-      if (body.action === 'restart') {
+      if (body.action === 'metrics-reset') this.owner.metrics.reset();
+      else if (body.action === 'restart') {
         await this.persist();
         const data = await this.ctx.storage.get<DurableRoom>('durable');
         this.owner = this.configure(new RoomOwner(data!.state.invite, { persisted: data! }));

@@ -255,7 +255,8 @@ export function installPrivateRooms(
       res.status(404).end();
       return;
     }
-    if (req.body.action === 'restart') {
+    if (req.body.action === 'metrics-reset') owner.metrics.reset();
+    else if (req.body.action === 'restart') {
       owner.dirty = true;
       await persist(req.params.invite, owner);
       const durable = await careerRepository.readRoom(req.params.invite);

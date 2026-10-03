@@ -11,6 +11,12 @@ export class TickMetrics {
     this.maximum = Math.max(this.maximum, ms);
     this.buckets[Math.min(1000, Math.ceil(ms * 10))]++;
   }
+  reset() {
+    this.buckets.fill(0);
+    this.count = 0;
+    this.total = 0;
+    this.maximum = 0;
+  }
   snapshot() {
     const rank = Math.ceil(this.count * 0.95);
     let seen = 0,

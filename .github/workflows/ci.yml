@@ -93,6 +93,7 @@ jobs:
       - name: Combined runtime and browser load smoke
         env:
           TEST_DYNAMO_URL: http://127.0.0.1:8000
+          SOAK_PUBLIC_HUMANS: 16
           SOAK_DURATION_MS: 10000
           SOAK_OUTPUT: apps/e2e/test-results/load-smoke.json
         run: node tests/release-soak.mjs

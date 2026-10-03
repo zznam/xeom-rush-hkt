@@ -197,6 +197,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         renderer.setGameplay(message.data);
         if (message.data.city) prediction.setCityLife(message.data.city);
         setSummary(message.data.summary);
+        if (message.data.movement) prediction.setMovement(message.data.movement);
         setCityRanking(message.data.cityRanking);
       }
     });
@@ -410,7 +411,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           ...localPlayerStateRef.current,
           x: predictedPos.x,
           y: predictedPos.y,
-          angle: input.dx !== 0 || input.dy !== 0 ? input.angle : localPlayerStateRef.current.angle,
+          angle: predictedPos.angle,
         };
 
         // Send input payload to server

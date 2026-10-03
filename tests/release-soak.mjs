@@ -24,6 +24,7 @@ const {
 const { Miniflare, Log, LogLevel } = createRequire(resolve(root, 'apps/room-service/package.json'))('miniflare');
 const { chromium } = createRequire(resolve(root, 'apps/e2e/package.json'))('@playwright/test');
 const { DynamoDBClient, CreateTableCommand, DeleteTableCommand } = require('@aws-sdk/client-dynamodb');
+const humans = Number(process.env.SOAK_PUBLIC_HUMANS || 64);
 const duration = Number(process.env.SOAK_DURATION_MS || 1800000),
   secret = 'local-soak-guest-secret-with-32-characters';
 const checkpointSecret = 'local-soak-checkpoint-secret-with-32-characters';
@@ -170,7 +171,7 @@ function drive(s) {
     s.ws.send(encodeInput(++s.seq, 0, 0, 0));
     return;
   }
-  const key = `${nav.targetId}:${nav.target.x}:${nav.target.y}`;
+  const key = `${nav.targetId}:${nav.target.x}:${nav.target.y}:${g.city.roadRevision}:${nav.route.length}:${nav.route[0]?.x}:${nav.route[0]?.y}`;
   const closures = g.city.closure?.active ? [g.city.closure.rect] : [];
   if (key !== s.routeKey) {
     s.routeIndex = 0;
@@ -243,6 +244,7 @@ try {
     BOT_COUNT: '8',
     ALLOW_ROOM_TESTS: 'true',
     MAX_PRIVATE_ROOMS: '4',
+    RELEASE_SHA: table,
   };
   child(
     process.execPath,
@@ -255,6 +257,7 @@ try {
       ROOM_ADAPTER: 'local',
       GAME_REGION: 'soak-region',
       ROOM_ID: 'soak-owner',
+      ROOM_CAPACITY: String(humans),
       DYNAMODB_TABLE: table,
       AWS_REGION: 'local',
       AWS_ENDPOINT_URL: process.env.TEST_DYNAMO_URL || 'http://localhost:8800',
@@ -278,7 +281,14 @@ try {
     { ...common, PORT: '3040', DENO_KV_PATH: join(directory, 'career.db'), DEPLOY_TARGET: 'legacy', ROOM_ADAPTER: '' },
     'Deno',
   );
-  for (const port of [3037, 3040]) await until(async () => (await json(`http://localhost:${port}/api/ready`)).ready);
+  for (const port of [3037, 3040]) {
+    await until(async () => (await json(`http://localhost:${port}/api/ready`)).ready);
+    assert.equal(
+      (await json(`http://localhost:${port}/api/health`)).version,
+      table,
+      "Require this run's server, not an existing listener",
+    );
+  }
   mf = new Miniflare({
     port: 3038,
     scriptPath: resolve(root, 'apps/room-service/dist/index.js'),
@@ -303,7 +313,7 @@ try {
   );
   await until(async () => (await fetch('http://localhost:5187')).ok);
   for (const [port, count] of [
-    [3037, 64],
+    [3037, humans],
     [3040, 8],
   ]) {
     for (let i = 0; i < count; i++) {
@@ -383,6 +393,10 @@ try {
       requestAnimationFrame(frame);
     });
     const page = await context.newPage();
+    page.on('websocket', (ws) => {
+      if (!ws.url().includes('/?') && !ws.url().includes('session=')) return;
+      if (!ws.url().startsWith('ws://localhost:3040')) errors.push(`Wrong browser owner: ${ws.url()}`);
+    });
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => {
       if (m.type() === 'error') errors.push(`Browser: ${m.text()}`);
@@ -393,6 +407,14 @@ try {
     await page.locator('.hud-container').waitFor();
     browserSamples.push({ viewport, page });
   }
+  // Exclude connection/JIT setup from steady-state measurements, keeping it in separate samples.
+  timer = setInterval(() => {
+    for (const s of sockets) drive(s);
+  }, 50);
+  await pause(30000);
+  for (const port of [3037, 3040]) await json(`http://localhost:${port}/api/test/metrics-reset`, {});
+  for (const room of rooms) await json(`${room.api}/test`, { action: 'metrics-reset' });
+  clearInterval(timer);
   totalBytes = 0;
   for (const s of sockets) s.bytes = 0;
   const started = Date.now();
@@ -442,8 +464,8 @@ try {
     output = {
       startedAt: new Date(started).toISOString(),
       elapsedMs,
-      configuredPublicCapacity: 64,
-      publicHumans: 74,
+      configuredPublicCapacity: humans,
+      publicHumans: humans + 10,
       publicBots: 16,
       roomHumans: 24,
       roomBots: 8,

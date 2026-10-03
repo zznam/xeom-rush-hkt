@@ -84,6 +84,7 @@ export function parseGameCommand(text: string): GameCommand | null {
 }
 export interface GameplayState {
   version: 1;
+  movement?: import('./movement').MovementInputState & { seq: number };
   teamNavigation?: string;
   tick: number;
   practice: boolean;
