@@ -174,7 +174,13 @@ export const HUD: React.FC<HUDProps> = ({
             <span>{isCarrying ? 'Đang chở khách' : 'Sẵn sàng đón khách'}</span>
             {carriedPassenger && <strong>+{carriedPassenger.reward.toLocaleString('vi-VN')}đ</strong>}
           </div>
-          <TripGuide state={gameplay} player={localPlayer} passengers={passengers} tutorialDone={tutorialDone} />
+          <TripGuide
+            key={`${room?.roundId ?? 'public'}:${room?.status ?? ''}:${localPlayer.passengerId ?? 'pickup'}:${Boolean(gameplay?.teamNavigation)}:${Boolean(gameplay?.practice)}`}
+            state={gameplay}
+            player={localPlayer}
+            passengers={passengers}
+            tutorialDone={tutorialDone}
+          />
           <p className='trip-progress'>✦ {deliveries} chuyến hoàn thành</p>
         </section>
         {!isCompact && minimap}

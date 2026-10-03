@@ -59,7 +59,10 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     expect(saved.careerScore).toBeGreaterThanOrEqual(11000);
     await request.post(`${endpoint}/test`, { data: { action: 'checkpoint' } });
     expect((await profile()).careerScore).toBe(saved.careerScore);
+    await a.getByRole('button', { name: /^Chọn khách/ }).click();
+    await expect(a.getByRole('dialog', { name: 'Chọn khách', exact: true })).toBeVisible();
     await request.post(`${endpoint}/test`, { data: { action: 'finish' } });
+    await expect(a.getByRole('dialog', { name: 'Chọn khách', exact: true })).toHaveCount(0);
     await expect(a.getByText('Kết quả vòng chơi', { exact: true })).toBeVisible();
     await expect(a.locator('.room-results')).toContainText('Cô Ba');
     await a.getByRole('button', { name: 'Chơi lại vòng', exact: true }).click();
