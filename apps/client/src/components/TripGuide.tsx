@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { calculateFare, type GameplayState, type PassengerState, type PlayerState } from '@xeom-rush/shared';
+import {
+  JOB_LABELS,
+  PERSONAS,
+  calculateFare,
+  type GameplayState,
+  type PassengerState,
+  type PlayerState,
+} from '@xeom-rush/shared';
 import { network } from '../game/network';
 import { inputHandler } from '../game/input';
 const TIERS = ['Thường', 'Công việc', 'VIP'];
@@ -27,7 +34,11 @@ export function TripGuide({
   return (
     <div className='trip-guide'>
       <small className='hud-label'>{tutorialDone ? 'CHUYẾN XE HIỆN TẠI' : 'CHUYẾN ĐẦU TIÊN'}</small>
-      <h3>{player.passengerId ? '🏁 Đưa khách đến đích' : '🙋 Có người đang đợi!'}</h3>
+      <h3>
+        {trip
+          ? `${trip.kind === 'parcel' ? '📦' : trip.kind === 'food' ? '🥡' : '🏁'} ${JOB_LABELS[trip.kind]} · ${trip.stopIndex + 1}/${trip.stops.length}`
+          : '🙋 Có người đang đợi!'}
+      </h3>
       {nav ? (
         <>
           <p className='trip-fare'>
@@ -46,6 +57,24 @@ export function TripGuide({
         </>
       ) : (
         <p>Lái lại gần khách đang vẫy tay để tự động đón.</p>
+      )}
+      {trip && (
+        <div className='passenger-story'>
+          <blockquote>“{trip.dialogue}”</blockquote>
+          <small>
+            {PERSONAS.find((p) => p.id === trip.persona)?.name} · {trip.goalLabel}
+          </small>
+          <p>
+            {trip.kind === 'food'
+              ? `Độ tươi ${Math.round(trip.freshness * 100)}%`
+              : trip.kind === 'parcel'
+                ? `Nguyên vẹn ${Math.round((1 - trip.damage) * 100)}%`
+                : trip.quickTicksRemaining
+                  ? `Gợi ý ${Math.ceil(trip.quickTicksRemaining / 20)}s`
+                  : ''}{' '}
+            · Tip hiện tại {trip.fare.tip.toLocaleString('vi-VN')}đ
+          </p>
+        </div>
       )}
       {!player.passengerId && (
         <button
@@ -82,7 +111,8 @@ export function TripGuide({
               </button>
               <div className='pickup-list'>
                 {nearby.map((p) => {
-                  const fare = calculateFare(p.reward, streak, 1, true);
+                  const offer = state?.offers?.find((o) => o.id === p.id);
+                  const fare = offer?.fare ?? calculateFare(p.reward, streak, 1, true);
                   return (
                     <button
                       key={p.id}
@@ -93,10 +123,11 @@ export function TripGuide({
                       }}
                     >
                       <strong>
-                        {TIERS[p.tier]} · {fare.total.toLocaleString('vi-VN')}đ
+                        {offer ? JOB_LABELS[offer.kind] : TIERS[p.tier]} · {fare.total.toLocaleString('vi-VN')}đ
                       </strong>
                       <small>
-                        Gốc {p.reward.toLocaleString('vi-VN')}đ · Cách{' '}
+                        {offer ? `${offer.stops} điểm · ${offer.goalLabel} · ` : ''}Gốc{' '}
+                        {p.reward.toLocaleString('vi-VN')}đ · Cách{' '}
                         {Math.ceil(Math.hypot(p.x - player.x, p.y - player.y))}m
                         {p.deadline > 0 && state
                           ? ` · Chờ ${Math.max(0, Math.ceil((p.deadline - state.tick) / 20))}s`

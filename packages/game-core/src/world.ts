@@ -1,4 +1,8 @@
 import {
+  createJob,
+  jobTip,
+  freshness,
+  type JobState,
   LANDMARKS,
   calculateFare,
   findStreetRoute,
@@ -40,6 +44,15 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export class GameWorld {
+  private jobs = new Map<string, JobState>();
+  private getJob(passenger: PassengerState) {
+    let job = this.jobs.get(passenger.id);
+    if (!job) {
+      job = createJob(passenger);
+      this.jobs.set(passenger.id, job);
+    }
+    return job;
+  }
   private selectedPickups = new Map<string, string>();
   private routeCache = new Map<string, { key: string; from: Vector2D; route: Vector2D[] }>();
   private summaries = new Map<string, ShiftSummary>();
@@ -115,6 +128,14 @@ export class GameWorld {
     if (player) {
       // If player carried a passenger, release the passenger
       if (player.passengerId) {
+        const passenger = this.passengers.getPassengerMap().get(player.passengerId),
+          job = this.jobs.get(player.passengerId);
+        if (passenger && job) {
+          const last = job.stops[job.stops.length - 1];
+          passenger.destX = last.x;
+          passenger.destY = last.y;
+        }
+        this.jobs.delete(player.passengerId);
         this.passengers.updateCarriedStatus(player.passengerId, false);
       }
       this.selectedPickups.delete(id);
@@ -188,6 +209,27 @@ export class GameWorld {
         [...this.passengers.getPassengerMap().values()]
           .filter((t) => !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
           .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]);
+    const offers = [...this.passengers.getPassengerMap().values()]
+      .filter((t) => !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
+      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))
+      .slice(0, 8)
+      .map((t) => {
+        const job = this.getJob(t);
+        return {
+          id: t.id,
+          kind: job.kind,
+          persona: job.persona,
+          goalLabel: job.goalLabel,
+          fare: calculateFare(
+            t.reward,
+            this.streakCounts.get(id) ?? 0,
+            this.isRushHour() ? 1.5 : 1,
+            true,
+            Math.floor(t.reward * 0.15),
+          ),
+          stops: job.stops.length,
+        };
+      });
     let navigation: GameplayState['navigation'] = null;
     let trip: GameplayState['trip'] = null;
     if (passenger) {
@@ -200,11 +242,17 @@ export class GameWorld {
       }
       const route = [...cached.route];
       while (route.length > 2 && Math.hypot(route[1].x - p.x, route[1].y - p.y) < 70) route.shift();
+      const job = this.options.enhanced ? this.getJob(passenger) : null;
       const fare = calculateFare(
         passenger.reward,
         this.streakCounts.get(id) ?? 0,
         this.options.enhanced && this.isRushHour() ? 1.5 : 1,
         !!this.options.enhanced && (!p.passengerId || !this.dirtyTrips.has(id)),
+        job
+          ? p.passengerId
+            ? jobTip(passenger.reward, job, this.tickCount, this.dirtyTrips.has(id))
+            : Math.floor(passenger.reward * 0.15)
+          : 0,
       );
       navigation = {
         targetId: passenger.id,
@@ -225,12 +273,15 @@ export class GameWorld {
           fare,
           clean: !this.dirtyTrips.has(id),
           pickedUpTick: this.pickupTicks.get(id) ?? this.tickCount,
-          stopIndex: 0,
-          stops: [target],
-          kind: 'passenger',
-          dialogue: '',
-          freshness: 1,
-          damage: 0,
+          stopIndex: job?.stopIndex ?? 0,
+          stops: job?.stops ?? [target],
+          kind: job?.kind ?? 'passenger',
+          dialogue: job?.dialogue ?? '',
+          freshness: job ? freshness(job, this.tickCount) : 1,
+          damage: job?.damage ?? 0,
+          goalLabel: job?.goalLabel ?? '',
+          persona: job?.persona ?? '',
+          quickTicksRemaining: job ? Math.max(0, job.quickTicks - (this.tickCount - job.pickedUpTick)) : 0,
         };
     }
     return {
@@ -238,6 +289,7 @@ export class GameWorld {
       tick: this.tickCount,
       trip,
       navigation,
+      offers,
       selectedPickup: this.selectedPickups.get(id) ?? null,
       comboTicksRemaining: this.lastDeliveryTicks.has(id)
         ? Math.max(0, STREAK_RESET_TICKS - (this.tickCount - this.lastDeliveryTicks.get(id)!))
@@ -390,6 +442,11 @@ export class GameWorld {
       for (const landmark of LANDMARKS)
         if (!summary.visited.includes(landmark.id) && Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80)
           summary.visited.push(landmark.id);
+      if (player.passengerId) {
+        const passenger = this.passengers.getPassengerMap().get(player.passengerId);
+        if (passenger && LANDMARKS.some((l) => Math.hypot(player.x - l.x, player.y - l.y) < 80))
+          this.getJob(passenger).scenic = true;
+      }
       this.checkCityRuleInteractions(player, prevX, prevY);
     }
 
@@ -468,6 +525,7 @@ export class GameWorld {
 
     // 3. Tick passenger spawner (handles expiry + respawn)
     this.passengers.tick(this.tickCount, this.isRushHour());
+    for (const id of this.jobs.keys()) if (!this.passengers.getPassengerMap().has(id)) this.jobs.delete(id);
   }
 
   /** Reset streak for players who haven't delivered in STREAK_RESET_TICKS. */
@@ -510,6 +568,15 @@ export class GameWorld {
               this.dirtyTrips.delete(player.id);
               player.passengerId = passenger.id;
               passenger.isCarried = true;
+              if (this.options.enhanced) {
+                const job = this.getJob(passenger);
+                job.pickedUpTick = this.tickCount;
+                job.stopIndex = 0;
+                job.damage = 0;
+                job.scenic = false;
+                passenger.destX = job.stops[0].x;
+                passenger.destY = job.stops[0].y;
+              }
               this.spatialGrid.remove(passenger.id); // Remove from public grid
               break; // Pick up one at a time
             }
@@ -525,6 +592,14 @@ export class GameWorld {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < COLLISION_RADIUS + 10) {
+          const job = this.options.enhanced ? this.getJob(passenger) : null;
+          if (job && job.stopIndex < job.stops.length - 1) {
+            job.stopIndex++;
+            passenger.destX = job.stops[job.stopIndex].x;
+            passenger.destY = job.stops[job.stopIndex].y;
+            this.routeCache.delete(player.id);
+            return;
+          }
           // Success! Apply streak multiplier to reward
           const streak = this.streakCounts.get(player.id) ?? 0;
           const multiplier = getStreakMultiplier(streak);
@@ -533,13 +608,15 @@ export class GameWorld {
             streak,
             this.options.enhanced && this.isRushHour() ? 1.5 : 1,
             !!this.options.enhanced && !this.dirtyTrips.has(player.id),
+            job ? jobTip(passenger.reward, job, this.tickCount, this.dirtyTrips.has(player.id)) : 0,
           );
           const reward = this.options.enhanced ? fare.total : Math.floor(passenger.reward * multiplier);
 
           player.score += reward;
           const summary = this.summaries.get(player.id)!;
           summary.baseFares += passenger.reward;
-          summary.bonuses += reward - passenger.reward;
+          summary.tips += this.options.enhanced ? fare.tip : 0;
+          summary.bonuses += reward - passenger.reward - (this.options.enhanced ? fare.tip : 0);
           if (!this.dirtyTrips.has(player.id)) summary.cleanTrips++;
           const duration = Math.max(1, this.tickCount - (this.pickupTicks.get(player.id) ?? this.tickCount));
           summary.fastestTripTicks = summary.fastestTripTicks ? Math.min(summary.fastestTripTicks, duration) : duration;
@@ -557,6 +634,7 @@ export class GameWorld {
           const currentDeliveries = this.sessionDeliveries.get(player.id) ?? 0;
           this.sessionDeliveries.set(player.id, currentDeliveries + 1);
 
+          this.jobs.delete(passenger.id);
           this.passengers.remove(passenger.id);
           player.passengerId = null;
         }
@@ -599,7 +677,11 @@ export class GameWorld {
 
   private recordViolation(player: PlayerState, type: ViolationType, amount: number, charged = amount): void {
     this.summaries.get(player.id)!.fines += charged;
-    if (player.passengerId) this.dirtyTrips.add(player.id);
+    if (player.passengerId) {
+      this.dirtyTrips.add(player.id);
+      const job = this.jobs.get(player.passengerId);
+      if (job && type !== 'red-light') job.damage = Math.min(1, job.damage + 0.25);
+    }
     player.lastViolation = {
       type,
       amount,

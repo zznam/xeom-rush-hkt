@@ -9,3 +9,4 @@ export * from './navigation';
 export * from './gameplay';
 export * from './career';
 export * from './atlas';
+export * from './jobs';

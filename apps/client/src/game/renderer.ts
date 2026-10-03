@@ -1,4 +1,5 @@
 import {
+  jobIndex,
   type GameplayState,
   CITY_MAP,
   LANDMARKS,
@@ -593,12 +594,13 @@ export class GameRenderer {
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 2, 22, 9, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (this.passengerArt.complete && this.passengerArt.naturalWidth) {
+      const kind = jobIndex(p.id) % 10;
+      if (kind < 6 && this.passengerArt.complete && this.passengerArt.naturalWidth) {
         ctx.drawImage(this.passengerArt, p.x - 25, p.y - 43 + bob, 50, 50);
       } else {
         ctx.font = '30px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🙋', p.x, p.y + bob);
+        ctx.fillText(kind < 6 ? '🙋' : kind < 8 ? '🥡' : '📦', p.x, p.y + bob);
       }
       ctx.fillStyle = '#fff9e7';
       ctx.strokeStyle = color;
@@ -614,7 +616,7 @@ export class GameRenderer {
     }
 
     // If local player is carrying a passenger, draw a highlighted route to destination
-    if (localPassengerId) {
+    if (localPassengerId && !this.gameplay?.navigation) {
       const activePass = passengers.find((p) => p.id === localPassengerId);
       if (activePass) {
         // Draw destination zone
