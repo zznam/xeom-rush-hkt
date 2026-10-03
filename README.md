@@ -135,7 +135,7 @@ bun run --filter server stress -- --clients 250 --duration 30 --url ws://localho
 
 ## 🗄️ Database Persistence & Leaderboard
 
-The Deno deployment uses **Deno KV** for career totals, ranking, and idempotent session checkpoints every 30 seconds and at ride end. Live city state remains in memory. Legacy names still identify careers; stable guest identity is planned in release 2. The original **MongoDB** adapter remains available for Node deployments:
+The Deno deployment uses **Deno KV** for career totals, ranking, and idempotent session checkpoints every 30 seconds and at ride end. Live city state remains in memory. New clients receive stable browser-bound guest identities; historical name-based records remain separate. The original **MongoDB** adapter remains available for Node deployments:
 
 - **Asynchronous Save Queue:** During a match, passenger dropoffs and traffic violations are tracked strictly in memory. When a player disconnects, their session stats are saved asynchronously to prevent database latency from slowing down the 20Hz tick loop.
 - **Collections:**
@@ -209,3 +209,7 @@ AWS server tasks explicitly set `DEPLOY_TARGET=regional-production` through Terr
 See [the AWS operations guide](docs/aws-deployment.md) for bootstrap, manual promotion, and rollback.
 
 The original Railway Docker configuration is retained as an optional paid-host fallback. The Railway trial expired; its MongoDB volume has not been removed or migrated. New Deno careers begin in the new database. The legacy `deploy.sh` helper describes Railway setup and is not used for Deno.
+
+## ID-based careers in local MongoDB
+
+The local compose service initializes a single-node replica set so career totals and session contributions commit atomically. Use `mongodb://localhost:27018/xeom_rush?directConnection=true&replicaSet=rs0` and wait for the service health check before starting the server. Existing data stays on its original volume. MongoDB deployments must support transactions for new careers; legacy name-based records remain untouched.

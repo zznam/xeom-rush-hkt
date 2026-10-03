@@ -1,4 +1,6 @@
 import {
+  emptySummary,
+  type ShiftSummary,
   PlayerState,
   PassengerState,
   InputPayload,
@@ -33,6 +35,9 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export class GameWorld {
+  private summaries = new Map<string, ShiftSummary>();
+  private pickupTicks = new Map<string, number>();
+  private dirtyTrips = new Set<string>();
   private players: Map<string, PlayerState> = new Map();
   private inputQueues: Map<string, InputPayload[]> = new Map();
   private spatialGrid: SpatialGrid;
@@ -86,6 +91,7 @@ export class GameWorld {
       connected: true,
     };
 
+    this.summaries.set(id, emptySummary());
     this.players.set(id, player);
     this.inputQueues.set(id, []);
     this.spatialGrid.insert(id, startX, startY);
@@ -104,6 +110,9 @@ export class GameWorld {
       if (player.passengerId) {
         this.passengers.updateCarriedStatus(player.passengerId, false);
       }
+      this.summaries.delete(id);
+      this.pickupTicks.delete(id);
+      this.dirtyTrips.delete(id);
       this.players.delete(id);
       this.inputQueues.delete(id);
       this.spatialGrid.remove(id);
@@ -127,6 +136,8 @@ export class GameWorld {
 
     return {
       username: player.username,
+      revision: this.tickCount,
+      summary: structuredClone(this.summaries.get(playerId) ?? emptySummary()),
       score: player.score,
       peakStreak: this.sessionPeakStreaks.get(playerId) ?? 0,
       deliveriesCount: this.sessionDeliveries.get(playerId) ?? 0,
@@ -146,6 +157,19 @@ export class GameWorld {
     const player = this.players.get(id);
     if (player) player.connected = connected;
     this.inputQueues.set(id, []);
+  }
+
+  public getCityRanking() {
+    return [...this.players.values()]
+      .filter((p) => !p.id.startsWith('bot-'))
+      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+      .slice(0, 10)
+      .map((p) => ({
+        id: p.id,
+        username: p.username,
+        score: p.score,
+        deliveries: this.sessionDeliveries.get(p.id) ?? 0,
+      }));
   }
 
   public getPlayerCount(): number {
@@ -269,6 +293,8 @@ export class GameWorld {
       // Update spatial index
       this.spatialGrid.update(player.id, player.x, player.y);
 
+      const summary = this.summaries.get(playerId)!;
+      summary.distance += Math.hypot(player.x - prevX, player.y - prevY);
       this.checkCityRuleInteractions(player, prevX, prevY);
 
       // Check actions: Pickup or Deliver
@@ -378,6 +404,8 @@ export class GameWorld {
 
             if (dist < COLLISION_RADIUS) {
               // Pick up!
+              this.pickupTicks.set(player.id, this.tickCount);
+              this.dirtyTrips.delete(player.id);
               player.passengerId = passenger.id;
               passenger.isCarried = true;
               this.spatialGrid.remove(passenger.id); // Remove from public grid
@@ -401,6 +429,12 @@ export class GameWorld {
           const reward = Math.floor(passenger.reward * multiplier);
 
           player.score += reward;
+          const summary = this.summaries.get(player.id)!;
+          summary.baseFares += passenger.reward;
+          summary.bonuses += reward - passenger.reward;
+          if (!this.dirtyTrips.has(player.id)) summary.cleanTrips++;
+          const duration = Math.max(1, this.tickCount - (this.pickupTicks.get(player.id) ?? this.tickCount));
+          summary.fastestTripTicks = summary.fastestTripTicks ? Math.min(summary.fastestTripTicks, duration) : duration;
 
           // Increment streak
           const newStreak = streak + 1;
@@ -455,6 +489,8 @@ export class GameWorld {
   }
 
   private recordViolation(player: PlayerState, type: ViolationType, amount: number): void {
+    this.summaries.get(player.id)!.fines += amount;
+    if (player.passengerId) this.dirtyTrips.add(player.id);
     player.lastViolation = {
       type,
       amount,

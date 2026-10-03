@@ -1,14 +1,15 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'vitest';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { dbManager } from './db';
+import { CareerRepository, MongoCareerBackend } from './career-store';
 import { savePlayerSession, logMatchSession, ISessionStats } from './persist';
 
-let mongoServer: MongoMemoryServer;
+let mongoServer: MongoMemoryReplSet;
 
 describe('MongoDB Integration Tests', () => {
   beforeAll(async () => {
     // Start an in-memory MongoDB instance
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     const testUri = mongoServer.getUri();
 
     // Connect dbManager to the test instance
@@ -16,7 +17,7 @@ describe('MongoDB Integration Tests', () => {
   }, 90_000); // Cold CI runners download MongoDB and initialize a replica set before assertions.
 
   afterAll(async () => {
-    // Close dbManager connection and stop MongoMemoryServer
+    // Close dbManager connection and stop MongoMemoryReplSet
     await dbManager.close();
     await mongoServer?.stop();
   });
@@ -74,6 +75,17 @@ describe('MongoDB Integration Tests', () => {
     expect(doc!.peakScore).toBe(25000); // Math.max(15000, 25000)
     expect(doc!.peakStreak).toBe(4); // Math.max(4, 3)
     expect(doc!.totalDeliveries).toBe(8); // 3 + 5
+  });
+
+  it('atomically persists ID careers and durable session ledgers', async () => {
+    await dbManager.getDb().collection('career_v2').createIndex({ key: 1 }, { unique: true });
+    const repository = new CareerRepository(new MongoCareerBackend());
+    const stats = { username: 'Stable', score: 10000, peakStreak: 1, deliveriesCount: 1, revision: 1 };
+    await repository.save('id-one', 'session-one', stats);
+    await repository.save('id-one', 'session-one', stats);
+    await repository.save('id-one', 'session-one', { ...stats, score: 8000, revision: 2 });
+    expect((await repository.profile('id-one')).careerScore).toBe(8000);
+    expect((await repository.profile('id-two')).careerScore).toBe(0);
   });
 
   it('logMatchSession successfully inserts a match log document', async () => {

@@ -1,10 +1,12 @@
+import { careerRepository } from './career-store';
+import { publicCareer } from '@xeom-rush/shared';
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Admission, isSessionId, verifyGuest, validRoomKey } from './admission';
+import { Admission, isSessionId, issueGuest, verifyGuest, validRoomKey } from './admission';
 import {
   EMessageType,
   resolveDeploymentTarget,
@@ -33,6 +35,7 @@ const region = regional ? process.env.GAME_REGION || '' : 'local';
 const roomId = regional ? process.env.ROOM_ID || '' : 'local';
 if (regional && !/^[a-z0-9-]{1,32}$/.test(region)) throw new Error('Regional rooms require GAME_REGION');
 const guestSecret = process.env.GUEST_SECRET || '';
+let identitySecret = guestSecret;
 if (production && regional && !process.env.DYNAMODB_TABLE)
   throw new Error('Production regional rooms require DYNAMODB_TABLE');
 const capacity = Number(process.env.ROOM_CAPACITY || 64);
@@ -82,6 +85,29 @@ app.get('/api/health', (_req, res) => {
     region,
     room: roomId,
   });
+});
+
+app.post('/api/guest', (_req, res) => {
+  res.json({ guest: issueGuest(identitySecret) });
+});
+app.get('/api/profile', async (req, res) => {
+  const id = verifyGuest(req.headers.authorization?.replace(/^Bearer /, ''), identitySecret);
+  if (!id) {
+    res.status(401).json({ error: 'Invalid guest' });
+    return;
+  }
+  try {
+    res.json(publicCareer(await careerRepository.profile(id)));
+  } catch {
+    res.status(503).json({ error: 'Profile unavailable' });
+  }
+});
+app.get('/api/careers', async (_req, res) => {
+  try {
+    res.json((await careerRepository.leaders()).map(publicCareer));
+  } catch {
+    res.status(503).json({ error: 'Ranking unavailable' });
+  }
 });
 
 app.get('/api/chunks', (req, res) => {
@@ -329,7 +355,16 @@ wss.on('connection', (ws: WebSocket, request) => {
             ws.close(1013, 'City is full');
             return;
           }
-          const profileId = regional ? admission.consume(token, requestedTicket) : undefined;
+          const requestedGuest = connectionUrl.searchParams.get('guest');
+          const profileId = regional
+            ? admission.consume(token, requestedTicket)
+            : requestedGuest
+              ? verifyGuest(requestedGuest, identitySecret)
+              : undefined;
+          if (requestedGuest && !profileId) {
+            ws.close(1008, 'Invalid guest credential');
+            return;
+          }
           if (regional && !profileId) {
             ws.close(1008, 'Reservation expired; find a new city');
             return;
@@ -361,6 +396,18 @@ wss.on('connection', (ws: WebSocket, request) => {
         // Send configuration back to player
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
+        ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true } })}`,
+        );
+        const profileId = sessions.get(token)?.profileId;
+        if (profileId)
+          void careerRepository
+            .profile(profileId)
+            .then((p) => {
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(`control:${JSON.stringify({ version: 1, kind: 'career', data: publicCareer(p) })}`);
+            })
+            .catch(() => {});
       } else if (msgType === EMessageType.LEAVE) {
         if (joined) {
           joined = false;
@@ -466,6 +513,10 @@ const gameLoop = setInterval(() => {
           `city:${JSON.stringify({ tick: world.getTick(), rushHourTicksRemaining: world.getRushHourTicksRemaining(), deliveries })}`,
         );
       }
+      if (world.getTick() % 20 === 0 || shouldSendFull)
+        playerSocket.ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'shift', data: { summary: world.getSessionStatsForPlayer(playerId)?.summary, cityRanking: world.getCityRanking() } })}`,
+        );
       playerSocket.lastDeliveries = deliveries;
       playerSocket.lastSnapshot = snapshot;
       if (shouldSendFull) {
@@ -506,7 +557,8 @@ const gameLoop = setInterval(() => {
 
 // Start only after the selected persistence service is ready.
 const PORT = process.env.PORT || 3002;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush';
+const MONGODB_URI =
+  process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush?directConnection=true&replicaSet=rs0';
 
 const startServer = () => {
   const bots = Number(process.env.BOT_COUNT ?? 8);
@@ -519,7 +571,8 @@ const startServer = () => {
 };
 
 connectStorage(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
+    identitySecret = regional ? guestSecret : await careerRepository.secret();
     storageReady = true;
     startServer();
   })
@@ -531,6 +584,7 @@ connectStorage(MONGODB_URI)
       process.exitCode = 1;
       return;
     }
+    identitySecret ||= randomUUID() + randomUUID();
     console.warn('⚠️ [Startup] Server starting in MEMORY-ONLY mode. Career stats will not be persistent.');
     storageReady = true;
     startServer();
@@ -540,11 +594,11 @@ connectStorage(MONGODB_URI)
 // KV records each session's previous contribution, so retries never double-count.
 let checkpointPending: Promise<void> | null = null;
 const checkpointLoop = setInterval(() => {
-  if (!isKvStorage() || checkpointPending) return;
+  if (checkpointPending) return;
   checkpointPending = Promise.all(
     [...sessions.values()].map(async (session) => {
       const stats = world.getSessionStatsForPlayer(session.playerId);
-      if (stats)
+      if (stats && (session.profileId || isKvStorage()))
         await saveSession(session.saveId, { ...stats, ...(session.profileId ? { profileId: session.profileId } : {}) });
     }),
   )

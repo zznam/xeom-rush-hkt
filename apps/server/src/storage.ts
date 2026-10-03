@@ -1,3 +1,10 @@
+import {
+  configureCareers,
+  KvCareerBackend,
+  MongoCareerBackend,
+  DynamoCareerBackend,
+  careerRepository,
+} from './career-store';
 import { dbManager } from './db';
 import { savePlayerSession, type ISessionStats } from './persist';
 import { resolveDeploymentTarget } from '@xeom-rush/shared';
@@ -79,15 +86,21 @@ export async function connectStorage(mongoUri: string): Promise<void> {
     const { DynamoPersistence } = await import('./dynamo-storage.js');
     dynamoPersistence = new DynamoPersistence(process.env.DYNAMODB_TABLE);
     await dynamoPersistence.health();
+    configureCareers(new DynamoCareerBackend(process.env.DYNAMODB_TABLE));
     console.log('[Storage] Connected to regional DynamoDB');
     return;
   }
   const deno = (globalThis as unknown as { Deno?: { openKv(path?: string): Promise<KvStore> } }).Deno;
   if (deno) {
-    kvPersistence = new KvPersistence(await deno.openKv(process.env.DENO_KV_PATH || undefined));
+    const kv = await deno.openKv(process.env.DENO_KV_PATH || undefined);
+    kvPersistence = new KvPersistence(kv);
+    configureCareers(new KvCareerBackend(kv));
     console.log('[Storage] Connected to Deno KV');
   } else {
     await dbManager.connect(mongoUri);
+    await dbManager.getDb().collection('career_v2').createIndex({ key: 1 }, { unique: true });
+    await dbManager.getDb().collection('career_v2').createIndex({ careerScore: -1 });
+    configureCareers(new MongoCareerBackend());
   }
 }
 export async function storageHealth(): Promise<void> {
@@ -97,6 +110,10 @@ export async function storageHealth(): Promise<void> {
 }
 const writes = new Map<string, Promise<void>>();
 export async function saveSession(id: string, stats: ISessionStats): Promise<void> {
+  if (stats.profileId) {
+    await careerRepository.save(stats.profileId, id, stats);
+    return;
+  }
   const previous = writes.get(id) ?? Promise.resolve();
   const write = previous
     .catch(() => {})

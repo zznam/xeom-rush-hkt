@@ -7,3 +7,4 @@ export * from './deployment';
 export * from './city-map';
 export * from './navigation';
 export * from './gameplay';
+export * from './career';
