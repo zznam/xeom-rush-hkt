@@ -8,6 +8,7 @@
     "test:ui": "playwright test --ui"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.0"
+    "@playwright/test": "^1.45.0",
+    "@xeom-rush/shared": "workspace:*"
   }
 }

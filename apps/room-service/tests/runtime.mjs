@@ -13,7 +13,7 @@ const root = resolve(fileURLToPath(new URL('../../..', import.meta.url))),
   serverRequire = createRequire(resolve(root, 'apps/server/package.json'));
 const { Miniflare, Log, LogLevel } = require('miniflare'),
   { WebSocket } = serverRequire('ws'),
-  { encodeJoin } = serverRequire('@xeom-rush/shared');
+  { encodeJoin, LANDMARKS } = serverRequire('@xeom-rush/shared');
 const secret = 'local-test-guest-secret-with-32-characters',
   checkpointSecret = 'local-test-room-career-secret-with-32-characters';
 const nodeUrl = 'http://localhost:3027';
@@ -276,6 +276,36 @@ try {
     b.ws.close();
     rejoined.ws.close();
     console.log(`${adapter}: invite, round, host transfer, reconnect, results, rematch, restart PASS`);
+  }
+  for (const [adapter, base] of [
+    [dynamoUrl ? 'ecs-dynamo' : 'ecs-compatible', nodeUrl],
+    ['cloudflare', workerUrl],
+  ]) {
+    const guests = await Promise.all([0, 1, 2, 3].map(async () => (await post(`${nodeUrl}/api/guest`, {})).guest));
+    const room = await post(`${base}/api/rooms`, { guest: guests[0] }),
+      endpoint = `${room.apiUrl}/api/rooms/${room.invite}`;
+    const sockets = [];
+    for (const guest of guests) sockets.push(await open(endpoint, guest));
+    control(sockets[0], 'room-mode', 'relay');
+    await until(() => latest(sockets[0], 'room').mode === 'relay');
+    control(sockets[0], 'room-start');
+    await until(() => latest(sockets[0], 'room').status === 'running');
+    const team = latest(sockets[0], 'room').teamPlay.teams[0],
+      carrier = guests.findIndex((g) => g.startsWith(team.carrierId)),
+      recipient = guests.findIndex((g) => g.startsWith(team.nextRiderId));
+    const target = LANDMARKS.find((l) => l.id === team.legs[0]);
+    await post(`${endpoint}/test`, { action: 'position', profileId: team.carrierId, x: target.x - 25, y: target.y });
+    await until(() => latest(sockets[1], 'room').teamPlay.teams[0].handoffPending);
+    sockets[carrier].ws.close();
+    await until(() => latest(sockets[1], 'room').teamPlay.teams[0].carrierId === team.nextRiderId, 35000);
+    assert.equal(latest(sockets[1], 'room').teamPlay.teams[0].score, 10000);
+    assert.equal(latest(sockets[1], 'room').teamPlay.teams[0].leg, 1);
+    sockets[recipient].ws.close();
+    const observer = sockets.find((s, i) => i !== carrier && i !== recipient);
+    await until(() => latest(observer, 'room').teamPlay.teams[0].failed, 35000);
+    await post(`${endpoint}/test`, { action: 'finish' });
+    for (const s of sockets) s.ws.close();
+    console.log(`${adapter}: relay handoff recovery at real 30-second grace and exhausted team PASS`);
   }
 } catch (error) {
   console.error(logs.slice(-2500));

@@ -18,6 +18,7 @@ import {
   type WorldSnapshot,
   type GameCommand,
 } from '@xeom-rush/shared';
+import { TeamPlay } from './team-play';
 import { GameWorld } from './world';
 import { BotManager } from './bot-ai';
 export interface RoomTransport {
@@ -46,6 +47,16 @@ export class RoomOwner {
   public world: GameWorld;
   public state: RoomState;
   private bots: BotManager;
+  private teams: TeamPlay;
+  private teamMembers() {
+    return [...this.members.values()].map((p) => ({
+      id: p.id,
+      playerId: p.playerId,
+      team: p.team,
+      connected: !!p.socket && p.joined,
+      disconnectedAt: p.disconnectedAt,
+    }));
+  }
   private members = new Map<string, Member>();
   public careerCommand: ((id: string, command: GameCommand) => void) | null = null;
   private acknowledged = new Map<string, number>();
@@ -66,6 +77,7 @@ export class RoomOwner {
     this.now = options.now ?? Date.now;
     this.world = new GameWorld({ enhanced: true, now: this.now });
     this.bots = new BotManager(this.world, this.world.getPhysics());
+    this.teams = new TeamPlay(this.world, () => this.teamMembers(), this.now);
     this.state = {
       invite,
       hostId: '',
@@ -86,6 +98,7 @@ export class RoomOwner {
         ownerEpoch: this.state.ownerEpoch,
         emptyExpiresAt: options.persisted.state.emptyExpiresAt || this.now() + ROOM_EMPTY_TTL_MS,
       };
+      this.teams.state = options.persisted.state.teamPlay ?? null;
       for (const p of this.state.players) {
         this.members.set(p.id, this.member(p.id, p.username, p.team));
         this.world.addPlayer(p.playerId, p.username);
@@ -97,11 +110,16 @@ export class RoomOwner {
         this.state.reason = 'Chủ phòng đã khởi động lại. Vòng chơi bị gián đoạn; thành tích đã ghi được giữ lại.';
         this.state.results = this.state.players.map((p) => {
           const c = options.persisted!.checkpoints.find((c) => c.profileId === p.id);
+          const relayLegs =
+            this.teams.state?.kind === 'relay'
+              ? (this.teams.state.teams.find((t) => t.members.includes(p.id))?.contributions[p.id] ?? 0)
+              : undefined;
           return {
             id: p.id,
             username: p.username,
-            score: this.retained.get(p.id)?.score ?? c?.stats.score ?? 0,
-            deliveries: this.retained.get(p.id)?.deliveries ?? c?.stats.deliveriesCount ?? 0,
+            score:
+              relayLegs === undefined ? (this.retained.get(p.id)?.score ?? c?.stats.score ?? 0) : relayLegs * 10000,
+            deliveries: relayLegs ?? this.retained.get(p.id)?.deliveries ?? c?.stats.deliveriesCount ?? 0,
           };
         });
       }
@@ -133,12 +151,13 @@ export class RoomOwner {
     return !this.active && this.now() >= this.state.emptyExpiresAt;
   }
   public connect(id: string, socket: RoomTransport) {
+    if (this.state.status === 'running' && this.now() >= this.endsAt) this.finish();
     this.prune();
     let p = this.members.get(id);
     if (!p && this.state.status === 'running') throw new Error('Vòng chơi đang diễn ra. Chờ vòng sau nhé.');
     if (!p && this.members.size >= 8) throw new Error('Phòng đã đủ tám tài xế.');
     if (!p) {
-      p = this.member(id, 'Bạn');
+      p = this.member(id, 'Bạn', (this.members.size % 2) + 1);
       this.members.set(id, p);
       this.world.addPlayer(p.playerId, p.username);
     }
@@ -187,13 +206,18 @@ export class RoomOwner {
     this.state.hostId = [...this.members.values()].find((p) => p.socket)?.id ?? '';
   }
   private prune() {
-    for (const p of this.members.values())
+    for (const p of this.members.values()) {
+      if (!p.socket && p.expired && this.state.status !== 'running') {
+        this.members.delete(p.id);
+        continue;
+      }
       if (!p.socket && !p.expired && this.now() - p.disconnectedAt >= ROOM_RECONNECT_MS) {
         this.capture();
         this.world.removePlayer(p.playerId);
         p.expired = true;
         if (this.state.status !== 'running') this.members.delete(p.id);
       }
+    }
   }
   public receive(id: string, socket: RoomTransport, data: string | ArrayBuffer) {
     const p = this.members.get(id);
@@ -244,7 +268,13 @@ export class RoomOwner {
   private configure(p: Member) {
     p.last = null;
     p.socket?.send(encodeConfig(p.playerId, MAP_SIZE, CHUNK_SIZE));
-    this.control(p, 'capabilities', { version: 1, careers: true, trips: true, rooms: true, modes: ['competitive'] });
+    this.control(p, 'capabilities', {
+      version: 1,
+      careers: true,
+      trips: true,
+      rooms: true,
+      modes: ['competitive', 'co-op', 'relay'],
+    });
     this.snapshot(p, true);
     this.control(p, 'room', this.view());
   }
@@ -258,8 +288,36 @@ export class RoomOwner {
       this.leave(p.id);
       return;
     }
+    if (c.action === 'room-team' && this.state.status !== 'running' && ['1', '2'].includes(c.value ?? '')) {
+      const team = Number(c.value);
+      if ([...this.members.values()].filter((m) => m.team === team).length < 4 || p.team === team) p.team = team;
+      this.dirty = true;
+      this.broadcastState();
+      return;
+    }
+    if (this.state.status === 'running') {
+      if (c.action === 'emote' && this.teams.emote(p.id, c.target ?? '')) this.broadcastState();
+      if (c.action === 'dispatch-job' && this.teams.dispatch(p.id)) {
+        this.dirty = true;
+        this.broadcastState();
+      }
+      if (c.action === 'relay-handoff' && this.teams.handoff(p.id, c.target ?? '')) {
+        this.dirty = true;
+        this.broadcastState();
+      }
+    }
     if (p.id !== this.state.hostId) return;
-    if (c.action === 'room-bots' && this.state.status !== 'running') this.state.fillBots = c.value === 'true';
+    if (
+      c.action === 'room-mode' &&
+      this.state.status !== 'running' &&
+      ['competitive', 'co-op', 'relay'].includes(c.value ?? '')
+    ) {
+      this.state.mode = c.value as RoomState['mode'];
+      this.state.reason = '';
+      if (this.state.mode !== 'competitive') this.state.fillBots = false;
+    }
+    if (c.action === 'room-bots' && this.state.status !== 'running' && this.state.mode === 'competitive')
+      this.state.fillBots = c.value === 'true';
     if (
       (c.action === 'room-start' && this.state.status === 'lobby') ||
       (c.action === 'room-rematch' && ['results', 'interrupted'].includes(this.state.status))
@@ -270,6 +328,23 @@ export class RoomOwner {
   }
   public start() {
     if (this.state.status === 'running' || !this.active) return false;
+    const starters = this.teamMembers().filter((p) => p.connected);
+    if (this.state.mode === 'co-op' && starters.length < 2) {
+      this.state.reason = 'Co-op cần ít nhất hai người thật.';
+      this.broadcastState();
+      return false;
+    }
+    if (
+      this.state.mode === 'relay' &&
+      [1, 2].some((team) => {
+        const count = starters.filter((p) => p.team === team).length;
+        return count < 2 || count > 4;
+      })
+    ) {
+      this.state.reason = 'Tiếp sức cần hai đội, mỗi đội hai đến bốn người thật.';
+      this.broadcastState();
+      return false;
+    }
     this.capture();
     for (const p of this.members.values()) if (!p.socket && p.expired) this.members.delete(p.id);
     this.world = new GameWorld({ enhanced: true, now: this.now });
@@ -279,6 +354,8 @@ export class RoomOwner {
       if (this.appearances.has(p.id)) this.world.setAppearance(p.playerId, this.appearances.get(p.id)!);
       this.world.getPlayer(p.playerId)!.connected = !!p.socket;
     }
+    this.teams = new TeamPlay(this.world, () => this.teamMembers(), this.now);
+    this.teams.start(this.state.mode, starters);
     this.retained.clear();
     this.state.roundId = crypto.randomUUID();
     this.state.status = 'running';
@@ -303,6 +380,22 @@ export class RoomOwner {
       }))
       .concat(this.world.getCityRanking(true).filter((p) => p.id.startsWith('bot-')))
       .sort((a, b) => b.score - a.score);
+    if (this.teams.state?.kind === 'co-op')
+      reason = this.teams.state.completed
+        ? 'Đồng đội hoàn thành mục tiêu! Cả phố cùng vui.'
+        : 'Hết vòng co-op. Chơi lại để cùng chạm mục tiêu nhé!';
+    if (this.teams.state?.kind === 'relay') {
+      const teams = this.teams.state.teams;
+      this.state.results = [...this.members.values()]
+        .map((p) => ({
+          id: p.id,
+          username: p.username,
+          score: (teams.find((t) => t.members.includes(p.id))?.contributions[p.id] ?? 0) * 10000,
+          deliveries: teams.find((t) => t.members.includes(p.id))?.contributions[p.id] ?? 0,
+        }))
+        .sort((a, b) => b.score - a.score);
+      reason = 'Hết vòng tiếp sức. Điểm chặng tính riêng với nghề nghiệp.';
+    }
     this.capture();
     this.state.status = 'results';
     this.state.reason = reason;
@@ -319,6 +412,7 @@ export class RoomOwner {
     if (!this.active || this.state.status !== 'running') return;
     this.bots.tick();
     this.world.tick(0.05);
+    this.teams.tick();
     this.state.remainingTicks = Math.max(0, Math.ceil((this.endsAt - this.now()) / 50));
     for (const p of this.members.values()) if (p.joined && p.socket) this.snapshot(p);
     if (this.world.getTick() % 20 === 0) this.broadcastState();
@@ -356,7 +450,15 @@ export class RoomOwner {
     const tripKey = trip ? `${trip.id}:${trip.destX}:${trip.destY}` : '';
     if (complete || snapshot.tick % 20 === 0 || tripKey !== p.tripKey) {
       p.tripKey = tripKey;
-      this.control(p, 'gameplay', this.world.getGameplayState(p.playerId));
+      const gameplay = this.world.getGameplayState(p.playerId),
+        relay = this.teams.navigation(p.id);
+      if (gameplay && relay) {
+        gameplay.teamNavigation = relay.label;
+        gameplay.navigation = relay.navigation;
+        gameplay.trip = null;
+        gameplay.offers = [];
+      }
+      this.control(p, 'gameplay', gameplay);
       this.control(p, 'appearance', this.world.getAppearances());
       p.socket.send(
         `city:${JSON.stringify({ tick: snapshot.tick, rushHourTicksRemaining: this.world.getRushHourTicksRemaining(), deliveries: this.world.getSessionStatsForPlayer(p.playerId)?.deliveriesCount ?? 0 })}`,
@@ -366,6 +468,14 @@ export class RoomOwner {
   public view(): RoomState {
     return {
       ...this.state,
+      teamPlay:
+        this.teams.state?.kind === 'relay'
+          ? {
+              ...this.teams.state,
+              teams: this.teams.state.teams.map((t) => ({ ...t, nextRiderId: this.teams.nextRider(t) })),
+            }
+          : this.teams.state,
+      emotes: this.teams.emotes,
       players: [...this.members.values()].map((p) => ({
         id: p.id,
         playerId: p.playerId,

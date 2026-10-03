@@ -38,7 +38,7 @@ export function installPrivateRooms(
         available: true,
         apiUrl: base,
         identityUrl: base,
-        modes: ['competitive'],
+        modes: ['competitive', 'co-op', 'relay'],
         adapter: options.regional ? 'ecs' : 'local',
       };
     if (!remote || !options.ready()) return { available: false, modes: [] };

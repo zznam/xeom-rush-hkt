@@ -31,6 +31,8 @@ export interface RoomState {
   reason: string;
   ownerEpoch: string;
   emptyExpiresAt: number;
+  teamPlay?: TeamPlayState | null;
+  emotes?: RoomEmote[];
 }
 export interface DurableRoom {
   state: RoomState;
@@ -102,3 +104,34 @@ export function parseRoomCheckpoint(value: unknown): RoomCheckpoint | null {
     },
   };
 }
+
+export const EMOTES = [
+  { id: 'hello', icon: '👋', text: 'Chào đồng đội!' },
+  { id: 'thanks', icon: '🙏', text: 'Cảm ơn nha!' },
+  { id: 'go', icon: '🛵', text: 'Lên đường thôi!' },
+  { id: 'wait', icon: '✋', text: 'Chờ mình với!' },
+  { id: 'help', icon: '🆘', text: 'Cần đồng đội giúp!' },
+  { id: 'nice', icon: '✨', text: 'Chuyến quá đẹp!' },
+] as const;
+export interface RoomEmote {
+  profileId: string;
+  id: string;
+  expiresAt: number;
+}
+export interface RelayTeam {
+  id: number;
+  members: string[];
+  legs: string[];
+  leg: number;
+  carrierId: string;
+  handoffPending: boolean;
+  completed: boolean;
+  failed: string;
+  score: number;
+  finishedAt: number;
+  contributions: Record<string, number>;
+  nextRiderId?: string;
+}
+export type TeamPlayState =
+  | { kind: 'co-op'; target: number; earned: number; completed: boolean; assignments: Record<string, string> }
+  | { kind: 'relay'; teams: RelayTeam[] };

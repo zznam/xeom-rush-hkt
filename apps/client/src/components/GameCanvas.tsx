@@ -1,3 +1,4 @@
+import { TeamPlayPanel } from './TeamPlayPanel';
 import { RoomPanel } from './RoomPanel';
 import { RoomLauncher } from './RoomHub';
 import { roomApiBase } from '../game/rooms';
@@ -39,6 +40,7 @@ interface GameCanvasProps {
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect, onRoomJoin }) => {
+  const [showTeam, setShowTeam] = useState(false);
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameplay, setGameplay] = useState<GameplayState | null>(null);
   const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
@@ -500,6 +502,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         } as React.CSSProperties
       }
     >
+      {showTeam && room?.status === 'running' && (
+        <TeamPlayPanel room={room} playerId={localPlayer?.id ?? ''} onClose={() => setShowTeam(false)} />
+      )}
       {room && (
         <RoomPanel
           state={room}
@@ -557,6 +562,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
                 onRoomJoin?.(url, name);
               }}
             />
+          )}
+          {room?.status === 'running' && (
+            <button onClick={() => setShowTeam(true)} aria-label='Đồng đội và biểu cảm'>
+              🤝 Đồng đội
+            </button>
           )}
           <button onClick={() => soundEngine.honk()} aria-label='Bấm còi'>
             📯

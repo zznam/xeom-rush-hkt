@@ -72,6 +72,7 @@ export function parseGameCommand(text: string): GameCommand | null {
 }
 export interface GameplayState {
   version: 1;
+  teamNavigation?: string;
   tick: number;
   practice: boolean;
   practiceCompleted: boolean;

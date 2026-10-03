@@ -41,6 +41,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "@playwright/test": "^1.45.0",
+        "@xeom-rush/shared": "workspace:*",
       },
     },
     "apps/room-service": {
