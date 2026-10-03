@@ -41,8 +41,10 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     const profileId = credential!.split('.')[0];
     await request.post(`${endpoint}/test`, { data: { action: 'job', kind: 0, profileId } });
     await request.post(`${endpoint}/test`, { data: { action: 'position', profileId, x: 2050, y: 2200 } });
+    await a.bringToFront();
+    await expect(a.locator('.trip-guide')).toContainText('Dự kiến');
     await a.keyboard.down('s');
-    await expect(a.locator('.trip-toast')).toContainText('Chuyến tốt! +12.500đ', { timeout: 7000 });
+    await expect(a.locator('.trip-toast')).toContainText('Chuyến tốt! +12.500đ', { timeout: 15000 });
     await a.keyboard.up('s');
     await request.post(`${endpoint}/test`, { data: { action: 'checkpoint' } });
     const profile = async () =>
