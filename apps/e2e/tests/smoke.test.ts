@@ -1,6 +1,6 @@
 import { test, expect, request } from '@playwright/test';
 
-const SERVER_URL = 'http://localhost:3003';
+const SERVER_URL = `http://localhost:${process.env.E2E_SERVER_PORT || 3003}`;
 
 test.describe('Xeom Rush Smoke Tests', () => {
   test('1. Server health endpoint responds with ok status', async () => {
@@ -101,6 +101,7 @@ test('sound and motion controls do not reconnect the game', async ({ page }) => 
   await page.locator('button[type="submit"]').click();
   await expect(page.locator('.hud-container')).toBeVisible();
   const before = connections;
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
   await page.getByRole('button', { name: 'Âm thanh', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('button', { name: 'Giảm chuyển động', exact: true }).click();
@@ -109,8 +110,10 @@ test('sound and motion controls do not reconnect the game', async ({ page }) => 
     'true',
   );
   expect(connections).toBe(before);
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   await page.reload();
   await page.locator('button[type="submit"]').click();
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -192,3 +195,42 @@ for (const layout of [
     });
   });
 }
+
+test('custom controls save without reconnecting and dialogs retain keyboard focus', async ({ page }) => {
+  let connections = 0;
+  page.on('websocket', () => connections++);
+  await page.setViewportSize({ width: 320, height: 667 });
+  await page.goto('/');
+  await page.locator('#username').fill('CustomDriver');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.locator('.hud-summary')).toBeVisible();
+  const before = connections;
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
+  await page.getByLabel('Tay thuận').selectOption('left');
+  await page.getByLabel('Kích thước cần', { exact: true }).fill('160');
+  await page.getByLabel('Khoảng cách mép', { exact: true }).fill('40');
+  await page.getByLabel('Độ nhạy', { exact: true }).fill('1.4');
+  await page.getByLabel('Cỡ chữ').selectOption('1.3');
+  await page.getByLabel('Đồ họa').selectOption('low');
+  await page.getByLabel('Phím up').focus();
+  await page.keyboard.press('i');
+  await expect(page.getByLabel('Phím up')).toHaveValue('i');
+  for (let i = 0; i < 18; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(connections).toBe(before);
+  const stick = await page.getByRole('group', { name: 'Cần điều khiển lái xe' }).boundingBox();
+  const horn = await page.locator('.honk-btn-mobile').boundingBox();
+  expect(stick!.width).toBe(160);
+  expect(stick!.x).toBeGreaterThan(horn!.x + horn!.width);
+  expect(stick!.x + stick!.width).toBeLessThanOrEqual(320);
+  await page.reload();
+  await page.locator('button[type="submit"]').click();
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
+  await expect(page.getByLabel('Tay thuận')).toHaveValue('left');
+  await expect(page.getByLabel('Phím up')).toHaveValue('i');
+  await expect(page.getByLabel('Đồ họa')).toHaveValue('low');
+});

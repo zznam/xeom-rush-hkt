@@ -1,3 +1,4 @@
+import type { GamePreferences } from '../game/preferences';
 import { TripGuide } from './TripGuide';
 import type { GameplayState } from '@xeom-rush/shared';
 import React, { useMemo, useState, useEffect } from 'react';
@@ -8,6 +9,7 @@ import { inputHandler } from '../game/input';
 import { soundEngine } from '../game/sound-engine';
 
 interface HUDProps {
+  preferences: GamePreferences;
   gameplay: GameplayState | null;
   localPlayer: PlayerState | null;
   players: PlayerState[];
@@ -28,6 +30,7 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export const HUD: React.FC<HUDProps> = ({
+  preferences,
   gameplay,
   localPlayer,
   players,
@@ -185,7 +188,10 @@ export const HUD: React.FC<HUDProps> = ({
       {isCompact && (
         <>
           <div className='joystick-mobile'>
-            <Joystick onChange={({ dx, dy }) => inputHandler.setJoystickInput(dx, dy)} />
+            <Joystick
+              size={preferences.joystickSize}
+              onChange={({ dx, dy }) => inputHandler.setJoystickInput(dx, dy)}
+            />
           </div>
           <button
             className='honk-btn-mobile'
