@@ -2,13 +2,13 @@
   "name": "xeom-rush-monorepo",
   "private": true,
   "scripts": {
-    "dev:server": "bun run build:shared && bun run --filter server dev",
-    "dev:client": "bun run build:shared && bun run --filter client dev",
+    "dev:server": "bun run build:core && bun run --filter server dev",
+    "dev:client": "bun run build:core && bun run --filter client dev",
     "build:shared": "bun run --filter '@xeom-rush/shared' build",
-    "build:server": "bun run build:shared && bun run --filter server build",
-    "build:client": "bun run build:shared && bun run --filter client build",
+    "build:server": "bun run build:core && bun run --filter server build",
+    "build:client": "bun run build:core && bun run --filter client build",
     "start:server": "bun run --filter server start",
-    "test": "bun run --filter '@xeom-rush/shared' test && bun run build:shared && bun run --filter server test",
+    "test": "bun run --filter '@xeom-rush/shared' test && bun run build:core && bun run --filter '@xeom-rush/game-core' test && bun run --filter server test",
     "test:e2e": "bun run --filter e2e test",
     "bench": "bun run --filter '@xeom-rush/shared' bench",
     "lint": "eslint . --max-warnings 0 && bun run lint:md",
@@ -21,7 +21,8 @@
     "build:client:legacy": "VITE_DEPLOY_TARGET=legacy bun run build:client",
     "build:client:regional": "VITE_DEPLOY_TARGET=regional-production bun run build:client",
     "build:legacy": "bun run build:server && bun run build:client:legacy",
-    "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs"
+    "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs",
+    "build:core": "bun run build:shared && bun run --filter '@xeom-rush/game-core' build"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

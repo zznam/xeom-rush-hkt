@@ -11,7 +11,8 @@
   "dependencies": {
     "@xeom-rush/shared": "workspace:*",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "@xeom-rush/game-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
