@@ -18,6 +18,7 @@ import {
   type WorldSnapshot,
   type GameCommand,
 } from '@xeom-rush/shared';
+import { TickMetrics } from './tick-metrics';
 import { TeamPlay } from './team-play';
 import { GameWorld } from './world';
 import { BotManager } from './bot-ai';
@@ -44,6 +45,7 @@ interface Member {
   tripKey: string;
 }
 export class RoomOwner {
+  public metrics = new TickMetrics();
   public world: GameWorld;
   public state: RoomState;
   private bots: BotManager;
@@ -404,21 +406,27 @@ export class RoomOwner {
     this.broadcastState();
   }
   public tick() {
-    this.prune();
-    if (this.state.status === 'running' && this.now() >= this.endsAt) {
-      this.finish();
-      return;
-    }
-    if (!this.active || this.state.status !== 'running') return;
-    this.bots.tick();
-    this.world.tick(0.05);
-    this.teams.tick();
-    this.state.remainingTicks = Math.max(0, Math.ceil((this.endsAt - this.now()) / 50));
-    for (const p of this.members.values()) if (p.joined && p.socket) this.snapshot(p);
-    if (this.world.getTick() % 20 === 0) this.broadcastState();
-    if (this.world.getTick() % 600 === 0) {
-      this.capture();
-      this.dirty = true;
+    const measured = this.active && this.state.status === 'running',
+      started = performance.now();
+    try {
+      this.prune();
+      if (this.state.status === 'running' && this.now() >= this.endsAt) {
+        this.finish();
+        return;
+      }
+      if (!this.active || this.state.status !== 'running') return;
+      this.bots.tick();
+      this.world.tick(0.05);
+      this.teams.tick();
+      this.state.remainingTicks = Math.max(0, Math.ceil((this.endsAt - this.now()) / 50));
+      for (const p of this.members.values()) if (p.joined && p.socket) this.snapshot(p);
+      if (this.world.getTick() % 20 === 0) this.broadcastState();
+      if (this.world.getTick() % 600 === 0) {
+        this.capture();
+        this.dirty = true;
+      }
+    } finally {
+      if (measured) this.metrics.record(performance.now() - started);
     }
   }
   private snapshot(p: Member, full = false) {

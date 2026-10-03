@@ -73,6 +73,36 @@ export function parseRoomCheckpoint(value: unknown): RoomCheckpoint | null {
   )
     return null;
   if (
+    s.summary.violations &&
+    !['redLights', 'pedestrianHits', 'driverCollisions'].every((k) =>
+      n(s.summary!.violations![k as keyof NonNullable<typeof s.summary.violations>]),
+    )
+  )
+    return null;
+  if (s.summary.bestFare !== undefined && !n(s.summary.bestFare)) return null;
+  if (
+    s.summary.recentTrips &&
+    (!Array.isArray(s.summary.recentTrips) ||
+      s.summary.recentTrips.length > 8 ||
+      !s.summary.recentTrips.every(
+        (r) =>
+          r &&
+          typeof r.id === 'string' &&
+          r.id.length <= 200 &&
+          ['passenger', 'food', 'parcel'].includes(r.kind) &&
+          typeof r.clean === 'boolean' &&
+          typeof r.completedAt === 'number' &&
+          Number.isFinite(r.completedAt) &&
+          r.completedAt >= 0 &&
+          r.completedAt < 1e14 &&
+          n(r.durationTicks) &&
+          n(r.distance) &&
+          r.fare &&
+          ['base', 'combo', 'environment', 'clean', 'tip', 'total'].every((k) => n(r.fare[k as keyof typeof r.fare])),
+      ))
+  )
+    return null;
+  if (
     Object.entries(s.progress ?? {}).length > 16 ||
     !Object.entries(s.progress ?? {}).every(
       ([period, counts]) =>

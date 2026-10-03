@@ -811,3 +811,11 @@
   gap: 8px;
   min-height: 44px;
 }
+
+.recent-trip-list li {
+  margin: 10px 0;
+}
+.recent-trip-list small {
+  display: block;
+  line-height: 1.5;
+}

@@ -21,7 +21,7 @@ export default defineConfig({
   // Start server + client before running tests
   webServer: [
     {
-      command: `DEPLOY_TARGET=legacy MONGODB_URI=mongodb://127.0.0.1:1/test PORT=${serverPort} BOT_COUNT=0 bun run --filter server start`,
+      command: `ALLOW_GAME_TESTS=true DEPLOY_TARGET=legacy MONGODB_URI=mongodb://127.0.0.1:1/test PORT=${serverPort} BOT_COUNT=0 bun run --filter server start`,
       port: serverPort,
       reuseExistingServer: false,
       timeout: 15_000,

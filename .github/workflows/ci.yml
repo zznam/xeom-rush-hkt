@@ -50,6 +50,9 @@ jobs:
       - name: Run linter
         run: bun run lint
 
+      - name: Check formatting
+        run: bun run format:check
+
       - name: Run unit tests
         run: bun run test
 
@@ -86,6 +89,20 @@ jobs:
 
       - name: Test browser flows
         run: bun run test:e2e && bun run test:e2e:regional && bun run --filter e2e test --config=playwright.rooms.config.ts
+
+      - name: Combined runtime and browser load smoke
+        env:
+          TEST_DYNAMO_URL: http://127.0.0.1:8000
+          SOAK_DURATION_MS: 10000
+          SOAK_OUTPUT: apps/e2e/test-results/load-smoke.json
+        run: node tests/release-soak.mjs
+
+      - name: Save browser and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verification
+          path: apps/e2e/test-results/
 
   deno-deploy-build:
     name: Build in Deno-only environment

@@ -6,3 +6,5 @@ export * from './spatial-grid';
 export * from './bot-ai';
 
 export * from './room-owner';
+
+export { TickMetrics } from './tick-metrics';

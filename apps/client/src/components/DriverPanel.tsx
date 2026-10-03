@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  JOB_LABELS,
   activeObjectives,
   COSMETICS,
   mastery,
@@ -70,6 +71,42 @@ export function DriverPanel({
           </p>
         ) : (
           <p>Hoàn thành chuyến xe để ghi dấu nghề nghiệp.</p>
+        )}
+        {career && (
+          <>
+            <p>
+              Chuyến tốt nhất: {(career.summary.bestFare ?? 0).toLocaleString('vi-VN')}đ · Vi phạm:{' '}
+              {Object.values(career.summary.violations ?? {}).reduce((sum, n) => sum + n, 0)}
+            </p>
+            {!!career.summary.recentTrips?.length && (
+              <section aria-label='Chuyến xe gần đây'>
+                <h3>Chuyến xe gần đây</h3>
+                <ol className='recent-trip-list'>
+                  {career.summary.recentTrips.map((trip) => (
+                    <li key={trip.id}>
+                      <strong>
+                        {JOB_LABELS[trip.kind]} · {trip.fare.total.toLocaleString('vi-VN')}đ
+                      </strong>
+                      <small>
+                        {new Intl.DateTimeFormat('vi-VN', {
+                          timeZone: 'Asia/Ho_Chi_Minh',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }).format(trip.completedAt)}{' '}
+                        · {(trip.durationTicks / 20).toFixed(1)}s · {Math.round(trip.distance)}m ·{' '}
+                        {trip.clean ? 'An toàn' : 'Có vi phạm'}
+                      </small>
+                      <small>
+                        Gốc {trip.fare.base.toLocaleString('vi-VN')}đ · Thưởng{' '}
+                        {(trip.fare.combo + trip.fare.environment + trip.fare.clean).toLocaleString('vi-VN')}đ · Boa{' '}
+                        {trip.fare.tip.toLocaleString('vi-VN')}đ
+                      </small>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </>
         )}
         {summary && (
           <p>

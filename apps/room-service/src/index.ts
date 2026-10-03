@@ -289,7 +289,7 @@ export class PrivateRoom {
           p.y = body.y;
         }
       }
-      return json({ ok: true, state: this.owner.view() });
+      return json({ ok: true, state: this.owner.view(), metrics: this.owner.metrics.snapshot() });
     }
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
       return json({ error: 'WebSocket required' }, 426);

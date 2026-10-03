@@ -40,7 +40,19 @@ export interface TripMetadata {
   persona: string;
   quickTicksRemaining: number;
 }
+export interface TripRecord {
+  id: string;
+  kind: 'passenger' | 'food' | 'parcel';
+  completedAt: number;
+  durationTicks: number;
+  distance: number;
+  clean: boolean;
+  fare: Fare;
+}
 export interface ShiftSummary {
+  violations?: { redLights: number; pedestrianHits: number; driverCollisions: number };
+  bestFare?: number;
+  recentTrips?: TripRecord[];
   distance: number;
   cleanTrips: number;
   baseFares: number;

@@ -55,3 +55,42 @@ it('claims objectives once under concurrency and rejects invented progress and l
   expect((await store.profile('a')).equipped.paint).toBe('paint-1');
   await expect(store.claim('a', target, now + 86400000)).rejects.toThrow('expired');
 });
+it('preserves bounded trip records and violation totals across retries, sessions and older profiles', async () => {
+  const store = new CareerRepository(new MemoryCareerBackend());
+  const { calculateFare } = await import('@xeom-rush/shared');
+  const summary = {
+    ...emptySummary(),
+    violations: { redLights: 1, pedestrianHits: 2, driverCollisions: 3 },
+    bestFare: 12500,
+    recentTrips: Array.from({ length: 8 }, (_, i) => ({
+      id: `trip-${i}`,
+      kind: 'food' as const,
+      completedAt: 1000 + i,
+      durationTicks: 40,
+      distance: 100,
+      clean: true,
+      fare: calculateFare(10000, 0, 1, true, 1500),
+    })),
+  };
+  const stats = { username: 'Cô Ba', score: 12500, peakStreak: 1, deliveriesCount: 1, revision: 20, summary };
+  await store.save('a', 'one', stats);
+  await store.save('a', 'one', stats);
+  let p = await store.profile('a');
+  expect(p.summary.violations).toEqual(summary.violations);
+  expect(p.summary.recentTrips).toHaveLength(8);
+  expect(p.summary.bestFare).toBe(12500);
+  await store.save('a', 'two', {
+    ...stats,
+    summary: { ...summary, recentTrips: [{ ...summary.recentTrips[0], completedAt: 2000 }] },
+  });
+  p = await store.profile('a');
+  expect(p.summary.violations).toEqual({ redLights: 2, pedestrianHits: 4, driverCollisions: 6 });
+  expect(p.summary.recentTrips).toHaveLength(8);
+  expect(p.summary.recentTrips![0].id).toBe('two:trip-0');
+  const { applyContribution, newCareer } = await import('@xeom-rush/shared');
+  const old = newCareer('old');
+  delete old.summary.violations;
+  delete old.summary.bestFare;
+  delete old.summary.recentTrips;
+  expect(applyContribution(old, 'ride', stats).summary.violations).toEqual(summary.violations);
+});

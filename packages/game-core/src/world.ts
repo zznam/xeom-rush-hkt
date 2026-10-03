@@ -139,6 +139,7 @@ export class GameWorld {
   private selectedPickups = new Map<string, string>();
   private routeCache = new Map<string, { key: string; from: Vector2D; route: Vector2D[] }>();
   private summaries = new Map<string, ShiftSummary>();
+  private pickupDistances = new Map<string, number>();
   private pickupTicks = new Map<string, number>();
   private dirtyTrips = new Set<string>();
   private players: Map<string, PlayerState> = new Map();
@@ -228,6 +229,7 @@ export class GameWorld {
       this.routeCache.delete(id);
       this.summaries.delete(id);
       this.pickupTicks.delete(id);
+      this.pickupDistances.delete(id);
       this.dirtyTrips.delete(id);
       this.players.delete(id);
       this.inputQueues.delete(id);
@@ -319,7 +321,7 @@ export class GameWorld {
       ];
       if (!targets.some((p) => inside(p))) {
         const navigator = new StreetNavigator([closure.rect]);
-        this.closureAllowed = targets.every((target) => navigator.route({ x: 2050, y: 2050 }, target).length > 1);
+        this.closureAllowed = navigator.reachableTargets({ x: 2050, y: 2050 }, targets);
         if (this.closureAllowed) this.closedNavigator = navigator;
       }
     }
@@ -331,6 +333,9 @@ export class GameWorld {
     )
       this.closureAllowed = false;
     if (!this.closureAllowed) life.closure = null;
+    const previousRoad = this.life.closure?.active ? this.life.closure.id : '',
+      nextRoad = life.closure?.active ? life.closure.id : '';
+    life.roadRevision = this.life.roadRevision + (previousRoad !== nextRoad ? 1 : 0);
     this.life = life;
     this.physics.setClosures(life.closure?.active ? [life.closure.rect] : []);
   }
@@ -729,6 +734,7 @@ export class GameWorld {
               // Pick up!
               this.selectedPickups.delete(player.id);
               this.pickupTicks.set(player.id, this.tickCount);
+              this.pickupDistances.set(player.id, this.summaries.get(player.id)?.distance ?? 0);
               this.dirtyTrips.delete(player.id);
               player.passengerId = passenger.id;
               passenger.isCarried = true;
@@ -802,6 +808,20 @@ export class GameWorld {
           if (!this.dirtyTrips.has(player.id)) summary.cleanTrips++;
           const duration = Math.max(1, this.tickCount - (this.pickupTicks.get(player.id) ?? this.tickCount));
           summary.fastestTripTicks = summary.fastestTripTicks ? Math.min(summary.fastestTripTicks, duration) : duration;
+          summary.bestFare = Math.max(summary.bestFare ?? 0, reward);
+          summary.recentTrips = [
+            {
+              id: passenger.id,
+              kind: job?.kind ?? 'passenger',
+              completedAt: this.options.now?.() ?? Date.now(),
+              durationTicks: duration,
+              distance: Math.max(0, summary.distance - (this.pickupDistances.get(player.id) ?? summary.distance)),
+              clean: !this.dirtyTrips.has(player.id),
+              fare: this.options.enhanced ? fare : { ...fare, clean: 0, tip: 0, total: reward },
+            },
+            ...(summary.recentTrips ?? []),
+          ].slice(0, 8);
+          this.pickupDistances.delete(player.id);
 
           // Increment streak
           const newStreak = streak + 1;
@@ -858,7 +878,12 @@ export class GameWorld {
   }
 
   private recordViolation(player: PlayerState, type: ViolationType, amount: number, charged = amount): void {
-    this.summaries.get(player.id)!.fines += charged;
+    const summary = this.summaries.get(player.id)!;
+    summary.fines += charged;
+    summary.violations ??= { redLights: 0, pedestrianHits: 0, driverCollisions: 0 };
+    summary.violations[
+      type === 'red-light' ? 'redLights' : type === 'pedestrian' ? 'pedestrianHits' : 'driverCollisions'
+    ]++;
     if (player.passengerId) {
       this.dirtyTrips.add(player.id);
       const job = this.jobs.get(player.passengerId);

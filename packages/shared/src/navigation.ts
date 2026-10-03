@@ -12,16 +12,59 @@ export class StreetNavigator {
         if (isRoadPoint(point, 16, closures)) this.points.set(ix * 160 + iy, point);
       }
   }
+  private components = new Map<number, number>();
+  private anchor(p: Vector2D) {
+    if (!isRoadPoint(p, 16, this.closures)) return undefined;
+    const candidates: [number, Vector2D][] = [];
+    for (let x = Math.floor(p.x / 25) - 3; x <= Math.floor(p.x / 25) + 4; x++)
+      for (let y = Math.floor(p.y / 25) - 3; y <= Math.floor(p.y / 25) + 4; y++) {
+        const id = x * 160 + y,
+          point = this.points.get(id);
+        if (point && Math.abs(point.x - p.x) < 100 && Math.abs(point.y - p.y) < 100) candidates.push([id, point]);
+      }
+    return candidates
+      .sort((a, b) => Math.hypot(a[1].x - p.x, a[1].y - p.y) - Math.hypot(b[1].x - p.x, b[1].y - p.y))
+      .find(([, n]) => roadSegmentClear(p, n, this.closures))?.[0];
+  }
+  private clearEdge(id: number, next: number) {
+    const here = this.points.get(id)!,
+      there = this.points.get(next);
+    if (!there || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== 25) return false;
+    const key = id < next ? `${id}:${next}` : `${next}:${id}`;
+    let clear = this.edges.get(key);
+    if (clear === undefined) {
+      clear = roadSegmentClear(here, there, this.closures);
+      this.edges.set(key, clear);
+    }
+    return clear;
+  }
+  // Flood once per closure, then validate every required target against the component.
+  reachableTargets(from: Vector2D, targets: readonly Vector2D[]) {
+    const start = this.anchor(from);
+    if (start === undefined) return false;
+    if (!this.components.has(start)) {
+      const queue = [start];
+      this.components.set(start, start);
+      for (let i = 0; i < queue.length; i++)
+        for (const offset of [-160, 160, -1, 1]) {
+          const next = queue[i] + offset;
+          if (!this.components.has(next) && this.clearEdge(queue[i], next)) {
+            this.components.set(next, start);
+            queue.push(next);
+          }
+        }
+    }
+    const component = this.components.get(start);
+    return targets.every((target) => {
+      const end = this.anchor(target);
+      return end !== undefined && this.components.get(end) === component;
+    });
+  }
   route(from: Vector2D, to: Vector2D): Vector2D[] {
     if (!isRoadPoint(from, 16, this.closures) || !isRoadPoint(to, 16, this.closures)) return [];
     if (roadSegmentClear(from, to, this.closures)) return [from, to];
-    const anchor = (p: Vector2D) =>
-      [...this.points.entries()]
-        .filter(([, n]) => Math.abs(n.x - p.x) < 100 && Math.abs(n.y - p.y) < 100)
-        .sort((a, b) => Math.hypot(a[1].x - p.x, a[1].y - p.y) - Math.hypot(b[1].x - p.x, b[1].y - p.y))
-        .find(([, n]) => roadSegmentClear(p, n, this.closures))?.[0];
-    const start = anchor(from);
-    const end = anchor(to);
+    const start = this.anchor(from);
+    const end = this.anchor(to);
     if (start === undefined || end === undefined) return [];
     const costs = new Map<number, number>([[start, 0]]);
     const parent = new Map<number, number>();
@@ -76,13 +119,7 @@ export class StreetNavigator {
         const next = id + offset;
         const there = this.points.get(next);
         if (!there || visited.has(next) || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== 25) continue;
-        const key = id < next ? `${id}:${next}` : `${next}:${id}`;
-        let clear = this.edges.get(key);
-        if (clear === undefined) {
-          clear = roadSegmentClear(here, there, this.closures);
-          this.edges.set(key, clear);
-        }
-        if (!clear) continue;
+        if (!this.clearEdge(id, next)) continue;
         const cost = costs.get(id)! + 25;
         if (cost >= (costs.get(next) ?? Infinity)) continue;
         costs.set(next, cost);

@@ -303,7 +303,11 @@ export function installPrivateRooms(
         p.y = req.body.y;
       }
     }
-    res.json({ ok: true, state: owners.get(req.params.invite)!.view() });
+    res.json({
+      ok: true,
+      state: owners.get(req.params.invite)!.view(),
+      metrics: owners.get(req.params.invite)!.metrics.snapshot(),
+    });
   });
   const loop = setInterval(() => {
     for (const [invite, owner] of owners) {
@@ -386,6 +390,7 @@ export function installPrivateRooms(
   }
   return {
     upgrade,
+    metrics: () => [...owners.values()].map((owner) => ({ mode: owner.state.mode, ...owner.metrics.snapshot() })),
     close: async () => {
       clearInterval(loop);
       clearInterval(flush);

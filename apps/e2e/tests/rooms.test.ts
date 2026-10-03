@@ -166,3 +166,97 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     for (const context of contexts) await context.close();
   });
 }
+for (const layout of [
+  { name: 'desktop', width: 1440, height: 900, touch: false },
+  { name: 'tablet', width: 820, height: 620, touch: false },
+  { name: 'breakpoint', width: 769, height: 600, touch: false },
+  { name: 'phone', width: 390, height: 844, touch: true },
+  { name: 'small phone', width: 320, height: 568, touch: true },
+  { name: 'touch landscape', width: 844, height: 390, touch: true },
+]) {
+  test(`co-op controls and dialogs fit ${layout.name}`, async ({ browser, request }) => {
+    const context = await browser.newContext({
+      viewport: { width: layout.width, height: layout.height },
+      hasTouch: layout.touch,
+    });
+    const partner = await browser.newContext();
+    const page = await context.newPage(),
+      other = await partner.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    const guest = (await (await request.post('http://localhost:3027/api/guest', { data: {} })).json()).guest;
+    const room = await (await request.post('http://localhost:3027/api/rooms', { data: { guest } })).json();
+    const endpoint = `http://localhost:3027/api/rooms/${room.invite}`;
+    for (const [i, rider] of [page, other].entries()) {
+      await rider.goto(`/?room=${encodeURIComponent(endpoint)}`);
+      await rider.getByLabel('Biệt danh trong phòng').fill(`Layout${i}`);
+      await rider.getByRole('button', { name: 'Tham gia phòng mời' }).click();
+      await expect(rider.getByRole('dialog', { name: 'Phòng riêng' })).toBeVisible();
+    }
+    await expect(page.getByRole('dialog')).toContainText('Layout1');
+    await page.getByLabel('Chế độ vòng').selectOption('co-op');
+    await page.getByRole('button', { name: 'Bắt đầu vòng', exact: true }).click();
+    await page.bringToFront();
+    await expect(page.locator('.room-round-status')).toContainText('40.000');
+    const selectors = ['.hud-summary', '.hud-minimap', '.game-dock'];
+    if (layout.touch) selectors.push('.joystick-mobile', '.honk-btn-mobile');
+    const boxes = [];
+    for (const selector of selectors) {
+      const box = await page.locator(selector).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(layout.width);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(layout.height);
+      boxes.push({ selector, ...box! });
+    }
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i],
+          b = boxes[j];
+        expect(
+          Math.min(a.x + a.width, b.x + b.width) <= Math.max(a.x, b.x) ||
+            Math.min(a.y + a.height, b.y + b.height) <= Math.max(a.y, b.y),
+          `${a.selector} overlaps ${b.selector}`,
+        ).toBe(true);
+      }
+    for (const button of await page.locator('.game-toolbar button').all()) {
+      const box = await button.boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+      expect(await button.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    if (layout.touch) {
+      const stick = await page.getByRole('group', { name: 'Cần điều khiển lái xe' }).boundingBox();
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: stick!.x + stick!.width / 2 + 20, y: stick!.y + stick!.height / 2 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+      await expect
+        .poll(() =>
+          page
+            .getByRole('group', { name: 'Cần điều khiển lái xe' })
+            .locator('div')
+            .last()
+            .evaluate((el) => getComputedStyle(el).transform),
+        )
+        .toBe('matrix(1, 0, 0, 1, 0, 0)');
+    }
+    await page.getByRole('button', { name: 'Đồng đội và biểu cảm' }).click();
+    for (const button of await page.getByRole('dialog').getByRole('button').all()) {
+      const box = await button.boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+      await expect(button).toBeInViewport();
+    }
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await context.close();
+    await partner.close();
+  });
+}

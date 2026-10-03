@@ -1,3 +1,4 @@
+import { TickMetrics } from '@xeom-rush/game-core';
 import { installPrivateRooms } from './private-rooms';
 import { careerRepository } from './career-store';
 import { publicCareer } from '@xeom-rush/shared';
@@ -9,6 +10,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { Admission, isSessionId, issueGuest, verifyGuest, validRoomKey } from './admission';
 import {
+  isRoadPoint,
   parseGameCommand,
   EMessageType,
   resolveDeploymentTarget,
@@ -510,9 +512,81 @@ wss.on('connection', (ws: WebSocket, request) => {
   });
 });
 
+// Deterministic authored jobs and positioning for combined local acceptance only.
+app.post('/api/test/gameplay', (req, res) => {
+  if (production || process.env.ALLOW_GAME_TESTS !== 'true') {
+    res.status(404).end();
+    return;
+  }
+  const profileId = verifyGuest(req.body.guest ?? '', identitySecret);
+  const session = [...sessions.values()].find((s) => s.profileId === profileId && !!profileId);
+  const player = session && world.getPlayer(session.playerId);
+  if (!player) {
+    res.status(404).end();
+    return;
+  }
+  const x = Number(req.body.x ?? 2050),
+    y = Number(req.body.y ?? 2200);
+  if (req.body.action === 'position' || req.body.action === 'job') {
+    if (!isRoadPoint({ x, y }, 16)) {
+      res.status(400).end();
+      return;
+    }
+    if (req.body.action === 'job') {
+      if (player.passengerId) {
+        res.status(409).json({ error: 'Finish the active trip first' });
+        return;
+      }
+      world.getPassengerMap().clear();
+      const kind = [0, 6, 8, 9].includes(Number(req.body.kind)) ? Number(req.body.kind) : 0;
+      const id = `pass-${1000000 + world.getTick() * 10 + kind}`;
+      const passenger = {
+        id,
+        x,
+        y: y + 70,
+        destX: x,
+        destY: y + 160,
+        reward: 10000,
+        tier: 0,
+        deadline: 0,
+        spawnedAt: world.getTick(),
+        isCarried: false,
+      };
+      world.getPassengerMap().set(id, passenger);
+      world.getSpatialGrid().insert(id, passenger.x, passenger.y);
+      world.selectPickup(player.id, id);
+    }
+    player.x = x;
+    player.y = y;
+    world.queueInput(player.id, { seq: 0, dx: 0, dy: 0, angle: 0 });
+  } else if (req.body.action === 'weather') {
+    // Advance the simulation clock; rewards still require real authoritative completions.
+    const tick = Number(req.body.tick);
+    if (!Number.isInteger(tick) || tick < 0 || tick > 30000) {
+      res.status(400).end();
+      return;
+    }
+    (world as any).tickCount = tick;
+  }
+  res.json({ player, gameplay: world.getGameplayState(player.id) });
+});
+
 // --- Authoritative Game Tick Loop (20 Hz) ---
 const dt = TICK_INTERVAL_MS / 1000; // 0.05 seconds
 let lastTickTime = Date.now();
+const tickMetrics = new TickMetrics();
+app.get('/api/metrics', (_req, res) => {
+  if (production) {
+    res.status(404).end();
+    return;
+  }
+  res.json({
+    public: tickMetrics.snapshot(),
+    private: privateRooms.metrics(),
+    memory: process.memoryUsage(),
+    uptime: process.uptime(),
+  });
+});
 let maxTickMs = 0;
 let maxTickLagMs = 0;
 
@@ -602,7 +676,9 @@ const gameLoop = setInterval(() => {
       }
     }
   }
-  maxTickMs = Math.max(maxTickMs, performance.now() - workStarted);
+  const workMs = performance.now() - workStarted;
+  tickMetrics.record(workMs);
+  maxTickMs = Math.max(maxTickMs, workMs);
   if (production && regional && world.getTick() % 100 === 0) {
     console.log(
       JSON.stringify({
