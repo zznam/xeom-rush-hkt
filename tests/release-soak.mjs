@@ -421,8 +421,11 @@ try {
       }
     }
   }, 1500);
+  let lastMeasurement = started;
   while (!interrupted && Date.now() - started < duration) {
     await pause(Math.min(30000, duration - (Date.now() - started)));
+    assert.ok(Date.now() - lastMeasurement < 60000, 'Host sleep or stalled measurement interrupted the soak');
+    lastMeasurement = Date.now();
     const nodes = await Promise.all([3037, 3040].map((port) => json(`http://localhost:${port}/api/metrics`)));
     const cloud = await Promise.all(
       rooms
@@ -482,6 +485,9 @@ try {
     for (const value of [...m.nodes.flatMap((n) => [n.public, ...n.private]), ...m.cloud])
       assert.ok(value.p95Ms < 40, `p95 ${value.p95Ms}ms exceeds 40ms`);
   if (duration >= 1800000) {
+    assert.ok(metrics.length >= 60, 'Thirty continuous minutes require sixty measurement samples');
+    for (const node of metrics.at(-1).nodes)
+      assert.ok(node.public.ticks >= (duration / 1000) * 18, 'Public city did not sustain at least 18Hz');
     assert.ok(observations.rain);
     assert.ok(observations.phases.has('night'));
     assert.ok(observations.closures.size);
