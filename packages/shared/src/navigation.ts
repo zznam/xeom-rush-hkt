@@ -1,24 +1,27 @@
 import { isRoadPoint, roadSegmentClear, type Building } from './city-map';
 import type { Vector2D } from './types';
 
+const GRID_STEP = 50;
+const GRID_WIDTH = 4000 / GRID_STEP;
+
 // A reusable collision-aware graph; expensive edge checks are cached per road revision.
 export class StreetNavigator {
   private points = new Map<number, Vector2D>();
   private edges = new Map<string, boolean>();
   constructor(private closures: Building[] = []) {
-    for (let ix = 1; ix < 160; ix++)
-      for (let iy = 1; iy < 160; iy++) {
-        const point = { x: ix * 25, y: iy * 25 };
-        if (isRoadPoint(point, 16, closures)) this.points.set(ix * 160 + iy, point);
+    for (let ix = 1; ix < GRID_WIDTH; ix++)
+      for (let iy = 1; iy < GRID_WIDTH; iy++) {
+        const point = { x: ix * GRID_STEP, y: iy * GRID_STEP };
+        if (isRoadPoint(point, 16, closures)) this.points.set(ix * GRID_WIDTH + iy, point);
       }
   }
   private components = new Map<number, number>();
   private anchor(p: Vector2D) {
     if (!isRoadPoint(p, 16, this.closures)) return undefined;
     const candidates: [number, Vector2D][] = [];
-    for (let x = Math.floor(p.x / 25) - 3; x <= Math.floor(p.x / 25) + 4; x++)
-      for (let y = Math.floor(p.y / 25) - 3; y <= Math.floor(p.y / 25) + 4; y++) {
-        const id = x * 160 + y,
+    for (let x = Math.floor(p.x / GRID_STEP) - 1; x <= Math.floor(p.x / GRID_STEP) + 2; x++)
+      for (let y = Math.floor(p.y / GRID_STEP) - 1; y <= Math.floor(p.y / GRID_STEP) + 2; y++) {
+        const id = x * GRID_WIDTH + y,
           point = this.points.get(id);
         if (point && Math.abs(point.x - p.x) < 100 && Math.abs(point.y - p.y) < 100) candidates.push([id, point]);
       }
@@ -29,7 +32,7 @@ export class StreetNavigator {
   private clearEdge(id: number, next: number) {
     const here = this.points.get(id)!,
       there = this.points.get(next);
-    if (!there || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== 25) return false;
+    if (!there || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== GRID_STEP) return false;
     const key = id < next ? `${id}:${next}` : `${next}:${id}`;
     let clear = this.edges.get(key);
     if (clear === undefined) {
@@ -46,7 +49,7 @@ export class StreetNavigator {
       const queue = [start];
       this.components.set(start, start);
       for (let i = 0; i < queue.length; i++)
-        for (const offset of [-160, 160, -1, 1]) {
+        for (const offset of [-GRID_WIDTH, GRID_WIDTH, -1, 1]) {
           const next = queue[i] + offset;
           if (!this.components.has(next) && this.clearEdge(queue[i], next)) {
             this.components.set(next, start);
@@ -126,12 +129,13 @@ export class StreetNavigator {
         });
       }
       const here = this.points.get(id)!;
-      for (const offset of [-160, 160, -1, 1]) {
+      for (const offset of [-GRID_WIDTH, GRID_WIDTH, -1, 1]) {
         const next = id + offset;
         const there = this.points.get(next);
-        if (!there || visited.has(next) || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== 25) continue;
+        if (!there || visited.has(next) || Math.abs(here.x - there.x) + Math.abs(here.y - there.y) !== GRID_STEP)
+          continue;
         if (!this.clearEdge(id, next)) continue;
-        const cost = costs.get(id)! + 25;
+        const cost = costs.get(id)! + GRID_STEP;
         if (cost >= (costs.get(next) ?? Infinity)) continue;
         costs.set(next, cost);
         parent.set(next, id);
