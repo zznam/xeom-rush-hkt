@@ -55,6 +55,46 @@ export class GameWorld {
   private closureId = '';
   private closureAllowed = false;
   private closedNavigator: StreetNavigator | null = null;
+  private practice = new Map<string, string>();
+  private practiceCompleted = new Set<string>();
+  private reservations = new Map<string, string>();
+  public canCollect(playerId: string, passengerId: string) {
+    return !this.reservations.has(passengerId) || this.reservations.get(passengerId) === playerId;
+  }
+  public beginPractice(id: string) {
+    const p = this.players.get(id);
+    if (
+      !this.options.enhanced ||
+      !p ||
+      p.passengerId ||
+      this.practice.has(id) ||
+      this.practiceCompleted.has(id) ||
+      (this.sessionDeliveries.get(id) ?? 0) > 0
+    )
+      return false;
+    p.x = 2050;
+    p.y = 2200;
+    this.spatialGrid.update(id, p.x, p.y);
+    const target = `pass-practice-${id}`;
+    const passenger: PassengerState = {
+      id: target,
+      x: 2050,
+      y: 2280,
+      destX: 2050,
+      destY: 2380,
+      reward: 0,
+      tier: 0,
+      deadline: 0,
+      spawnedAt: this.tickCount,
+      isCarried: false,
+    };
+    this.passengers.getPassengerMap().set(target, passenger);
+    this.spatialGrid.insert(target, passenger.x, passenger.y);
+    this.practice.set(id, target);
+    this.reservations.set(target, id);
+    this.selectedPickups.set(id, target);
+    return true;
+  }
   private periods = progressionPeriods();
   private progress = new Map<string, Record<string, Record<string, number>>>();
   private appearances = new Map<string, Record<string, string>>();
@@ -65,7 +105,7 @@ export class GameWorld {
     return Object.fromEntries(this.appearances);
   }
   private trackProgress(id: string, metric: string, amount = 1) {
-    if (!this.options.enhanced || !amount) return;
+    if (!this.options.enhanced || !amount || this.practice.has(id)) return;
     const counts = this.progress.get(id) ?? {};
     for (const period of Object.values(this.periods)) {
       counts[period] ??= {};
@@ -114,6 +154,7 @@ export class GameWorld {
     new Map();
 
   constructor(private options: { enhanced?: boolean; now?: () => number } = {}) {
+    this.life = { ...cityAtTick(0), enabled: !!options.enhanced };
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
     this.cityFeatures = new CityFeatures(this.physics);
@@ -185,6 +226,13 @@ export class GameWorld {
       // Clean up session stats
       this.sessionPeakStreaks.delete(id);
       this.sessionDeliveries.delete(id);
+      const practice = this.practice.get(id);
+      if (practice) {
+        this.passengers.remove(practice);
+        this.reservations.delete(practice);
+      }
+      this.practice.delete(id);
+      this.practiceCompleted.delete(id);
       this.progress.delete(id);
       this.appearances.delete(id);
       this.sessionViolations.delete(id);
@@ -272,13 +320,14 @@ export class GameWorld {
   }
 
   public selectPickup(id: string, target?: string): boolean {
-    if (!this.players.has(id) || this.players.get(id)!.passengerId) return false;
+    if (this.practice.has(id) || !this.players.has(id) || this.players.get(id)!.passengerId) return false;
     if (!target) {
       this.selectedPickups.delete(id);
       return true;
     }
     const p = this.passengers.getPassengerMap().get(target);
-    if (!p || p.isCarried || (p.deadline > 0 && p.deadline <= this.tickCount)) return false;
+    if (!p || !this.canCollect(id, p.id) || p.isCarried || (p.deadline > 0 && p.deadline <= this.tickCount))
+      return false;
     this.selectedPickups.set(id, target);
     return true;
   }
@@ -289,10 +338,10 @@ export class GameWorld {
       ? this.passengers.getPassengerMap().get(p.passengerId)
       : (this.passengers.getPassengerMap().get(this.selectedPickups.get(id) ?? '') ??
         [...this.passengers.getPassengerMap().values()]
-          .filter((t) => !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
+          .filter((t) => this.canCollect(id, t.id) && !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
           .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]);
     const offers = [...this.passengers.getPassengerMap().values()]
-      .filter((t) => !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
+      .filter((t) => this.canCollect(id, t.id) && !t.isCarried && (t.deadline === 0 || t.deadline > this.tickCount))
       .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))
       .slice(0, 8)
       .map((t) => {
@@ -368,6 +417,9 @@ export class GameWorld {
     }
     return {
       version: 1,
+      practice: this.practice.has(id),
+      practiceCompleted: this.practiceCompleted.has(id),
+      reservations: Object.fromEntries(this.reservations),
       tick: this.tickCount,
       city: this.getCityLife(),
       trip,
@@ -463,7 +515,8 @@ export class GameWorld {
     this.advanceCity();
     for (const [id, target] of this.selectedPickups) {
       const p = this.passengers.getPassengerMap().get(target);
-      if (!p || p.isCarried || (p.deadline > 0 && p.deadline < this.tickCount)) this.selectedPickups.delete(id);
+      if (!p || !this.canCollect(id, p.id) || p.isCarried || (p.deadline > 0 && p.deadline < this.tickCount))
+        this.selectedPickups.delete(id);
     }
     this.cityFeatures.tick(this.tickCount, dt);
 
@@ -524,17 +577,21 @@ export class GameWorld {
 
       const summary = this.summaries.get(playerId)!;
       const distance = Math.hypot(player.x - prevX, player.y - prevY);
-      summary.distance += distance;
+      if (!this.practice.has(playerId)) summary.distance += distance;
       this.trackProgress(playerId, 'distance', distance);
       for (const landmark of LANDMARKS)
-        if (!summary.visited.includes(landmark.id) && Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80)
+        if (
+          !this.practice.has(playerId) &&
+          !summary.visited.includes(landmark.id) &&
+          Math.hypot(player.x - landmark.x, player.y - landmark.y) < 80
+        )
           summary.visited.push(landmark.id);
       if (player.passengerId) {
         const passenger = this.passengers.getPassengerMap().get(player.passengerId);
         if (passenger && LANDMARKS.some((l) => Math.hypot(player.x - l.x, player.y - l.y) < 80))
           this.getJob(passenger).scenic = true;
       }
-      this.checkCityRuleInteractions(player, prevX, prevY);
+      if (!this.practice.has(playerId)) this.checkCityRuleInteractions(player, prevX, prevY);
     }
 
     // 1.5. Check player-to-player collisions
@@ -544,6 +601,7 @@ export class GameWorld {
         const p1 = this.players.get(playerIds[i])!;
         const p2 = this.players.get(playerIds[j])!;
 
+        if (this.practice.has(p1.id) || this.practice.has(p2.id)) continue;
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const dist = Math.hypot(dx, dy);
@@ -640,6 +698,7 @@ export class GameWorld {
           const passenger = passMap.get(entityId);
           if (
             passenger &&
+            this.canCollect(player.id, passenger.id) &&
             !passenger.isCarried &&
             (!this.selectedPickups.has(player.id) || this.selectedPickups.get(player.id) === passenger.id)
           ) {
@@ -679,6 +738,17 @@ export class GameWorld {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < COLLISION_RADIUS + 10) {
+          if (this.practice.get(player.id) === passenger.id) {
+            this.practice.delete(player.id);
+            this.practiceCompleted.add(player.id);
+            this.reservations.delete(passenger.id);
+            this.jobs.delete(passenger.id);
+            this.passengers.remove(passenger.id);
+            player.passengerId = null;
+            this.pickupTicks.delete(player.id);
+            this.dirtyTrips.delete(player.id);
+            return;
+          }
           const job = this.options.enhanced ? this.getJob(passenger) : null;
           if (job && job.stopIndex < job.stops.length - 1) {
             job.stopIndex++;

@@ -333,6 +333,7 @@ wss.on('connection', (ws: WebSocket, request) => {
         if (commandIds.has(command.id)) return;
         commandIds.add(command.id);
         if (commandIds.size > 128) commandIds.delete(commandIds.values().next().value!);
+        if (command.action === 'practice') world.beginPractice(playerId);
         if (command.action === 'select-pickup') world.selectPickup(playerId, command.target);
         if (['profile', 'claim', 'equip'].includes(command.action)) {
           const session = sessions.get(token);
@@ -421,6 +422,8 @@ wss.on('connection', (ws: WebSocket, request) => {
         }
         clearTimeout(joinTimeout);
 
+        if (connectionUrl.searchParams.get('practice') === '1') world.beginPractice(playerId);
+
         // Register socket
         activeSockets.set(playerId, {
           ws,
@@ -441,7 +444,7 @@ wss.on('connection', (ws: WebSocket, request) => {
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
         ws.send(
-          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true, progression: true } })}`,
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: true, practice: true, progression: true } })}`,
         );
         const profileId = sessions.get(token)?.profileId;
         if (profileId)
@@ -509,6 +512,7 @@ const gameLoop = setInterval(() => {
   for (const [token, session] of sessions) if (session.expires <= now) void finalizeSession(token);
 
   // 1. Run bot AI (generates inputs for bot players)
+  if (process.env.BOT_COUNT === undefined && world.getTick() % 20 === 0) botManager.balancePopulation(8, 20);
   botManager.tick();
 
   // 2. Tick the world simulation

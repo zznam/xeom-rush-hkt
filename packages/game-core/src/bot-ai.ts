@@ -2,6 +2,7 @@ import {
   type InputPayload,
   type PassengerState,
   type PlayerState,
+  roadSegmentClear,
   MAP_SIZE,
   rotateTowardAngle,
   shortestAngleDelta,
@@ -76,6 +77,20 @@ interface BotAgent {
 }
 
 export class BotManager {
+  private retiring = new Set<string>();
+  private roadRevision = -1;
+  public balancePopulation(total = 8, maximum = 20) {
+    const humans = this.world.getPlayerCount();
+    const desired = Math.max(0, Math.min(maximum, total - humans));
+    this.retiring.clear();
+    const excess = this.bots.size - desired;
+    if (excess > 0) {
+      const bots = [...this.bots.keys()].sort(
+        (a, b) => Number(!!this.world.getPlayer(a)?.passengerId) - Number(!!this.world.getPlayer(b)?.passengerId),
+      );
+      for (const id of bots.slice(0, excess)) this.retiring.add(id);
+    } else if (excess < 0) this.spawnBots(-excess);
+  }
   private bots: Map<string, BotAgent> = new Map();
   private targetedPassengerIds: Set<string> = new Set();
   private nextBotIndex = 0;
@@ -207,6 +222,9 @@ export class BotManager {
   public tick(): void {
     // Clean up stale passenger targets (passenger got taken or despawned)
     this.cleanStaleTargets();
+    const revision = this.world.getCityLife().roadRevision;
+    const roadsChanged = this.world.getCityLife().enabled && revision !== this.roadRevision;
+    this.roadRevision = revision;
 
     for (const bot of this.bots.values()) {
       const player = this.world.getPlayer(bot.playerId);
@@ -215,6 +233,23 @@ export class BotManager {
         continue;
       }
 
+      if (this.retiring.has(bot.playerId) && !player.passengerId) {
+        if (bot.targetPassengerId) this.targetedPassengerIds.delete(bot.targetPassengerId);
+        this.world.removePlayer(bot.playerId);
+        this.bots.delete(bot.playerId);
+        this.retiring.delete(bot.playerId);
+        continue;
+      }
+      if (roadsChanged) {
+        bot.path = [];
+        bot.pathIndex = 0;
+      }
+      const destination = player.passengerId ? this.world.getPassengerMap().get(player.passengerId) : null;
+      const lastStop = bot.path.at(-1);
+      if (destination && lastStop && Math.hypot(lastStop.x - destination.destX, lastStop.y - destination.destY) > 50) {
+        bot.path = [];
+        bot.pathIndex = 0;
+      }
       // Sliding-window displacement-based stuck detection (ignore if intentionally waiting for traffic)
       bot.positionHistory[bot.positionHistoryIndex] = { x: player.x, y: player.y };
       bot.positionHistoryIndex = (bot.positionHistoryIndex + 1) % DISPLACEMENT_WINDOW;
@@ -442,7 +477,7 @@ export class BotManager {
 
     for (const passenger of passengerMap.values()) {
       // Skip carried or already targeted by another bot
-      if (passenger.isCarried) continue;
+      if (passenger.isCarried || !this.world.canCollect(bot.playerId, passenger.id)) continue;
       if (this.targetedPassengerIds.has(passenger.id)) continue;
 
       const pickupDist = Math.hypot(passenger.x - player.x, passenger.y - player.y);
@@ -513,7 +548,16 @@ export class BotManager {
     const finalTarget = this.getTargetPosition(bot);
     if (finalTarget) {
       const distToTarget = Math.hypot(finalTarget.x - player.x, finalTarget.y - player.y);
-      if (distToTarget < DIRECT_APPROACH_RADIUS && !this.physics.isInsideBuilding(finalTarget.x, finalTarget.y)) {
+      if (
+        distToTarget < DIRECT_APPROACH_RADIUS &&
+        !this.physics.isInsideBuilding(finalTarget.x, finalTarget.y) &&
+        (!this.world.getCityLife().enabled ||
+          roadSegmentClear(
+            player,
+            finalTarget,
+            this.world.getCityLife().closure?.active ? [this.world.getCityLife().closure!.rect] : [],
+          ))
+      ) {
         // Steer directly to the actual target
         const directAngle = Math.atan2(finalTarget.y - player.y, finalTarget.x - player.x);
         bot.currentAngle = rotateTowardAngle(bot.currentAngle, directAngle, BOT_MAX_TURN_PER_TICK);
@@ -806,6 +850,8 @@ export class BotManager {
     toY: number,
     useAvoidance = true,
   ): Waypoint[] {
+    if (this.world.getCityLife().enabled)
+      return this.world.getNavigationRoute({ x: fromX, y: fromY }, { x: toX, y: toY });
     const start = this.getClosestNode(fromX, fromY);
     const end = this.getClosestNode(toX, toY);
 

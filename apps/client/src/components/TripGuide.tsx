@@ -35,12 +35,17 @@ export function TripGuide({
     .slice(0, 8);
   return (
     <div className='trip-guide'>
-      <small className='hud-label'>{tutorialDone ? 'CHUYẾN XE HIỆN TẠI' : 'CHUYẾN ĐẦU TIÊN'}</small>
+      <small className='hud-label'>
+        {state?.practice ? 'TẬP LÁI RIÊNG CHO BẠN' : tutorialDone ? 'CHUYẾN XE HIỆN TẠI' : 'CHUYẾN ĐẦU TIÊN'}
+      </small>
       <h3>
         {trip
           ? `${trip.kind === 'parcel' ? '📦' : trip.kind === 'food' ? '🥡' : '🏁'} ${JOB_LABELS[trip.kind]} · ${trip.stopIndex + 1}/${trip.stops.length}`
           : '🙋 Có người đang đợi!'}
       </h3>
+      {state?.practice && (
+        <p>Khách này dành riêng cho bạn. Lái theo GPS để thử đón và trả khách; chuyến tập không tính điểm.</p>
+      )}
       {nav ? (
         <>
           <p className='trip-fare'>
@@ -78,7 +83,7 @@ export function TripGuide({
           </p>
         </div>
       )}
-      {!player.passengerId && (
+      {!player.passengerId && !state?.practice && (
         <button
           className='pickup-choice-button'
           onClick={() => {

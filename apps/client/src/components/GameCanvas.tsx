@@ -176,6 +176,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         toastTimer.current = setTimeout(() => setToast(null), 3500);
       }
       if (message.kind === 'gameplay') {
+        if (message.data.practiceCompleted) {
+          setTutorialDone(true);
+          writeStored('tutorial', 'done');
+        }
         setGameplay(message.data);
         renderer.setGameplay(message.data);
         if (message.data.city) prediction.setCityLife(message.data.city);
@@ -263,7 +267,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           soundEngine.playDropoff();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'delivery');
           const earned = Math.max(0, localStateFromServer.score - (localPlayerStateRef.current?.score ?? 0));
-          setToast(`✦ Chuyến tốt! +${earned.toLocaleString('vi-VN')}đ`);
+          setToast(
+            prevPassengerId.startsWith('pass-practice-')
+              ? '✦ Tập lái hoàn thành! Thành phố đang đợi bạn.'
+              : `✦ Chuyến tốt! +${earned.toLocaleString('vi-VN')}đ`,
+          );
 
           setTutorialDone(true);
           writeStored('tutorial', 'done');
