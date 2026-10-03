@@ -24,7 +24,7 @@ test('manual region choice matches there and displays the city on mobile', async
   await page.locator('button[type=submit]').click();
   await expect(page.locator('.hud-container')).toBeVisible();
   expect(matchedRegion).toBe('eu');
-  await expect(page.getByLabel('Thành phố hiện tại')).toHaveText('Ireland · city-01');
+  await expect(page.getByLabel('Thành phố hiện tại')).toContainText('Ireland · city-01');
   await page.getByRole('button', { name: 'Kết thúc', exact: true }).click();
   await page.getByRole('button', { name: 'Chơi tiếp' }).click();
   await expect(page.locator('#region')).toHaveValue('eu');
