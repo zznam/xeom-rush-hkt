@@ -668,6 +668,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
       {/* HUD Layer */}
       <HUD
+        room={room}
         preferences={preferences}
         localPlayer={localPlayer}
         players={players}
