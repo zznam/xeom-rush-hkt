@@ -1,4 +1,4 @@
-import { MAP_SIZE } from './constants';
+import { DRIVER_RADIUS, MAP_SIZE } from './constants';
 import type { Vector2D } from './types';
 
 export interface Building {
@@ -107,6 +107,36 @@ export function roadSegmentClear(a: Vector2D, b: Vector2D, closures: Building[] 
   const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 8));
   for (let i = 0; i <= steps; i++)
     if (!isRoadPoint({ x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps }, 16, closures))
+      return false;
+  return true;
+}
+
+/** Exact circular body collision, shared by movement and GPS endpoint recovery. */
+export function circleIntersectsRectangle(cx: number, cy: number, radius: number, rect: Building): boolean {
+  const dx = cx - Math.max(rect.x, Math.min(cx, rect.x + rect.width));
+  const dy = cy - Math.max(rect.y, Math.min(cy, rect.y + rect.height));
+  return dx * dx + dy * dy < radius * radius;
+}
+export function isDrivablePoint(point: Vector2D, closures: Building[] = [], radius = DRIVER_RADIUS): boolean {
+  if (point.x < radius || point.y < radius || point.x > MAP_SIZE - radius || point.y > MAP_SIZE - radius) return false;
+  const blocked = (rect: Building) => circleIntersectsRectangle(point.x, point.y, radius, rect);
+  if (closures.some(blocked)) return false;
+  for (let x = Math.floor((point.x - radius) / 100); x <= Math.floor((point.x + radius) / 100); x++)
+    for (let y = Math.floor((point.y - radius) / 100); y <= Math.floor((point.y + radius) / 100); y++) {
+      const nearby = roadBins.get(`${x}:${y}`);
+      if (
+        nearby &&
+        (nearby.buildings.some(blocked) ||
+          nearby.circles.some((c) => Math.hypot(point.x - c.x, point.y - c.y) < c.radius! + radius))
+      )
+        return false;
+    }
+  return true;
+}
+export function drivableSegmentClear(a: Vector2D, b: Vector2D, closures: Building[] = []): boolean {
+  const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 8));
+  for (let i = 0; i <= steps; i++)
+    if (!isDrivablePoint({ x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps }, closures))
       return false;
   return true;
 }

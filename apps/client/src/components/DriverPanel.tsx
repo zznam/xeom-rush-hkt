@@ -11,6 +11,7 @@ import {
 } from '@xeom-rush/shared';
 import { useGameDialog } from './useGameDialog';
 import { inputHandler } from '../game/input';
+import { roomApiBase } from '../game/rooms';
 
 type PublicCareer = Omit<CareerProfile, 'contributions'>;
 export function DriverPanel({
@@ -35,10 +36,7 @@ export function DriverPanel({
     inputHandler.clear();
     onCommand('profile');
     const controller = new AbortController();
-    const url = new URL(serverUrl);
-    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
-    url.search = '';
-    url.pathname = url.pathname.replace(/\/$/, '') + '/api/careers';
+    const url = `${roomApiBase(serverUrl)}/api/careers`;
     void fetch(url, { signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error();

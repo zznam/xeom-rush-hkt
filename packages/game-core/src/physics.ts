@@ -1,4 +1,4 @@
-import { CITY_MAP, MAP_SIZE, COLLISION_RADIUS } from '@xeom-rush/shared';
+import { CITY_MAP, MAP_SIZE, COLLISION_RADIUS, DRIVER_RADIUS, circleIntersectsRectangle } from '@xeom-rush/shared';
 
 export interface Rectangle {
   x: number; // min x
@@ -68,14 +68,7 @@ export class PhysicsEngine {
    * Returns if a circle (player) collides with a rectangle.
    */
   private checkCircleRectCollision(cx: number, cy: number, radius: number, rect: Rectangle): boolean {
-    const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.width));
-    const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.height));
-
-    const distanceX = cx - closestX;
-    const distanceY = cy - closestY;
-
-    const distanceSquared = distanceX * distanceX + distanceY * distanceY;
-    return distanceSquared < radius * radius;
+    return circleIntersectsRectangle(cx, cy, radius, rect);
   }
 
   /**
@@ -86,7 +79,7 @@ export class PhysicsEngine {
     oldY: number,
     newX: number,
     newY: number,
-    radius: number = 15,
+    radius: number = DRIVER_RADIUS,
   ): { x: number; y: number } {
     // 1. Boundary check
     let x = Math.max(radius, Math.min(MAP_SIZE - radius, newX));

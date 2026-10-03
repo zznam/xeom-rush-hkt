@@ -5,6 +5,7 @@ export const MAP_SIZE = 4000; // 4000x4000 units
 export const CHUNK_SIZE = 500; // 500x500 units per spatial grid chunk
 
 export const MOTORBIKE_SPEED = 200; // Units per second
+export const DRIVER_RADIUS = 15; // Physical scooter body clearance
 export const COLLISION_RADIUS = 25; // Interaction radius for players/passengers
 
 export const MAX_PASSENGERS = 80; // Maximum passive passengers spawned in map

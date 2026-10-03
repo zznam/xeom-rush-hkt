@@ -85,3 +85,27 @@ it('keeps cached geometry independent of mutable rider positions', () => {
   expect(path[0]).toEqual({ x: 2050, y: 2050 });
   expect(path.at(-1)).toEqual({ x: 2050, y: 2300 });
 });
+
+import { isDrivablePoint, drivableSegmentClear } from './city-map';
+it('recovers GPS from a physically legal position beside a building corner', () => {
+  const from = { x: 2088.370361328125, y: 2889.71240234375 };
+  const to = { x: 2450, y: 3250 };
+  expect(isRoadPoint(from)).toBe(false);
+  expect(isDrivablePoint(from)).toBe(true);
+  const path = findStreetRoute(from, to);
+  expect(path.length).toBeGreaterThan(1);
+  expect(path[0]).toEqual(from);
+  expect(path.at(-1)).toEqual(to);
+  for (let i = 1; i < path.length; i++) expect(drivableSegmentClear(path[i - 1], path[i])).toBe(true);
+  expect(advanceStreetRoute(from, path)).not.toBeNull();
+});
+it('still rejects endpoints inside buildings, monuments and active roadworks', () => {
+  const to = { x: 2050, y: 2050 };
+  const circle = CITY_MAP.features.find((f) => f.kind === 'roundabout')!;
+  for (const from of [{ x: 2150, y: 2950 }, circle]) {
+    expect(isDrivablePoint(from)).toBe(false);
+    expect(findStreetRoute(from, to)).toEqual([]);
+  }
+  const closure = { x: 2020, y: 2750, width: 60, height: 100 };
+  expect(new StreetNavigator([closure]).route({ x: 2050, y: 2800 }, to)).toEqual([]);
+});

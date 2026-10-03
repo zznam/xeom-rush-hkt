@@ -1,0 +1,283 @@
+[
+  {
+    "number": 6,
+    "branch": "codex/game-foundation",
+    "head": "6291873585c7bc8d1a12e9124c7eaccf521bc60b",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37136121844,
+      "headSha": "6291873585c7bc8d1a12e9124c7eaccf521bc60b",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37136121844"
+    },
+    "mergeCommit": {
+      "oid": "6df1d4aa8eb02a2ac33704c17b234305cea8d8a2"
+    },
+    "mergedAt": "2026-10-03T16:44:46Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/6"
+  },
+  {
+    "number": 7,
+    "branch": "codex/driver-careers",
+    "head": "ae43d62c93fc74b005d098cb7ce303770eee6af6",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37138001140,
+      "headSha": "ae43d62c93fc74b005d098cb7ce303770eee6af6",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37138001140"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37137981959,
+      "headSha": "6df1d4aa8eb02a2ac33704c17b234305cea8d8a2",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37137981959"
+    },
+    "mergeCommit": {
+      "oid": "91f692e6c206c1bfda0bdbe9e1376d3c03a64179"
+    },
+    "mergedAt": "2026-10-03T16:52:12Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/7"
+  },
+  {
+    "number": 8,
+    "branch": "codex/saigon-districts",
+    "head": "0656e8e1c3e1928d2b846f93c89bdce98975384b",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37138447957,
+      "headSha": "0656e8e1c3e1928d2b846f93c89bdce98975384b",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37138447957"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37138439979,
+      "headSha": "91f692e6c206c1bfda0bdbe9e1376d3c03a64179",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37138439979"
+    },
+    "mergeCommit": {
+      "oid": "0edef8a6fafa43038d584dc1bd0effac862acf28"
+    },
+    "mergedAt": "2026-10-03T16:58:31Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/8"
+  },
+  {
+    "number": 9,
+    "branch": "codex/trip-experience",
+    "head": "76367271400b3d247a0a5c0c09f27a393beae065",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37139010518,
+      "headSha": "76367271400b3d247a0a5c0c09f27a393beae065",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37139010518"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37138814582,
+      "headSha": "0edef8a6fafa43038d584dc1bd0effac862acf28",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37138814582"
+    },
+    "mergeCommit": {
+      "oid": "501ea03e336c80d931c266aaf45ab484f9544567"
+    },
+    "mergedAt": "2026-10-03T17:07:53Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/9"
+  },
+  {
+    "number": 10,
+    "branch": "codex/passengers-and-jobs",
+    "head": "95a08a3f569f5959b7803335e6000b6d9c978f6f",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37139512832,
+      "headSha": "95a08a3f569f5959b7803335e6000b6d9c978f6f",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37139512832"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37139378032,
+      "headSha": "501ea03e336c80d931c266aaf45ab484f9544567",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37139378032"
+    },
+    "mergeCommit": {
+      "oid": "513828c6b7f3d789bc940e101581bb69d4317008"
+    },
+    "mergedAt": "2026-10-03T17:16:22Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/10"
+  },
+  {
+    "number": 11,
+    "branch": "codex/living-city",
+    "head": "26bfe86cce1b4012eecacc2a43690736987764b7",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37139912004,
+      "headSha": "26bfe86cce1b4012eecacc2a43690736987764b7",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37139912004"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37139904155,
+      "headSha": "513828c6b7f3d789bc940e101581bb69d4317008",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37139904155"
+    },
+    "mergeCommit": {
+      "oid": "8c92c96c58a733b0792e8b84501d60401652b643"
+    },
+    "mergedAt": "2026-10-03T17:22:43Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/11"
+  },
+  {
+    "number": 12,
+    "branch": "codex/challenges-and-cosmetics",
+    "head": "6809e331d82c1191218832e726b86447a878e6b0",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37140291993,
+      "headSha": "6809e331d82c1191218832e726b86447a878e6b0",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37140291993"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37140282392,
+      "headSha": "8c92c96c58a733b0792e8b84501d60401652b643",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37140282392"
+    },
+    "mergeCommit": {
+      "oid": "00bc1c9f77e30663dd4cbcf3123fa1d94f7c63e2"
+    },
+    "mergedAt": "2026-10-03T17:29:06Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/12"
+  },
+  {
+    "number": 13,
+    "branch": "codex/controls-and-performance",
+    "head": "4832fc27b9c27eeffad86baaed7410a7e49750c2",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37140722644,
+      "headSha": "4832fc27b9c27eeffad86baaed7410a7e49750c2",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37140722644"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37140672483,
+      "headSha": "00bc1c9f77e30663dd4cbcf3123fa1d94f7c63e2",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37140672483"
+    },
+    "mergeCommit": {
+      "oid": "75664d5b57316fc63ed4ac0aba1b3f48f939de4e"
+    },
+    "mergedAt": "2026-10-03T17:36:30Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/13"
+  },
+  {
+    "number": 14,
+    "branch": "codex/practice-and-bots",
+    "head": "a94b8ecb183f7b50b2b28e713ac98c7c370356bf",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37141141922,
+      "headSha": "a94b8ecb183f7b50b2b28e713ac98c7c370356bf",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141141922"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37141135014,
+      "headSha": "75664d5b57316fc63ed4ac0aba1b3f48f939de4e",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141135014"
+    },
+    "mergeCommit": {
+      "oid": "26a199d3d90ea57105d2106e3cefa6c9455f74d1"
+    },
+    "mergedAt": "2026-10-03T17:43:14Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/14"
+  },
+  {
+    "number": 15,
+    "branch": "codex/private-room-owners",
+    "head": "c4fef5981c3febd060bacb0e92d2befc4245c4d9",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37141556122,
+      "headSha": "c4fef5981c3febd060bacb0e92d2befc4245c4d9",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141556122"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37141549051,
+      "headSha": "26a199d3d90ea57105d2106e3cefa6c9455f74d1",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141549051"
+    },
+    "mergeCommit": {
+      "oid": "f6d958787d5c776472b7945314e75eb71e4772a6"
+    },
+    "mergedAt": "2026-10-03T17:49:15Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/15"
+  },
+  {
+    "number": 16,
+    "branch": "codex/team-modes",
+    "head": "a1c867a20e04ab899cc8d2c8b550769efe817a22",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37141919981,
+      "headSha": "a1c867a20e04ab899cc8d2c8b550769efe817a22",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141919981"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37141911729,
+      "headSha": "f6d958787d5c776472b7945314e75eb71e4772a6",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37141911729"
+    },
+    "mergeCommit": {
+      "oid": "cbaff7b325c6e10aadca66abb4dbcda07a591313"
+    },
+    "mergedAt": "2026-10-03T17:54:35Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/16"
+  },
+  {
+    "number": 18,
+    "branch": "codex/complete-release",
+    "head": "cbe2dcc60a8947754a710fbffc07b008a945079a",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 37142448071,
+      "headSha": "cbe2dcc60a8947754a710fbffc07b008a945079a",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37142448071"
+    },
+    "precedingMainCI": {
+      "conclusion": "success",
+      "databaseId": 37142240070,
+      "headSha": "cbaff7b325c6e10aadca66abb4dbcda07a591313",
+      "status": "completed",
+      "url": "https://github.com/zznam/xeom-rush-hkt/actions/runs/37142240070"
+    },
+    "mergeCommit": {
+      "oid": "1e9fe07747eb7d8d50433b286588e9e2992dfffe"
+    },
+    "mergedAt": "2026-10-03T18:07:07Z",
+    "url": "https://github.com/zznam/xeom-rush-hkt/pull/18"
+  }
+]
