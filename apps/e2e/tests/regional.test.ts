@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/latency', (route) => route.fulfill({ json: { region: 'test' } }));
-  await page.route('**/api/guest', (route) => route.fulfill({ json: { guest: 'browser-credential' } }));
 });
 
 test('manual region choice matches there and displays the city on mobile', async ({ page }, testInfo) => {
@@ -11,7 +10,10 @@ test('manual region choice matches there and displays the city on mobile', async
   await page.route('**/api/match', async (route) => {
     matchedRegion = route.request().postDataJSON().region;
     await route.fulfill({
-      json: { room: 'city-01', wsUrl: 'ws://localhost:3004?session=814ab4e9-a558-465e-8c53-12e849ca14fa' },
+      json: {
+        room: 'city-01',
+        wsUrl: `ws://localhost:3004?session=814ab4e9-a558-465e-8c53-12e849ca14fa&guest=${route.request().postDataJSON().guest}`,
+      },
     });
   });
   await page.goto('/');
