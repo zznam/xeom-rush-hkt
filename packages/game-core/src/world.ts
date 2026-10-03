@@ -1,4 +1,5 @@
 import {
+  advanceStreetRoute,
   limitMovementInput,
   type MovementInputState,
   progressionPeriods,
@@ -394,12 +395,13 @@ export class GameWorld {
       const target = p.passengerId ? { x: passenger.destX, y: passenger.destY } : { x: passenger.x, y: passenger.y };
       const key = `${passenger.id}:${target.x}:${target.y}:${this.life.roadRevision}`;
       let cached = this.routeCache.get(id);
-      if (!cached || cached.key !== key || Math.hypot(cached.from.x - p.x, cached.from.y - p.y) > 200) {
+      const closures = this.life.closure?.active ? [this.life.closure.rect] : [];
+      const remaining = cached?.key === key ? advanceStreetRoute(p, cached.route, closures) : null;
+      if (!remaining) {
         cached = { key, from: { x: p.x, y: p.y }, route: this.getNavigationRoute(p, target) };
         this.routeCache.set(id, cached);
-      }
-      const route = [...cached.route];
-      while (route.length > 2 && Math.hypot(route[1].x - p.x, route[1].y - p.y) < 70) route.shift();
+      } else cached!.route = remaining;
+      const route = [...cached!.route];
       const job = this.options.enhanced ? this.getJob(passenger) : null;
       const fare = calculateFare(
         passenger.reward,

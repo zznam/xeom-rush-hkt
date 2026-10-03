@@ -62,7 +62,11 @@ export class StreetNavigator {
   }
   route(from: Vector2D, to: Vector2D): Vector2D[] {
     if (!isRoadPoint(from, 16, this.closures) || !isRoadPoint(to, 16, this.closures)) return [];
-    if (roadSegmentClear(from, to, this.closures)) return [from, to];
+    if (roadSegmentClear(from, to, this.closures))
+      return [
+        { x: from.x, y: from.y },
+        { x: to.x, y: to.y },
+      ];
     const start = this.anchor(from);
     const end = this.anchor(to);
     if (start === undefined || end === undefined) return [];
@@ -105,14 +109,21 @@ export class StreetNavigator {
       if (visited.has(id)) continue;
       visited.add(id);
       if (id === end) {
-        const path: Vector2D[] = [to];
+        const path: Vector2D[] = [{ x: to.x, y: to.y }];
         let cur = end;
         while (cur !== start) {
           path.push(this.points.get(cur)!);
           cur = parent.get(cur)!;
         }
-        path.push(this.points.get(start)!, from);
-        return path.reverse();
+        path.push(this.points.get(start)!, { x: from.x, y: from.y });
+        const ordered = path.reverse();
+        // Keep corners and endpoints; collinear grid nodes do not add guidance.
+        return ordered.filter((point, i) => {
+          if (i === 0 || i === ordered.length - 1) return true;
+          const a = ordered[i - 1],
+            b = ordered[i + 1];
+          return Math.abs((point.x - a.x) * (b.y - point.y) - (point.y - a.y) * (b.x - point.x)) > 0.001;
+        });
       }
       const here = this.points.get(id)!;
       for (const offset of [-160, 160, -1, 1]) {
@@ -134,4 +145,31 @@ let defaultNavigator: StreetNavigator | undefined;
 export function findStreetRoute(from: Vector2D, to: Vector2D): Vector2D[] {
   defaultNavigator ??= new StreetNavigator();
   return defaultNavigator.route(from, to);
+}
+
+// Trim progress along a route. Replan only when the rider meaningfully deviates.
+export function advanceStreetRoute(from: Vector2D, route: Vector2D[], closures: Building[] = []): Vector2D[] | null {
+  if (route.length < 2) return null;
+  let index = -1,
+    closest = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i],
+      b = route[i + 1],
+      dx = b.x - a.x,
+      dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((from.x - a.x) * dx + (from.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const distance = Math.hypot(from.x - (a.x + dx * t), from.y - (a.y + dy * t));
+    if (distance <= closest + 0.001 && roadSegmentClear(from, b, closures)) {
+      closest = distance;
+      index = i + 1;
+    }
+  }
+  if (index < 0 || closest > 100) return null;
+  if (
+    index < route.length - 1 &&
+    Math.hypot(from.x - route[index].x, from.y - route[index].y) < 40 &&
+    roadSegmentClear(from, route[index + 1], closures)
+  )
+    index++;
+  return [{ x: from.x, y: from.y }, ...route.slice(index)];
 }

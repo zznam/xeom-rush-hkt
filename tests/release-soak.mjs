@@ -171,32 +171,8 @@ function drive(s) {
     s.ws.send(encodeInput(++s.seq, 0, 0, 0));
     return;
   }
-  const key = `${nav.targetId}:${nav.target.x}:${nav.target.y}:${g.city.roadRevision}:${nav.route.length}:${nav.route[0]?.x}:${nav.route[0]?.y}`;
-  const closures = g.city.closure?.active ? [g.city.closure.rect] : [];
-  if (key !== s.routeKey) {
-    s.routeIndex = 0;
-    s.routeKey = key;
-  }
-  const route = nav.route;
-  let nearest = s.routeIndex,
-    distance = Infinity;
-  for (let i = s.routeIndex; i < route.length; i++) {
-    const d = Math.hypot(p.x - route[i].x, p.y - route[i].y);
-    if (d < distance) {
-      nearest = i;
-      distance = d;
-    }
-  }
-  s.routeIndex = nearest;
-  let target = route[Math.min(nearest + 1, route.length - 1)] || nav.target;
-  for (let i = nearest + 1; i < Math.min(nearest + 5, route.length); i++) {
-    if (roadSegmentClear(p, route[i], closures)) {
-      target = route[i];
-      s.routeIndex = i - 1;
-    } else break;
-  }
-  if (roadSegmentClear(p, nav.target, closures) && Math.hypot(p.x - nav.target.x, p.y - nav.target.y) < 180)
-    target = nav.target;
+  // The server already publishes a cleared remaining road route; follow its next corner.
+  const target = nav.route[1] || nav.target;
   let dx = target.x - p.x,
     dy = target.y - p.y,
     norm = Math.hypot(dx, dy);
@@ -213,7 +189,14 @@ function drive(s) {
   }
   s.ws.send(encodeInput(++s.seq, dx / Math.max(norm, 25), dy / Math.max(norm, 25), Math.atan2(dy, dx)));
 }
-let closing = false;
+let closing = false,
+  interrupted = false;
+process.once('SIGINT', () => {
+  interrupted = true;
+});
+process.once('SIGTERM', () => {
+  interrupted = true;
+});
 try {
   await dynamo.send(
     new CreateTableCommand({
@@ -394,7 +377,7 @@ try {
     });
     const page = await context.newPage();
     page.on('websocket', (ws) => {
-      if (!ws.url().includes('/?') && !ws.url().includes('session=')) return;
+      if (!ws.url().includes('session=')) return;
       if (!ws.url().startsWith('ws://localhost:3040')) errors.push(`Wrong browser owner: ${ws.url()}`);
     });
     page.on('pageerror', (e) => errors.push(e.message));
@@ -419,7 +402,7 @@ try {
   for (const s of sockets) s.bytes = 0;
   const started = Date.now();
   console.log(
-    `SOAK_STARTED ${new Date(started).toISOString()} duration=${duration} public64+8+2 browsers, 6 team/private rooms`,
+    `SOAK_STARTED ${new Date(started).toISOString()} duration=${duration} public${humans}+8+2 browsers, 6 team/private rooms`,
   );
   timer = setInterval(() => {
     for (const s of sockets) drive(s);
@@ -433,7 +416,7 @@ try {
       }
     }
   }, 1500);
-  while (Date.now() - started < duration) {
+  while (!interrupted && Date.now() - started < duration) {
     await pause(Math.min(30000, duration - (Date.now() - started)));
     const nodes = await Promise.all([3037, 3040].map((port) => json(`http://localhost:${port}/api/metrics`)));
     const cloud = await Promise.all(
@@ -446,6 +429,7 @@ try {
       `SOAK_PROGRESS ${Math.round((Date.now() - started) / 1000)}s p95=${nodes.map((n) => n.public.p95Ms)} cloud=${cloud.map((c) => c.p95Ms)} deliveries=${deliveries} rounds=${rounds} errors=${errors.length}`,
     );
   }
+  assert.ok(!interrupted, 'Soak interrupted before completion');
   const render = [];
   for (const sample of browserSamples) {
     const data = await sample.page.evaluate(() => window.__soak);

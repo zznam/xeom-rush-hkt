@@ -66,3 +66,22 @@ it('validates all landmark targets with a reusable closure connectivity graph', 
   expect(navigator.reachableTargets({ x: 2050, y: 2050 }, LANDMARKS)).toBe(true);
   expect(navigator.reachableTargets({ x: 2050, y: 2050 }, [{ x: 850, y: 1130 }])).toBe(false);
 });
+import { advanceStreetRoute } from './navigation';
+it('trims forward progress without cutting obstacles and requests replanning after meaningful deviation', () => {
+  const target = LANDMARKS.find((l) => l.id === 'ben-thanh')!;
+  const path = findStreetRoute({ x: 2050, y: 2050 }, target);
+  expect(path.length).toBeLessThan(30);
+  const advanced = advanceStreetRoute(path[1], path)!;
+  expect(advanced.length).toBeLessThanOrEqual(path.length);
+  for (let i = 1; i < advanced.length; i++) expect(roadSegmentClear(advanced[i - 1], advanced[i])).toBe(true);
+  expect(advanceStreetRoute({ x: 3650, y: 3650 }, path)).toBeNull();
+});
+it('keeps cached geometry independent of mutable rider positions', () => {
+  const from = { x: 2050, y: 2050 },
+    to = { x: 2050, y: 2300 };
+  const path = findStreetRoute(from, to);
+  from.x = 3650;
+  to.y = 3000;
+  expect(path[0]).toEqual({ x: 2050, y: 2050 });
+  expect(path.at(-1)).toEqual({ x: 2050, y: 2300 });
+});
