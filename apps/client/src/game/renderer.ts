@@ -677,7 +677,8 @@ export class GameRenderer {
     for (const p of passengers) {
       if (p.isCarried) continue;
 
-      const color = ['#248566', '#bf8c27', '#8860bd'][p.tier];
+      const reserved = this.gameplay?.reservations?.[p.id];
+      const color = reserved ? '#2563a0' : ['#248566', '#bf8c27', '#8860bd'][p.tier];
       const bob = this.reducedMotion || this.lowQuality ? 0 : Math.sin(Date.now() / 240 + p.x) * 2;
       ctx.fillStyle = color + '35';
       ctx.beginPath();

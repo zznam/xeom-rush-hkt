@@ -73,6 +73,9 @@ export function parseGameCommand(text: string): GameCommand | null {
 export interface GameplayState {
   version: 1;
   tick: number;
+  practice: boolean;
+  practiceCompleted: boolean;
+  reservations: Record<string, string>;
   city: import('./city-life').CityLifeState;
   trip: TripMetadata | null;
   selectedPickup: string | null;

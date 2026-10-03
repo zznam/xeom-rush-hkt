@@ -32,7 +32,7 @@ All rows begin pending. Implementation and validation evidence are recorded as e
 | 26  | Co-op dispatch          | Pending        | Pending                                                               |
 | 27  | Delivery relay          | Pending        | Pending                                                               |
 | 28  | Quick emotes            | Pending        | Pending                                                               |
-| 29  | Adaptive bots           | Pending        | Pending                                                               |
-| 30  | Protected practice      | Pending        | Pending                                                               |
+| 29  | Adaptive bots           | Implemented    | Reservation, no-reward, retirement and browser practice checks pass   |
+| 30  | Protected practice      | Implemented    | Reservation, no-reward, retirement and browser practice checks pass   |
 | 31  | Custom controls         | Implemented    | 15 browser tests, six viewports, saved settings and focus checks pass |
 | 32  | Performance/readability | Implemented    | 15 browser tests, six viewports, saved settings and focus checks pass |

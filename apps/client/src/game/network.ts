@@ -51,6 +51,7 @@ export class GameNetwork {
       try {
         const target = new URL(url);
         target.searchParams.set('session', token);
+        if (readStored('tutorial') !== 'done') target.searchParams.set('practice', '1');
         socket = new WebSocket(target);
       } catch {
         onDisconnect();

@@ -234,3 +234,16 @@ test('custom controls save without reconnecting and dialogs retain keyboard focu
   await expect(page.getByLabel('Phím up')).toHaveValue('i');
   await expect(page.getByLabel('Đồ họa')).toHaveValue('low');
 });
+
+test('protected practice teaches pickup and arrival without competitive rewards', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#username').fill('NewRider');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByText('TẬP LÁI RIÊNG CHO BẠN')).toBeVisible();
+  await page.keyboard.down('s');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('xeom:tutorial')), { timeout: 5000 }).toBe('done');
+  await page.keyboard.up('s');
+  await expect(page.locator('.trip-toast')).toContainText('Tập lái hoàn thành');
+  await expect(page.locator('.hud-earnings > strong')).toContainText('0');
+  await expect(page.locator('.trip-progress')).toContainText('0');
+});
