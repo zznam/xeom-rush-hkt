@@ -4,6 +4,7 @@ COPY bun.lock package.json ./
 COPY apps/client/package.json ./apps/client/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
+COPY apps/room-service/package.json ./apps/room-service/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/game-core/package.json ./packages/game-core/
 RUN bun install --frozen-lockfile --ignore-scripts
@@ -18,6 +19,7 @@ COPY bun.lock package.json ./
 COPY apps/client/package.json ./apps/client/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
+COPY apps/room-service/package.json ./apps/room-service/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/game-core/package.json ./packages/game-core/
 RUN bun install --frozen-lockfile --production --ignore-scripts

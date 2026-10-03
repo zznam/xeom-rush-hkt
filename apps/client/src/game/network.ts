@@ -51,7 +51,8 @@ export class GameNetwork {
       try {
         const target = new URL(url);
         target.searchParams.set('session', token);
-        if (readStored('tutorial') !== 'done') target.searchParams.set('practice', '1');
+        if (!target.pathname.includes('/private/') && readStored('tutorial') !== 'done')
+          target.searchParams.set('practice', '1');
         socket = new WebSocket(target);
       } catch {
         onDisconnect();
@@ -156,7 +157,7 @@ export class GameNetwork {
     };
     void (async () => {
       const target = new URL(url);
-      if (!target.searchParams.has('ticket')) {
+      if (!target.searchParams.has('ticket') && !target.searchParams.has('guest')) {
         const key = `guest:${target.host}`;
         let guest = readStored(key);
         if (!guest) {

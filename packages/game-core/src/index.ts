@@ -4,3 +4,5 @@ export * from './city-features';
 export * from './passenger-spawner';
 export * from './spatial-grid';
 export * from './bot-ai';
+
+export * from './room-owner';

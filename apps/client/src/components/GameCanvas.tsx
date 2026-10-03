@@ -1,3 +1,7 @@
+import { RoomPanel } from './RoomPanel';
+import { RoomLauncher } from './RoomHub';
+import { roomApiBase } from '../game/rooms';
+import type { RoomState } from '@xeom-rush/shared';
 import { SettingsPanel } from './SettingsPanel';
 import { useGameDialog } from './useGameDialog';
 import { DriverPanel } from './DriverPanel';
@@ -31,9 +35,11 @@ interface GameCanvasProps {
   serverUrl: string;
   cityLabel?: string;
   onDisconnect: (reason?: string) => void;
+  onRoomJoin?: (url: string, name?: string) => void;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect, onRoomJoin }) => {
+  const [room, setRoom] = useState<RoomState | null>(null);
   const [gameplay, setGameplay] = useState<GameplayState | null>(null);
   const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
@@ -165,6 +171,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     });
 
     const unsubscribeControl = network.registerControlCallback((message) => {
+      if (message.kind === 'room') setRoom(message.data);
       if (message.kind === 'career') {
         setCareer(message.data);
         soundEngine.setHorn(message.data.equipped?.horn ?? 'horn-0');
@@ -493,6 +500,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         } as React.CSSProperties
       }
     >
+      {room && (
+        <RoomPanel
+          state={room}
+          playerId={localPlayer?.id ?? ''}
+          serverUrl={serverUrl}
+          onLeave={() => {
+            network.command('room-leave');
+            network.disconnect();
+            onDisconnect();
+          }}
+        />
+      )}
       {showSettings && (
         <SettingsPanel preferences={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)} />
       )}
@@ -502,7 +521,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           career={career}
           summary={summary}
           ranking={cityRanking}
-          serverUrl={serverUrl}
+          serverUrl={roomApiBase(serverUrl)}
           onClose={() => setShowDriver(false)}
         />
       )}
@@ -529,6 +548,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
         </div>
         <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
+          {!room && (
+            <RoomLauncher
+              serverUrl={serverUrl}
+              username={username}
+              onJoin={(url, name) => {
+                network.disconnect();
+                onRoomJoin?.(url, name);
+              }}
+            />
+          )}
           <button onClick={() => soundEngine.honk()} aria-label='Bấm còi'>
             📯
           </button>
@@ -664,7 +693,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           showDebug={showDebug}
           onToggleDebug={setShowDebug}
           onSpawnBots={handleSpawnBots}
-          serverUrl={serverUrl}
+          serverUrl={roomApiBase(serverUrl)}
         />
       )}
     </div>

@@ -760,3 +760,16 @@
     line-height: 1.2;
   }
 }
+
+.invite-field {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.invite-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  box-sizing: border-box;
+  user-select: text;
+}
