@@ -1,4 +1,4 @@
-import { isRoadPoint, roadSegmentClear, type Building } from './city-map';
+import { isRoadPoint, roadSegmentClear, isDrivablePoint, drivableSegmentClear, type Building } from './city-map';
 import type { Vector2D } from './types';
 
 const GRID_STEP = 50;
@@ -17,7 +17,8 @@ export class StreetNavigator {
   }
   private components = new Map<number, number>();
   private anchor(p: Vector2D) {
-    if (!isRoadPoint(p, 16, this.closures)) return undefined;
+    const strict = isRoadPoint(p, 16, this.closures);
+    if (!strict && !isDrivablePoint(p, this.closures)) return undefined;
     const candidates: [number, Vector2D][] = [];
     for (let x = Math.floor(p.x / GRID_STEP) - 1; x <= Math.floor(p.x / GRID_STEP) + 2; x++)
       for (let y = Math.floor(p.y / GRID_STEP) - 1; y <= Math.floor(p.y / GRID_STEP) + 2; y++) {
@@ -27,7 +28,7 @@ export class StreetNavigator {
       }
     return candidates
       .sort((a, b) => Math.hypot(a[1].x - p.x, a[1].y - p.y) - Math.hypot(b[1].x - p.x, b[1].y - p.y))
-      .find(([, n]) => roadSegmentClear(p, n, this.closures))?.[0];
+      .find(([, n]) => (strict ? roadSegmentClear : drivableSegmentClear)(p, n, this.closures))?.[0];
   }
   private clearEdge(id: number, next: number) {
     const here = this.points.get(id)!,
@@ -64,8 +65,11 @@ export class StreetNavigator {
     });
   }
   route(from: Vector2D, to: Vector2D): Vector2D[] {
-    if (!isRoadPoint(from, 16, this.closures) || !isRoadPoint(to, 16, this.closures)) return [];
-    if (roadSegmentClear(from, to, this.closures))
+    const fromStrict = isRoadPoint(from, 16, this.closures),
+      toStrict = isRoadPoint(to, 16, this.closures);
+    if ((!fromStrict && !isDrivablePoint(from, this.closures)) || (!toStrict && !isDrivablePoint(to, this.closures)))
+      return [];
+    if ((fromStrict && toStrict ? roadSegmentClear : drivableSegmentClear)(from, to, this.closures))
       return [
         { x: from.x, y: from.y },
         { x: to.x, y: to.y },
@@ -154,6 +158,9 @@ export function findStreetRoute(from: Vector2D, to: Vector2D): Vector2D[] {
 // Trim progress along a route. Replan only when the rider meaningfully deviates.
 export function advanceStreetRoute(from: Vector2D, route: Vector2D[], closures: Building[] = []): Vector2D[] | null {
   if (route.length < 2) return null;
+  const strict = isRoadPoint(from, 16, closures);
+  if (!strict && !isDrivablePoint(from, closures)) return null;
+  const segmentClear = strict ? roadSegmentClear : drivableSegmentClear;
   let index = -1,
     closest = Infinity;
   for (let i = 0; i < route.length - 1; i++) {
@@ -163,7 +170,7 @@ export function advanceStreetRoute(from: Vector2D, route: Vector2D[], closures: 
       dy = b.y - a.y;
     const t = Math.max(0, Math.min(1, ((from.x - a.x) * dx + (from.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
     const distance = Math.hypot(from.x - (a.x + dx * t), from.y - (a.y + dy * t));
-    if (distance <= closest + 0.001 && roadSegmentClear(from, b, closures)) {
+    if (distance <= closest + 0.001 && segmentClear(from, b, closures)) {
       closest = distance;
       index = i + 1;
     }
@@ -172,7 +179,7 @@ export function advanceStreetRoute(from: Vector2D, route: Vector2D[], closures: 
   if (
     index < route.length - 1 &&
     Math.hypot(from.x - route[index].x, from.y - route[index].y) < 40 &&
-    roadSegmentClear(from, route[index + 1], closures)
+    segmentClear(from, route[index + 1], closures)
   )
     index++;
   return [{ x: from.x, y: from.y }, ...route.slice(index)];

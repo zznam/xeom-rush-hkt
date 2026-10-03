@@ -110,7 +110,7 @@ jobs:
 
   release-soak:
     name: Thirty-minute full-capacity release soak
-    if: github.head_ref == 'codex/complete-release' && contains(github.event.pull_request.labels.*.name, 'release-soak')
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'release-soak')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
