@@ -35,6 +35,7 @@ export interface RoomState {
   emotes?: RoomEmote[];
 }
 export interface DurableRoom {
+  cityStartedAt?: number;
   state: RoomState;
   checkpoints: RoomCheckpoint[];
   roundResults?: RoomResult[];

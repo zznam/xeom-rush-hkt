@@ -172,8 +172,9 @@ export class GameWorld {
   private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> =
     new Map();
 
-  constructor(private options: { enhanced?: boolean; now?: () => number } = {}) {
-    this.life = { ...cityAtTick(0), enabled: !!options.enhanced };
+  constructor(private options: { enhanced?: boolean; now?: () => number; initialTick?: number } = {}) {
+    this.tickCount = Math.max(0, Math.floor(options.initialTick ?? 0));
+    this.life = { ...cityAtTick(this.tickCount), enabled: !!options.enhanced };
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
     this.cityFeatures = new CityFeatures(this.physics);

@@ -74,10 +74,16 @@ export class RoomOwner {
   private retained = new Map<string, RoomResult>();
   private endsAt = 0;
   private now: () => number;
+  private cityStartedAt: number;
   public dirty = true;
   constructor(invite: string, options: { now?: () => number; persisted?: DurableRoom } = {}) {
     this.now = options.now ?? Date.now;
-    this.world = new GameWorld({ enhanced: true, now: this.now });
+    this.cityStartedAt = options.persisted?.cityStartedAt ?? this.now();
+    this.world = new GameWorld({
+      enhanced: true,
+      now: this.now,
+      initialTick: Math.max(0, Math.floor((this.now() - this.cityStartedAt) / 50)),
+    });
     this.bots = new BotManager(this.world, this.world.getPhysics());
     this.teams = new TeamPlay(this.world, () => this.teamMembers(), this.now);
     this.state = {
@@ -349,7 +355,11 @@ export class RoomOwner {
     }
     this.capture();
     for (const p of this.members.values()) if (!p.socket && p.expired) this.members.delete(p.id);
-    this.world = new GameWorld({ enhanced: true, now: this.now });
+    this.world = new GameWorld({
+      enhanced: true,
+      now: this.now,
+      initialTick: Math.max(0, Math.floor((this.now() - this.cityStartedAt) / 50)),
+    });
     this.bots = new BotManager(this.world, this.world.getPhysics());
     for (const p of this.members.values()) {
       this.world.addPlayer(p.playerId, p.username);
@@ -523,6 +533,11 @@ export class RoomOwner {
   }
   public durable(): DurableRoom {
     const checkpoints = this.checkpoints();
-    return { state: this.view(), checkpoints, roundResults: [...this.retained.values()] };
+    return {
+      cityStartedAt: this.cityStartedAt,
+      state: this.view(),
+      checkpoints,
+      roundResults: [...this.retained.values()],
+    };
   }
 }

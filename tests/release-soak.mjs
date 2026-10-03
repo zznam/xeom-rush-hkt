@@ -70,7 +70,12 @@ async function until(fn, timeout = 15000) {
   throw new Error('Startup/join timed out');
 }
 function child(command, args, env, label) {
-  const p = spawn(command, args, { cwd: root, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(command, args, {
+    cwd: root,
+    env: { ...process.env, ...env },
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let logs = '';
   p.stdout.on('data', (d) => {
     logs = (logs + d).slice(-4000);
@@ -290,7 +295,7 @@ try {
   await mf.ready;
   child(
     'bun',
-    ['run', '--filter', 'client', 'dev', '--port', '5187'],
+    ['run', '--filter', 'client', 'dev', '--port', '5187', '--strictPort'],
     { VITE_DEPLOY_TARGET: '', VITE_WS_URL: 'ws://localhost:3040' },
     'Vite',
   );
@@ -495,8 +500,19 @@ try {
   if (mf) await mf.dispose();
   for (const p of children.reverse())
     if (p.exitCode === null) {
-      p.kill('SIGTERM');
-      await Promise.race([once(p, 'exit'), pause(5000).then(() => p.kill('SIGKILL'))]);
+      try {
+        process.kill(-p.pid, 'SIGTERM');
+      } catch {
+        p.kill('SIGTERM');
+      }
+      await Promise.race([
+        once(p, 'exit'),
+        pause(5000).then(() => {
+          try {
+            process.kill(-p.pid, 'SIGKILL');
+          } catch {}
+        }),
+      ]);
     }
   await dynamo.send(new DeleteTableCommand({ TableName: table })).catch(() => {});
   await rm(directory, { recursive: true, force: true });

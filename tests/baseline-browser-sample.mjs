@@ -19,7 +19,12 @@ let bytes = 0,
   running = true,
   timer;
 function start(command, args, env) {
-  const p = spawn(command, args, { cwd: root, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(command, args, {
+    cwd: root,
+    env: { ...process.env, ...env },
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let logs = '';
   p.stdout.on('data', (d) => {
     logs = (logs + d).slice(-4000);
@@ -52,7 +57,7 @@ try {
     });
     await ready(`http://localhost:${port}/api/ready`);
   }
-  start('bun', ['run', '--filter', 'client', 'dev', '--port', '5188'], {
+  start('bun', ['run', '--filter', 'client', 'dev', '--port', '5188', '--strictPort'], {
     VITE_DEPLOY_TARGET: '',
     VITE_WS_URL: 'ws://localhost:3044',
   });
@@ -159,7 +164,18 @@ try {
   for (const b of browsers) await b.close();
   for (const p of children.reverse())
     if (p.exitCode === null) {
-      p.kill('SIGTERM');
-      await Promise.race([once(p, 'exit'), pause(5000).then(() => p.kill('SIGKILL'))]);
+      try {
+        process.kill(-p.pid, 'SIGTERM');
+      } catch {
+        p.kill('SIGTERM');
+      }
+      await Promise.race([
+        once(p, 'exit'),
+        pause(5000).then(() => {
+          try {
+            process.kill(-p.pid, 'SIGKILL');
+          } catch {}
+        }),
+      ]);
     }
 }
