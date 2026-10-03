@@ -160,6 +160,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       arrivalToastUntil = 0;
       prediction.clear();
       interpolation.clear();
+      arrivalToastUntil = 0;
       if (myPlayerId) {
         clientSeqRef.current = 0;
         previousViolationTickRef.current = 0;
@@ -473,6 +474,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       network.disconnect();
       prediction.clear();
       interpolation.clear();
+      arrivalToastUntil = 0;
       inputHandler.clear();
       soundEngine.stopEngine();
     };
