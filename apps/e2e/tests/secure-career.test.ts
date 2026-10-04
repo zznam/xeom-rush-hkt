@@ -3,6 +3,7 @@ test('career ranking preserves HTTPS while the rider uses a secure WebSocket URL
   const port = process.env.E2E_SERVER_PORT || '3003';
   const base = `http://localhost:${port}`;
   const secure = 'https://secure-career.example';
+  await page.route(`${secure}/api/capabilities`, (route) => route.fulfill({ json: { managed: false } }));
   await page.route(`${secure}/api/guest`, async (route) =>
     route.fulfill({ json: await (await request.post(`${base}/api/guest`)).json() }),
   );
