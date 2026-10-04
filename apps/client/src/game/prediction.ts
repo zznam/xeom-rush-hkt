@@ -21,6 +21,16 @@ export interface PendingInput {
 export class ClientPrediction extends PhysicsEngine {
   private life: CityLifeState | null = null;
   private tick = 0;
+  private speed = MOTORBIKE_SPEED;
+  private paused = false;
+  private revision = -1;
+  public configure(speed = MOTORBIKE_SPEED, paused = false, revision = 0): void {
+    if (!Number.isFinite(speed) || speed < 100 || speed > 1000) return;
+    if (revision !== this.revision || speed !== this.speed || paused !== this.paused) this.clear();
+    this.speed = speed;
+    this.paused = paused;
+    this.revision = revision;
+  }
   public setCityLife(life: CityLifeState) {
     this.life = life;
     this.setClosures(life.closure?.active ? [life.closure.rect] : []);
@@ -49,6 +59,7 @@ export class ClientPrediction extends PhysicsEngine {
    * Integrates inputs locally and predicts current player position.
    */
   public predict(currentX: number, currentY: number, raw: PendingInput): { x: number; y: number; angle: number } {
+    if (this.paused) return { x: currentX, y: currentY, angle: raw.angle };
     this.motion = limitMovementInput(this.motion, raw, raw.dt, (raw.speed ?? this.speedMultiplier) < 1);
     this.setMovement({ ...this.motion, seq: raw.seq });
     const input = { ...raw, ...this.motion };
@@ -61,8 +72,8 @@ export class ClientPrediction extends PhysicsEngine {
     const ndx = input.dx / mag;
     const ndy = input.dy / mag;
 
-    const deltaX = ndx * MOTORBIKE_SPEED * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
-    const deltaY = ndy * MOTORBIKE_SPEED * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
+    const deltaX = ndx * this.speed * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
+    const deltaY = ndy * this.speed * (input.speed ?? this.speedMultiplier) * throttle * input.dt;
 
     return { ...this.resolveMove(currentX, currentY, currentX + deltaX, currentY + deltaY), angle: this.motion.angle };
   }

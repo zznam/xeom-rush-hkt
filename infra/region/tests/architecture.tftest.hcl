@@ -21,6 +21,10 @@ variables {
 run "regional_architecture" {
   command = plan
   assert {
+    condition     = alltrue([for task in aws_ecs_task_definition.service : !contains([for env in jsondecode(task.container_definitions)[0].environment : env.name], "GAME_MASTER_ENABLED")])
+    error_message = "Administrative control must remain disabled by default."
+  }
+  assert {
     condition     = alltrue([for id in var.room_ids : aws_ecs_service.room[id].desired_count == 1 && aws_ecs_service.room[id].deployment_maximum_percent == 100 && aws_ecs_service.room[id].deployment_minimum_healthy_percent == 0])
     error_message = "A city must have exactly one authoritative owner, including deployments."
   }
@@ -39,5 +43,20 @@ run "regional_architecture" {
   assert {
     condition     = aws_dynamodb_table.careers.point_in_time_recovery[0].enabled
     error_message = "Career storage needs point-in-time recovery."
+  }
+}
+
+run "managed_cities_opt_in" {
+  command = plan
+  variables {
+    game_master_enabled       = true
+    admin_control_url         = "https://control.example.com"
+    game_deployment_id        = "aws-staging"
+    admin_worker_token_arn    = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:admin-abcdef"
+    guest_identity_secret_arn = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:identity-abcdef"
+  }
+  assert {
+    condition     = alltrue([for task in aws_ecs_task_definition.service : length(jsondecode(task.container_definitions)[0].secrets) == 3 && contains([for env in jsondecode(task.container_definitions)[0].environment : env.name], "GAME_MASTER_ENABLED")])
+    error_message = "Both matchmaking and room workers need shared deployment identity and control credentials."
   }
 }

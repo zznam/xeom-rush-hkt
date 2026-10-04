@@ -82,3 +82,22 @@ Deno.test('KV objective claims and cosmetic equips are retry-safe', async () => 
     kv.close();
   }
 });
+
+Deno.test('ID-based careers isolate duplicate nicknames from legacy scores', async () => {
+  const kv = await Deno.openKv(':memory:');
+  const storage = new KvPersistence(kv);
+  try {
+    await storage.save('legacy', stats);
+    await storage.save('guest-a', { ...stats, profileId: 'identity-a', score: 3000 });
+    await storage.save('guest-b', { ...stats, profileId: 'identity-b', score: 5000 });
+    await storage.save('guest-a', { ...stats, profileId: 'identity-a', score: 3000 });
+    assert.equal((await storage.leaderboard()).length, 1);
+    const modern = await storage.leaderboard(true);
+    assert.equal(modern.length, 2);
+    assert.equal(modern[0].careerScore, 5000);
+    assert.equal(modern[1].careerScore, 3000);
+    await assert.rejects(() => storage.save('guest-a', { ...stats, profileId: 'identity-b' }), /owner/);
+  } finally {
+    storage.close();
+  }
+});

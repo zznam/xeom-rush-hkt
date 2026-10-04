@@ -2,6 +2,7 @@ FROM oven/bun:1.4.0 AS build
 WORKDIR /app
 COPY bun.lock package.json ./
 COPY apps/client/package.json ./apps/client/
+COPY apps/admin/package.json ./apps/admin/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
 COPY apps/room-service/package.json ./apps/room-service/
@@ -11,12 +12,14 @@ RUN bun install --frozen-lockfile --ignore-scripts
 COPY packages/shared packages/shared
 COPY packages/game-core packages/game-core
 COPY apps/server apps/server
-RUN bun run build:server
+COPY apps/admin apps/admin
+RUN bun run build:server && bun run build:admin
 
 FROM oven/bun:1.4.0 AS dependencies
 WORKDIR /app
 COPY bun.lock package.json ./
 COPY apps/client/package.json ./apps/client/
+COPY apps/admin/package.json ./apps/admin/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
 COPY apps/room-service/package.json ./apps/room-service/
@@ -31,6 +34,7 @@ COPY --from=dependencies --chown=node:node /app /app
 COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=node:node /app/packages/game-core/dist ./packages/game-core/dist
 COPY --from=build --chown=node:node /app/apps/server/dist ./apps/server/dist
+COPY --from=build --chown=node:node /app/apps/admin/dist ./apps/admin/dist
 USER node
 EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3002/api/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

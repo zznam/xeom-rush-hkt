@@ -3,7 +3,7 @@
   "unstable": ["kv"],
   "deploy": {
     "install": "sh deploy/bun.sh install --frozen-lockfile",
-    "build": "sh deploy/bun.sh run --bun build:server",
+    "build": "sh deploy/bun.sh run --bun build:server && sh deploy/bun.sh run --bun build:admin",
     "runtime": {
       "type": "dynamic",
       "entrypoint": "deploy/deno-entry.ts"

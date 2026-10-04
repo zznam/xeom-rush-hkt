@@ -72,6 +72,29 @@ variable "alarm_email" {
   description = "Operator email for CloudWatch alerts; AWS sends a subscription confirmation."
 }
 
+variable "game_master_enabled" {
+  type        = bool
+  default     = false
+  description = "Enable only after staging verification. The central hub is hosted separately on Deno."
+}
+variable "admin_control_url" {
+  type    = string
+  default = ""
+}
+variable "game_deployment_id" {
+  type    = string
+  default = ""
+}
+variable "admin_worker_token_arn" {
+  type        = string
+  default     = ""
+  description = "Secrets Manager ARN containing the deployment credential issued by City Desk."
+}
+variable "guest_identity_secret_arn" {
+  type        = string
+  default     = ""
+  description = "Secret ARN with the same identity signing value in every region of this deployment; 32+ random characters. Keep legacy and AWS values separate."
+}
 variable "private_rooms_enabled" {
   description = "Advertise private rooms on healthy routed ECS owners. Provisioning is manual."
   type        = bool

@@ -419,6 +419,66 @@ describe('Vietnamese protocol names', () => {
   });
 });
 
+it('delta field comparisons retain every wire-visible change', () => {
+  const baseline = decodeSnapshot(
+    encodeSnapshot(
+      1,
+      [
+        {
+          id: 'p',
+          username: 'Tài xế',
+          x: 1,
+          y: 2,
+          angle: 0,
+          score: 10,
+          lastProcessedSeq: 1,
+          passengerId: null,
+          connected: true,
+        },
+      ],
+      [makeBasePassenger()],
+      [{ id: 't', x: 3, y: 4, isRedNS: false, isYellow: false }],
+      [{ id: 'd', x: 5, y: 6, angle: 0 }],
+    ),
+  );
+  const cases = [
+    ...Object.entries({
+      username: 'Đổi tên',
+      x: 20,
+      y: 30,
+      angle: 1,
+      score: 200,
+      lastProcessedSeq: 2,
+      passengerId: 'ride',
+      lastViolation: { type: 'red-light', amount: 2000, tick: 1 },
+    }).map(([field, value]) => ({ group: 'players', field, value })),
+    ...Object.entries({
+      x: 20,
+      y: 30,
+      destX: 40,
+      destY: 50,
+      reward: 100,
+      isCarried: true,
+      tier: EPassengerTier.VIP,
+      deadline: 300,
+    }).map(([field, value]) => ({ group: 'passengers', field, value })),
+    ...Object.entries({ x: 20, y: 30, isRedNS: true, isYellow: true }).map(([field, value]) => ({
+      group: 'trafficLights',
+      field,
+      value,
+    })),
+    ...Object.entries({ x: 20, y: 30, angle: 1 }).map(([field, value]) => ({ group: 'pedestrians', field, value })),
+  ];
+  for (const { group, field, value } of cases) {
+    const next = structuredClone(baseline);
+    Object.assign((next as unknown as Record<string, object[]>)[group][0], { [field]: value });
+    const expected = decodeSnapshot(
+      encodeSnapshot(next.tick, next.players, next.passengers, next.trafficLights, next.pedestrians),
+    );
+    expect(decodeDeltaSnapshot(encodeDeltaSnapshot(baseline, next), baseline)).toEqual(expected);
+  }
+});
+
 describe('delta wire field comparisons and bounded UTF-8 reuse', () => {
   const baseline = () =>
     decodeSnapshot(

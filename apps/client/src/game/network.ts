@@ -1,3 +1,4 @@
+import { managedGuest } from './guest';
 import { readStored, writeStored } from './preferences';
 import {
   encodeJoin,
@@ -11,6 +12,11 @@ import {
   type ConfigPayload,
   type SnapshotPacketMeta,
 } from '@xeom-rush/shared';
+
+export interface ServerEnd {
+  message?: string;
+  result?: { score: number; deliveriesCount: number; mode: 'career' | 'sandbox' };
+}
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting';
 
@@ -34,7 +40,7 @@ export class GameNetwork {
     url: string,
     username: string,
     onConnect: () => void,
-    onDisconnect: () => void,
+    onDisconnect: (end?: ServerEnd) => void,
     onStatus?: (state: ConnectionState) => void,
   ): void {
     this.disconnect();
@@ -42,6 +48,8 @@ export class GameNetwork {
     const token = new URL(url).searchParams.get('session') || crypto.randomUUID();
     let failuresStarted = 0;
     let attempts = 0;
+    let preparedUrl = url;
+    let serverEnd: ServerEnd | undefined;
     const open = () => {
       if (generation !== this.generation) return;
       this.ready = false;
@@ -49,7 +57,7 @@ export class GameNetwork {
       onStatus?.(attempts ? 'reconnecting' : 'connecting');
       let socket: WebSocket;
       try {
-        const target = new URL(url);
+        const target = new URL(preparedUrl);
         target.searchParams.set('session', token);
         if (!target.pathname.includes('/private/') && readStored('tutorial') !== 'done')
           target.searchParams.set('practice', '1');
@@ -77,6 +85,23 @@ export class GameNetwork {
         if (this.ws !== socket) return;
         lastReceived = Date.now();
         if (typeof event.data === 'string') {
+          if (event.data.startsWith('notice:') || event.data.startsWith('result:')) {
+            try {
+              const body = JSON.parse(event.data.slice(event.data.indexOf(':') + 1));
+              if (event.data.startsWith('notice:') && typeof body.message === 'string')
+                serverEnd = { message: body.message };
+              if (
+                event.data.startsWith('result:') &&
+                Number.isFinite(body.score) &&
+                Number.isFinite(body.deliveriesCount) &&
+                ['career', 'sandbox'].includes(body.mode)
+              )
+                serverEnd = { result: body };
+            } catch {
+              /* Invalid optional metadata is ignored. */
+            }
+          }
+
           if (event.data.startsWith('pong:')) this.rtt = Math.max(0, Date.now() - Number(event.data.slice(5)));
           if (event.data.startsWith('city:')) {
             try {
@@ -137,7 +162,7 @@ export class GameNetwork {
         this.heartbeat = null;
         if (!failuresStarted) failuresStarted = Date.now();
         if (event.code === 1000 || event.code === 1008 || Date.now() - failuresStarted >= 25000) {
-          onDisconnect();
+          onDisconnect(serverEnd);
           return;
         }
         attempts++;
@@ -155,33 +180,49 @@ export class GameNetwork {
         /* onclose owns retries and user feedback. */
       };
     };
-    void (async () => {
-      const target = new URL(url);
-      if (!target.searchParams.has('ticket') && !target.searchParams.has('guest')) {
-        const key = `guest:${target.host}`;
-        let guest = readStored(key);
-        if (!guest) {
-          const api = new URL(target);
-          api.protocol = target.protocol === 'wss:' ? 'https:' : 'http:';
-          api.search = '';
-          api.pathname = api.pathname.replace(/\/$/, '') + '/api/guest';
-          try {
-            const response = await fetch(api, { method: 'POST', signal: AbortSignal.timeout(5000) });
-            if (response.ok) {
-              guest = (await response.json()).guest;
-              if (typeof guest === 'string') writeStored(key, guest);
-            }
-          } catch {
-            /* An older backend still accepts the binary handshake. */
-          }
+    const prepare = async () => {
+      try {
+        const target = new URL(url);
+        if (target.searchParams.get('managed') === '1' && target.searchParams.has('guest')) {
+          preparedUrl = target.toString();
+          open();
+          return;
         }
+        const apiUrl = `${target.protocol === 'wss:' ? 'https:' : 'http:'}//${target.host}${target.pathname.replace(/\/$/, '')}`;
+        const guest = target.pathname.includes('/private/') ? null : await managedGuest(apiUrl);
+        if (generation !== this.generation) return;
         if (guest) {
           target.searchParams.set('guest', guest);
-          url = target.toString();
+          target.searchParams.set('managed', '1');
         }
+        if (!guest && !target.searchParams.has('ticket') && !target.searchParams.has('guest')) {
+          const key = `guest:${target.host}`;
+          let credential = readStored(key);
+          if (!credential) {
+            try {
+              const response = await fetch(`${apiUrl}/api/guest`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(5000),
+              });
+              if (response.ok) {
+                credential = (await response.json()).guest;
+                if (typeof credential === 'string') writeStored(key, credential);
+              }
+            } catch {
+              /* Older backends accept the binary handshake. */
+            }
+          }
+          if (credential) target.searchParams.set('guest', credential);
+        }
+        if (generation !== this.generation) return;
+        preparedUrl = target.toString();
+        open();
+      } catch (error) {
+        if (generation === this.generation)
+          onDisconnect({ message: error instanceof Error ? error.message : 'Chưa kết nối được thành phố.' });
       }
-      if (generation === this.generation) open();
-    })();
+    };
+    void prepare();
   }
   public registerControlCallback(cb: (message: { version: 1; kind: string; data: any }) => void) {
     this.controls.add(cb);

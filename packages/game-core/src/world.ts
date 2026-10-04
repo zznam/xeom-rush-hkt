@@ -1,4 +1,6 @@
 import {
+  STANDARD_RULES,
+  type GameRules,
   advanceStreetRoute,
   limitMovementInput,
   type MovementInputState,
@@ -23,11 +25,8 @@ import {
   PlayerState,
   PassengerState,
   InputPayload,
-  MOTORBIKE_SPEED,
   COLLISION_RADIUS,
   CHUNK_SIZE,
-  RUSH_HOUR_INTERVAL_TICKS,
-  RUSH_HOUR_DURATION_TICKS,
   STREAK_RESET_TICKS,
   STREAK_MULTIPLIERS,
   type TrafficLightState,
@@ -39,10 +38,7 @@ import { PhysicsEngine } from './physics';
 import { PassengerSpawner } from './passenger-spawner';
 import { CityFeatures } from './city-features';
 
-const DRIVER_COLLISION_PENALTY = 1000;
-const RED_LIGHT_PENALTY = 2000;
 const PEDESTRIAN_STUN_TICKS = 40;
-const PEDESTRIAN_PENALTY = 5000;
 const PENALTY_COOLDOWN_TICKS = 20;
 const CITY_VISIBILITY_RADIUS = CHUNK_SIZE * 1.5;
 
@@ -160,7 +156,8 @@ export class GameWorld {
 
   // Rush Hour subsystem
   private rushHourEndsAtTick: number = 0;
-  private nextRushHourTick: number = RUSH_HOUR_INTERVAL_TICKS;
+  private nextRushHourTick: number;
+  private rules: GameRules;
 
   // Combo/Streak subsystem
   private streakCounts: Map<string, number> = new Map();
@@ -172,13 +169,46 @@ export class GameWorld {
   private sessionViolations: Map<string, { redLights: number; pedestrianHits: number; driverCollisions: number }> =
     new Map();
 
-  constructor(private options: { enhanced?: boolean; now?: () => number; initialTick?: number } = {}) {
+  constructor(
+    private options: { enhanced?: boolean; now?: () => number; initialTick?: number; rules?: GameRules } = {},
+  ) {
+    this.rules = structuredClone(options.rules ?? STANDARD_RULES);
     this.tickCount = Math.max(0, Math.floor(options.initialTick ?? 0));
+    this.nextRushHourTick = this.tickCount + this.rules.rushIntervalSeconds * 20;
     this.life = { ...cityAtTick(this.tickCount), closure: null, roadRevision: 0, enabled: !!options.enhanced };
     this.spatialGrid = new SpatialGrid();
     this.physics = new PhysicsEngine();
-    this.cityFeatures = new CityFeatures(this.physics);
-    this.passengers = new PassengerSpawner(this.physics, !!options.enhanced, this.tickCount);
+    this.cityFeatures = new CityFeatures(this.physics, this.rules);
+    this.passengers = new PassengerSpawner(this.physics, !!options.enhanced, this.tickCount, this.rules);
+  }
+
+  private fareEnvironment(point: Vector2D) {
+    return Math.max(
+      environmentMultiplier(this.life, point, false),
+      this.isRushHour() ? this.rules.rushFareMultiplier : 1,
+    );
+  }
+
+  public setRules(rules: GameRules): void {
+    const oldInterval = this.rules.rushIntervalSeconds;
+    this.rules = structuredClone(rules);
+    this.cityFeatures.setRules(this.rules);
+    const before = [...this.passengers.getPassengerMap().keys()];
+    this.passengers.setRules(this.rules);
+    for (const id of before) if (!this.passengers.getPassengerMap().has(id)) this.spatialGrid.remove(id);
+    if (oldInterval !== rules.rushIntervalSeconds)
+      this.nextRushHourTick = this.tickCount + rules.rushIntervalSeconds * 20;
+  }
+  public getPlayers(): PlayerState[] {
+    return [...this.players.values()];
+  }
+  public stopRushHour(): void {
+    this.rushHourEndsAtTick = this.tickCount;
+    this.nextRushHourTick = this.tickCount + this.rules.rushIntervalSeconds * 20;
+  }
+  public clearInputs(): void {
+    for (const queue of this.inputQueues.values()) queue.length = 0;
+    this.movement.clear();
   }
 
   public addPlayer(id: string, username: string, spawnX?: number, spawnY?: number): void {
@@ -383,7 +413,7 @@ export class GameWorld {
           fare: calculateFare(
             t.reward,
             this.streakCounts.get(id) ?? 0,
-            this.options.enhanced ? environmentMultiplier(this.life, t, this.isRushHour()) : 1,
+            this.options.enhanced ? this.fareEnvironment(t) : 1,
             !!this.options.enhanced,
             this.options.enhanced ? Math.floor(t.reward * 0.15) : 0,
           ),
@@ -407,7 +437,7 @@ export class GameWorld {
       const fare = calculateFare(
         passenger.reward,
         this.streakCounts.get(id) ?? 0,
-        this.options.enhanced ? environmentMultiplier(this.life, p, this.isRushHour()) : 1,
+        this.options.enhanced ? this.fareEnvironment(p) : 1,
         !!this.options.enhanced && (!p.passengerId || !this.dirtyTrips.has(id)),
         job
           ? p.passengerId
@@ -516,9 +546,9 @@ export class GameWorld {
 
   /** Manually trigger a rush hour event (for API endpoint and tests). */
   public triggerRushHour(): void {
-    this.rushHourEndsAtTick = this.tickCount + RUSH_HOUR_DURATION_TICKS;
+    this.rushHourEndsAtTick = this.tickCount + this.rules.rushDurationSeconds * 20;
     // Reset next auto-trigger from now
-    this.nextRushHourTick = this.tickCount + RUSH_HOUR_INTERVAL_TICKS;
+    this.nextRushHourTick = this.tickCount + this.rules.rushIntervalSeconds * 20;
   }
 
   public getStreakCounts(): Map<string, number> {
@@ -598,8 +628,8 @@ export class GameWorld {
             const ndx = input.dx / mag;
             const ndy = input.dy / mag;
 
-            const deltaX = ndx * MOTORBIKE_SPEED * movementConditions(this.life.rain).speed * throttle * stepDt;
-            const deltaY = ndy * MOTORBIKE_SPEED * movementConditions(this.life.rain).speed * throttle * stepDt;
+            const deltaX = ndx * this.rules.speed * movementConditions(this.life.rain).speed * throttle * stepDt;
+            const deltaY = ndy * this.rules.speed * movementConditions(this.life.rain).speed * throttle * stepDt;
 
             const resolved = this.physics.resolveMove(player.x, player.y, player.x + deltaX, player.y + deltaY);
             player.x = resolved.x;
@@ -636,19 +666,19 @@ export class GameWorld {
     }
 
     // 1.5. Check player-to-player collisions
-    const playerIds = [...this.players.values()].filter((p) => p.connected).map((p) => p.id);
-    for (let i = 0; i < playerIds.length; i++) {
-      for (let j = i + 1; j < playerIds.length; j++) {
-        const p1 = this.players.get(playerIds[i])!;
-        const p2 = this.players.get(playerIds[j])!;
+    const collisionPlayers = this.rules.driverCollisions ? [...this.players.values()].filter((p) => p.connected) : [];
+    for (let i = 0; i < collisionPlayers.length; i++) {
+      for (let j = i + 1; j < collisionPlayers.length; j++) {
+        const p1 = collisionPlayers[i];
+        const p2 = collisionPlayers[j];
 
         if (this.practice.has(p1.id) || this.practice.has(p2.id)) continue;
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
-        const dist = Math.hypot(dx, dy);
         const minDist = 30; // 15 + 15 radius of motorbikes
 
-        if (dist < minDist) {
+        if (dx * dx + dy * dy < minDist * minDist) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
           // Push them apart
           const overlap = minDist - dist;
           const nx = dx / (dist || 1);
@@ -677,17 +707,17 @@ export class GameWorld {
 
           const cooldown1 = this.collisionCooldowns.get(p1.id) || 0;
           if (currentTick > cooldown1) {
-            const amount = Math.min(p1.score, DRIVER_COLLISION_PENALTY);
+            const amount = Math.min(p1.score, this.rules.driverFine);
             p1.score -= amount;
-            this.recordViolation(p1, 'driver-collision', DRIVER_COLLISION_PENALTY, amount);
+            this.recordViolation(p1, 'driver-collision', this.rules.driverFine, amount);
             this.collisionCooldowns.set(p1.id, currentTick + PENALTY_COOLDOWN_TICKS);
           }
 
           const cooldown2 = this.collisionCooldowns.get(p2.id) || 0;
           if (currentTick > cooldown2) {
-            const amount = Math.min(p2.score, DRIVER_COLLISION_PENALTY);
+            const amount = Math.min(p2.score, this.rules.driverFine);
             p2.score -= amount;
-            this.recordViolation(p2, 'driver-collision', DRIVER_COLLISION_PENALTY, amount);
+            this.recordViolation(p2, 'driver-collision', this.rules.driverFine, amount);
             this.collisionCooldowns.set(p2.id, currentTick + PENALTY_COOLDOWN_TICKS);
           }
         }
@@ -711,8 +741,10 @@ export class GameWorld {
     }
 
     // 3. Tick passenger spawner (handles expiry + respawn)
+    const previousPassengers = [...passMap.keys()];
     this.passengers.tick(this.tickCount, this.isRushHour(), this.life.event?.district);
-    for (const id of this.jobs.keys()) if (!this.passengers.getPassengerMap().has(id)) this.jobs.delete(id);
+    for (const id of previousPassengers) if (!passMap.has(id)) this.spatialGrid.remove(id);
+    for (const id of this.jobs.keys()) if (!passMap.has(id)) this.jobs.delete(id);
   }
 
   /** Reset streak for players who haven't delivered in STREAK_RESET_TICKS. */
@@ -807,7 +839,7 @@ export class GameWorld {
           const fare = calculateFare(
             passenger.reward,
             streak,
-            this.options.enhanced ? environmentMultiplier(this.life, player, this.isRushHour()) : 1,
+            this.options.enhanced ? this.fareEnvironment(player) : 1,
             !!this.options.enhanced && !this.dirtyTrips.has(player.id),
             job ? jobTip(passenger.reward, job, this.tickCount, this.dirtyTrips.has(player.id)) : 0,
           );
@@ -873,9 +905,9 @@ export class GameWorld {
     if (this.cityFeatures.checkRedLightViolation(player.x, player.y, prevX, prevY)) {
       const cooldown = this.redLightCooldowns.get(player.id) || 0;
       if (currentTick > cooldown) {
-        const amount = Math.min(player.score, RED_LIGHT_PENALTY);
+        const amount = Math.min(player.score, this.rules.redLightFine);
         player.score -= amount;
-        this.recordViolation(player, 'red-light', RED_LIGHT_PENALTY, amount);
+        this.recordViolation(player, 'red-light', this.rules.redLightFine, amount);
         this.redLightCooldowns.set(player.id, currentTick + PENALTY_COOLDOWN_TICKS);
       }
     }
@@ -884,7 +916,7 @@ export class GameWorld {
     if (hitPedestrianId) {
       const cooldown = this.pedestrianCooldowns.get(player.id) || 0;
       if (currentTick > cooldown) {
-        const amount = Math.min(player.score, PEDESTRIAN_PENALTY);
+        const amount = Math.min(player.score, this.rules.pedestrianFine);
         player.score -= amount;
         this.cityFeatures.removePedestrian(hitPedestrianId);
         this.recordViolation(player, 'pedestrian', amount);

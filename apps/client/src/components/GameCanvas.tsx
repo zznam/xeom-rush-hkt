@@ -74,6 +74,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   const [deliveries, setDeliveries] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [playMode, setPlayMode] = useState<'career' | 'sandbox'>('career');
+  const [cityNotice, setCityNotice] = useState<string | null>(null);
+  const pausedRef = useRef(false);
   const resultsRef = useGameDialog(showResults, () => {
     setShowResults(false);
     onDisconnect();
@@ -157,6 +160,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
+      prediction.configure();
       prediction.clear();
       interpolation.clear();
       arrivalToastUntil = 0;
@@ -205,6 +209,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       rushHourEndsAtTickRef.current = status.tick + status.rushHourTicksRemaining;
       setRushHourTicksRemaining(status.rushHourTicksRemaining);
       setDeliveries(status.deliveries);
+      if (status.mode) setPlayMode(status.mode);
+      pausedRef.current = !!status.paused;
+      prediction.configure(status.speed, status.paused, status.revision);
+      setCityNotice(
+        status.countdownSeconds != null
+          ? `Bắt đầu lượt mới sau ${status.countdownSeconds}s`
+          : status.paused
+            ? 'Thành phố đang tạm dừng'
+            : status.announcement || null,
+      );
     });
     const unsubscribeSnapshot = network.registerSnapshotCallback((snapshot: WorldSnapshot, meta) => {
       prediction.setTick(snapshot.tick);
@@ -357,10 +371,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       () => {
         console.log('Connected to game server.');
       },
-      () => {
+      (end) => {
+        if (end?.result) {
+          setDeliveries(end.result.deliveriesCount);
+          setPlayMode(end.result.mode);
+          setLocalPlayer((player) => (player ? { ...player, score: end.result!.score } : player));
+          setShowResults(true);
+          soundEngine.stopEngine();
+          return;
+        }
         console.log('Disconnected from game server.');
         soundEngine.stopEngine();
-        onDisconnect('Chưa kết nối được với thành phố. Thử lại sau một chút nhé!');
+        onDisconnect(end?.message || 'Chưa kết nối được với thành phố. Thử lại sau một chút nhé!');
       },
       setConnectionState,
     );
@@ -380,6 +402,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       if (
         localPlayerStateRef.current &&
         network.connected &&
+        !pausedRef.current &&
         !document.hidden &&
         timestamp - lastInputTime >= 1000 / 60
       ) {
@@ -508,6 +531,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         } as React.CSSProperties
       }
     >
+      {(playMode === 'sandbox' || cityNotice) && (
+        <div className='city-control-notice' role='status'>
+          {playMode === 'sandbox' && <strong>CHƠI THỬ · Không tính điểm sự nghiệp</strong>}
+          {cityNotice && <span>{cityNotice}</span>}
+        </div>
+      )}
       {showTeam && room?.status === 'running' && (
         <TeamPlayPanel room={room} playerId={localPlayer?.id ?? ''} onClose={() => setShowTeam(false)} />
       )}
@@ -616,7 +645,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         <div className='results-cover'>
           <section ref={resultsRef} className='results-card' role='dialog' aria-modal='true' aria-label='Kết quả ca xe'>
             <span style={{ fontSize: 44 }}>✦</span>
-            <h2>Một chuyến thật vui!</h2>
+            <h2>{playMode === 'sandbox' ? 'Kết quả chơi thử' : 'Một chuyến thật vui!'}</h2>
+            {playMode === 'sandbox' && <p>Điểm lượt này không cộng vào sự nghiệp.</p>}
             <strong>{(localPlayer?.score ?? 0).toLocaleString('vi-VN')}đ</strong>
             <p>
               {deliveries} chuyến hoàn thành · Combo hiện tại {myStreak}

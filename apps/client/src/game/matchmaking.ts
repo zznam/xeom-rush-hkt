@@ -1,3 +1,4 @@
+import { managedGuest } from './guest';
 import { readStored, writeStored } from './preferences';
 import { resolveDeploymentTarget, resolveRegions, type Region } from '@xeom-rush/shared';
 
@@ -28,7 +29,8 @@ export async function measureRegions(): Promise<Record<string, number | null>> {
 }
 
 export async function matchRegion(region: Region): Promise<{ wsUrl: string; room: string }> {
-  let guest = readStored(`guest:${region.id}`);
+  const deploymentGuest = await managedGuest(region.apiUrl, region.id);
+  let guest = deploymentGuest || readStored(`guest:${region.id}`);
   if (!guest) {
     const response = await fetch(`${region.apiUrl}/api/guest`, { method: 'POST', signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error('Chưa tạo được hồ sơ tài xế. Vui lòng thử lại.');
@@ -52,5 +54,9 @@ export async function matchRegion(region: Region): Promise<{ wsUrl: string; room
   const expected = new URL(region.apiUrl);
   if (target.host !== expected.host || target.protocol !== (expected.protocol === 'https:' ? 'wss:' : 'ws:'))
     throw new Error('Địa chỉ thành phố chưa hợp lệ.');
-  return match;
+  if (deploymentGuest) {
+    target.searchParams.set('guest', deploymentGuest);
+    target.searchParams.set('managed', '1');
+  }
+  return { ...match, wsUrl: target.toString() };
 }

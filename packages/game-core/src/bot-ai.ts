@@ -1,4 +1,8 @@
 import {
+  DEFAULT_BOTS,
+  type BotLevel,
+  type BotPopulationConfig,
+  type BotSkillProfile,
   type InputPayload,
   type PassengerState,
   type PlayerState,
@@ -19,7 +23,6 @@ const STUCK_DISPLACEMENT_THRESHOLD = 15;
 /** Distance at which bots switch from waypoint following to direct-to-target steering */
 const DIRECT_APPROACH_RADIUS = 60;
 /** Maximum bot steering turn per server tick. */
-const BOT_MAX_TURN_PER_TICK = 0.35;
 
 enum EBotState {
   SEEKING_PASSENGER,
@@ -52,6 +55,10 @@ interface BotPersonality {
 }
 
 interface BotAgent {
+  level: BotLevel;
+  skill: BotSkillProfile;
+  retiring: boolean;
+  nextDecisionTick: number;
   playerId: string;
   state: EBotState;
   targetPassengerId: string | null;
@@ -96,6 +103,8 @@ export class BotManager {
   private nextBotIndex = 0;
   private logs: BotLogEntry[] = [];
   private maxLogs = 200;
+  private population: BotPopulationConfig | null = null;
+  private requested = 0;
 
   constructor(
     private world: GameWorld,
@@ -114,7 +123,8 @@ export class BotManager {
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
-    console.log(`[Bot AI t:${logEntry.tick}] [${botId}] [${event}] ${details}`);
+    if ((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.BOT_LOG_STDOUT === '1')
+      console.log(`[Bot AI t:${logEntry.tick}] [${botId}] [${event}] ${details}`);
   }
 
   public getLogs(): BotLogEntry[] {
@@ -160,6 +170,7 @@ export class BotManager {
   }
 
   public spawnBots(count: number): string[] {
+    if (!Number.isInteger(count) || count < 0 || this.bots.size + count > 50) throw new Error('City bot limit is 50');
     const spawnedIds: string[] = [];
 
     for (let i = 0; i < count; i++) {
@@ -173,6 +184,10 @@ export class BotManager {
 
       const initialPos = { x: player?.x ?? 0, y: player?.y ?? 0 };
       const botObj: BotAgent = {
+        level: 'normal',
+        skill: structuredClone(DEFAULT_BOTS.profiles.normal),
+        retiring: false,
+        nextDecisionTick: 0,
         playerId,
         state: EBotState.SEEKING_PASSENGER,
         targetPassengerId: null,
@@ -208,7 +223,78 @@ export class BotManager {
       spawnedIds.push(playerId);
     }
 
+    if (this.population) this.assignProfiles();
     return spawnedIds;
+  }
+
+  public configure(config: BotPopulationConfig): void {
+    this.population = structuredClone(config);
+    this.assignProfiles();
+  }
+  public populationStatus() {
+    return {
+      current: this.bots.size,
+      requested: this.population ? this.requested : this.bots.size,
+      retiring: [...this.bots.values()].filter((b) => b.retiring).length,
+    };
+  }
+  public clearBots(): void {
+    for (const id of this.bots.keys()) this.removeBot(id);
+    this.requested = 0;
+    if (this.population) {
+      this.population.mode = 'manual';
+      this.population.count = 0;
+    }
+  }
+  private removeBot(id: string): void {
+    const bot = this.bots.get(id);
+    if (bot?.targetPassengerId) this.targetedPassengerIds.delete(bot.targetPassengerId);
+    this.world.removePlayer(id);
+    this.bots.delete(id);
+  }
+  private assignProfiles(): void {
+    if (!this.population) return;
+    const levels: BotLevel[] = ['easy', 'normal', 'hard'];
+    const counts = levels.map((level) => (this.bots.size * this.population!.mix[level]) / 100);
+    const allocated = counts.map(Math.floor);
+    const order = levels.map((_, index) => index).sort((a, b) => counts[b] - allocated[b] - (counts[a] - allocated[a]));
+    for (let rest = this.bots.size - allocated.reduce((a, b) => a + b, 0), i = 0; rest > 0; rest--, i++)
+      allocated[order[i % 3]]++;
+    const assignments = levels.flatMap((level, i) => Array<BotLevel>(allocated[i]).fill(level));
+    [...this.bots.values()].forEach((bot, i) => {
+      bot.level = assignments[i];
+      bot.skill = structuredClone(this.population!.profiles[bot.level]);
+      const vary = (base: number, range: number, name: string) =>
+        Math.max(0, Math.min(1, base + (this.hash01(`${bot.playerId}:${name}`) - 0.5) * range));
+      bot.personality = {
+        lawfulness: vary(bot.skill.lawfulness, 0.3, 'law'),
+        aggression: vary(bot.skill.aggression, 0.45, 'aggression'),
+        riskTolerance: vary(bot.skill.riskTolerance, 0.25, 'risk'),
+      };
+    });
+  }
+  public reconcilePopulation(humanOccupants: number): void {
+    if (!this.population) return;
+    const c = this.population;
+    const previousCount = this.bots.size;
+    this.requested =
+      c.mode === 'manual' ? c.count : Math.max(c.minimum, Math.min(c.maximum, c.target - humanOccupants));
+    const ordered = [...this.bots.values()].sort(
+      (a, b) =>
+        Number(!!this.world.getPlayer(a.playerId)?.passengerId) -
+        Number(!!this.world.getPlayer(b.playerId)?.passengerId),
+    );
+    let excess = Math.max(0, this.bots.size - this.requested);
+    for (const bot of ordered) {
+      bot.retiring = excess > 0;
+      if (bot.retiring) {
+        excess--;
+        if (!this.world.getPlayer(bot.playerId)?.passengerId) this.removeBot(bot.playerId);
+      }
+    }
+    // Bound spawning work per simulation tick.
+    if (this.bots.size < this.requested) this.spawnBots(Math.min(2, this.requested - this.bots.size));
+    else if (this.bots.size !== previousCount) this.assignProfiles();
   }
 
   public getBotCount(): number {
@@ -335,7 +421,14 @@ export class BotManager {
       }
 
       // Run state machine transition
-      this.updateState(bot, player);
+      if (bot.retiring && !player.passengerId) {
+        this.removeBot(bot.playerId);
+        continue;
+      }
+      if (this.world.getTick() >= bot.nextDecisionTick) {
+        this.updateState(bot, player);
+        bot.nextDecisionTick = this.world.getTick() + Math.ceil(bot.skill.decisionMs / 50);
+      }
 
       // Generate movement input and queue it
       const input = this.generateInput(bot, player);
@@ -482,10 +575,10 @@ export class BotManager {
 
       const pickupDist = Math.hypot(passenger.x - player.x, passenger.y - player.y);
       const tripDist = Math.hypot(passenger.destX - passenger.x, passenger.destY - passenger.y);
-      const valueScore = passenger.reward / Math.max(400, pickupDist + tripDist * 0.6);
+      const valueScore = (passenger.reward * bot.skill.valueWeight) / Math.max(400, pickupDist + tripDist * 0.6);
       const nearbyBonus = pickupDist < 650 ? 4 : 0;
       const crowdPenalty = this.countNearbyBots(passenger.x, passenger.y) * 2.2;
-      const preferenceNoise = (this.hash01(`${bot.routeJitterSeed}:${passenger.id}`) - 0.5) * 7;
+      const preferenceNoise = (this.hash01(`${bot.routeJitterSeed}:${passenger.id}`) - 0.5) * bot.skill.routeNoise;
 
       if (valueScore + nearbyBonus + preferenceNoise - crowdPenalty > bestScore) {
         bestScore = valueScore + nearbyBonus + preferenceNoise - crowdPenalty;
@@ -560,7 +653,7 @@ export class BotManager {
       ) {
         // Steer directly to the actual target
         const directAngle = Math.atan2(finalTarget.y - player.y, finalTarget.x - player.x);
-        bot.currentAngle = rotateTowardAngle(bot.currentAngle, directAngle, BOT_MAX_TURN_PER_TICK);
+        bot.currentAngle = rotateTowardAngle(bot.currentAngle, directAngle, bot.skill.turnRate);
         if (distToTarget < 20) {
           bot.path = [];
           bot.pathIndex = 0;
@@ -697,7 +790,7 @@ export class BotManager {
 
     const finalAngle = Math.atan2(moveY, moveX);
     const turnDelta = Math.abs(shortestAngleDelta(bot.currentAngle, finalAngle));
-    bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, BOT_MAX_TURN_PER_TICK);
+    bot.currentAngle = rotateTowardAngle(bot.currentAngle, finalAngle, bot.skill.turnRate);
     // Smooth speed reduction when turning sharply (e.g. 90-degree corners) or following convoy in roundabout
     let turnThrottle = turnDelta > 0.8 ? 0.65 : 1.0;
     if (isFollowingInRoundabout) {
@@ -795,7 +888,7 @@ export class BotManager {
     // Follow the wander path normally (the main generateInput will handle it next tick)
     const wp = bot.path[bot.pathIndex];
     const wanderAngle = Math.atan2(wp.y - player.y, wp.x - player.x);
-    bot.currentAngle = rotateTowardAngle(bot.currentAngle, wanderAngle, BOT_MAX_TURN_PER_TICK);
+    bot.currentAngle = rotateTowardAngle(bot.currentAngle, wanderAngle, bot.skill.turnRate);
     return {
       seq: bot.inputSeq,
       dx: Math.cos(bot.currentAngle),

@@ -5,7 +5,7 @@ const clientPort = Number(process.env.E2E_CLIENT_PORT || 5174);
 export default defineConfig({
   testDir: './tests',
   outputDir: './test-results/public',
-  testIgnore: ['regional.test.ts', 'rooms.test.ts', 'rollback.test.ts'],
+  testIgnore: ['regional.test.ts', 'rooms.test.ts', 'rollback.test.ts', 'admin.test.ts'],
   workers: 1,
   timeout: 30_000,
   retries: 1,
