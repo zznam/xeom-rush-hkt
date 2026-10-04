@@ -104,7 +104,7 @@ bun run test:load
 
 The native KV tests exercise conditional writes and career isolation. The managed smoke starts a real KV controller, two Deno legacy instances and two regional cities. It covers selected-city delivery, pause, reconnect, cross-region bans/unban, the 30-second mode change and fail-closed admission during outage. Browser tests cover desktop owner controls and a mobile moderator. The local OAuth provider is mocked in tests; real GitHub sign-in must be verified in staging.
 
-`test:load` opens 64 human WebSocket clients with movement input and 50 bots, checks the capacity boundary, connected streams and tick throughput. Use `LOAD_SECONDS=300 bun run test:load` for a longer local soak. The local 15-second measured run (after warm-up) maintained about 17.2 Hz with all 64 streams connected. It meets the local smoke floor of 17 Hz but falls below the nominal 20 Hz target. Local throughput is not proof of the chosen Deno tier or ECS task capacity; production enablement and the maximum bot population still require a staging soak.
+`test:load` opens 64 human WebSocket clients with movement input and 50 bots, checks the capacity boundary, connected streams and tick throughput. Use `LOAD_SECONDS=300 bun run test:load` for a longer local soak. The local 15-second measured run (after warm-up, with the shared game-core integration) maintained about 19.3 Hz with all 64 streams connected. It meets the local smoke floor of 17 Hz but falls below the nominal 20 Hz target. Local throughput is not proof of the chosen Deno tier or ECS task capacity; production enablement and the maximum bot population still require a staging soak.
 
 Roll out using separate staging deployment registrations and identity namespaces:
 

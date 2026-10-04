@@ -1,4 +1,5 @@
 import { managedGuest } from './guest';
+import { readStored, writeStored } from './preferences';
 import {
   encodeJoin,
   encodeInput,
@@ -21,6 +22,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'reconnecting';
 
 export class GameNetwork {
   private ws: WebSocket | null = null;
+  private controls = new Set<(message: { version: 1; kind: string; data: any }) => void>();
   private onSnapshotCallbacks = new Set<(snapshot: WorldSnapshot, meta: SnapshotPacketMeta) => void>();
   private onConfigCallbacks = new Set<(config: ConfigPayload) => void>();
   private onCityCallbacks = new Set<(status: CityStatus) => void>();
@@ -57,6 +59,8 @@ export class GameNetwork {
       try {
         const target = new URL(preparedUrl);
         target.searchParams.set('session', token);
+        if (!target.pathname.includes('/private/') && readStored('tutorial') !== 'done')
+          target.searchParams.set('practice', '1');
         socket = new WebSocket(target);
       } catch {
         onDisconnect();
@@ -110,6 +114,14 @@ export class GameNetwork {
                 this.onCityCallbacks.forEach((cb) => cb(status));
             } catch {
               /* Ignore malformed optional metadata; snapshots remain authoritative. */
+            }
+          }
+          if (event.data.startsWith('control:')) {
+            try {
+              const message = JSON.parse(event.data.slice(8));
+              if (message.version === 1 && typeof message.kind === 'string') this.controls.forEach((cb) => cb(message));
+            } catch {
+              /* optional control metadata */
             }
           }
           return;
@@ -177,12 +189,32 @@ export class GameNetwork {
           return;
         }
         const apiUrl = `${target.protocol === 'wss:' ? 'https:' : 'http:'}//${target.host}${target.pathname.replace(/\/$/, '')}`;
-        const guest = await managedGuest(apiUrl);
+        const guest = target.pathname.includes('/private/') ? null : await managedGuest(apiUrl);
         if (generation !== this.generation) return;
         if (guest) {
           target.searchParams.set('guest', guest);
           target.searchParams.set('managed', '1');
         }
+        if (!guest && !target.searchParams.has('ticket') && !target.searchParams.has('guest')) {
+          const key = `guest:${target.host}`;
+          let credential = readStored(key);
+          if (!credential) {
+            try {
+              const response = await fetch(`${apiUrl}/api/guest`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(5000),
+              });
+              if (response.ok) {
+                credential = (await response.json()).guest;
+                if (typeof credential === 'string') writeStored(key, credential);
+              }
+            } catch {
+              /* Older backends accept the binary handshake. */
+            }
+          }
+          if (credential) target.searchParams.set('guest', credential);
+        }
+        if (generation !== this.generation) return;
         preparedUrl = target.toString();
         open();
       } catch (error) {
@@ -191,6 +223,16 @@ export class GameNetwork {
       }
     };
     void prepare();
+  }
+  public registerControlCallback(cb: (message: { version: 1; kind: string; data: any }) => void) {
+    this.controls.add(cb);
+    return () => {
+      this.controls.delete(cb);
+    };
+  }
+  public command(action: string, target?: string, value?: string) {
+    if (this.ready && this.ws?.readyState === WebSocket.OPEN)
+      this.ws.send(`control:${JSON.stringify({ version: 1, id: crypto.randomUUID(), action, target, value })}`);
   }
 
   public sendInput(seq: number, dx: number, dy: number, angle: number): void {

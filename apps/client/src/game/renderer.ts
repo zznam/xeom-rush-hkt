@@ -1,4 +1,11 @@
 import {
+  COSMETICS,
+  cityAtTick,
+  jobIndex,
+  type GameplayState,
+  CITY_MAP,
+  LANDMARKS,
+  districtAt,
   type PassengerState,
   type TrafficLightState,
   type PedestrianState,
@@ -8,10 +15,6 @@ import {
 import { prediction } from './prediction';
 
 const STREET_LINES = [50, 450, 850, 1250, 1650, 2050, 2450, 2850, 3250, 3650];
-const ROUNDABOUT_CHANCE = 0.12;
-const TRAFFIC_LIGHT_CHANCE = 0.3;
-const CROSSWALK_CHANCE = 0.4;
-const ROUNDABOUT_RADIUS = 24;
 
 interface StaticRoundabout {
   id: string;
@@ -28,11 +31,35 @@ interface StaticCrosswalk {
 }
 
 export class GameRenderer {
+  private appearances: Record<string, Record<string, string>> = {};
+  public setAppearances(value: Record<string, Record<string, string>>) {
+    this.appearances = value;
+  }
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private camera = { x: 2000, y: 2000 };
   private shakeMagnitude: number = 0;
+  private quality: 'auto' | 'high' | 'low' = 'auto';
+  private lowQuality = false;
+  private frameTime = 16;
+  private lastFrame = 0;
+  private healthyFrames = 0;
+  public setQuality(value: 'auto' | 'high' | 'low') {
+    this.quality = value;
+    if (value !== 'auto') this.lowQuality = value === 'low';
+  }
+  public get qualityLevel() {
+    return this.lowQuality ? 'low' : 'high';
+  }
   private reducedMotion = false;
+  private tick = 0;
+  public setTick(tick: number) {
+    this.tick = tick;
+  }
+  private gameplay: GameplayState | null = null;
+  public setGameplay(state: GameplayState): void {
+    this.gameplay = state;
+  }
   private rider = new Image();
   private passengerArt = new Image();
   private particles: { x: number; y: number; vx: number; vy: number; born: number; color: string }[] = [];
@@ -44,7 +71,7 @@ export class GameRenderer {
     }
   }
   public celebrate(x: number, y: number, kind: 'pickup' | 'delivery'): void {
-    if (this.reducedMotion) return;
+    if (this.reducedMotion || this.lowQuality) return;
     for (let i = 0; i < (kind === 'delivery' ? 24 : 12); i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 100;
@@ -57,7 +84,7 @@ export class GameRenderer {
         color: ['#ffca5b', '#f47c65', '#5cbb99', '#fff8dc'][i % 4],
       });
     }
-    this.particles = this.particles.slice(-80);
+    this.particles = this.particles.slice(this.lowQuality ? -20 : -80);
   }
   private staticRoundabouts: StaticRoundabout[] = [];
   private staticCrosswalks: StaticCrosswalk[] = [];
@@ -84,7 +111,15 @@ export class GameRenderer {
    * Main render method
    */
   public draw(
-    localPlayer: { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null },
+    localPlayer: {
+      id: string;
+      x: number;
+      y: number;
+      angle: number;
+      username: string;
+      score: number;
+      passengerId: string | null;
+    },
     otherPlayers: Map<
       string,
       { x: number; y: number; angle: number; username: string; score: number; passengerId: string | null }
@@ -94,6 +129,15 @@ export class GameRenderer {
     pedestrians: PedestrianState[],
     showDebug: boolean,
   ): void {
+    const frameNow = performance.now();
+    if (this.lastFrame) this.frameTime = this.frameTime * 0.97 + Math.min(100, frameNow - this.lastFrame) * 0.03;
+    this.lastFrame = frameNow;
+    if (this.quality === 'auto') {
+      if (this.frameTime > 25) {
+        this.lowQuality = true;
+        this.healthyFrames = 0;
+      } else if (this.frameTime < 19 && ++this.healthyFrames > 720) this.lowQuality = false;
+    }
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -133,13 +177,15 @@ export class GameRenderer {
 
     // 5. Draw city realism layer
     this.drawCityFeatures(ctx, trafficLights, pedestrians);
+    this.drawLandmarks(ctx);
+    this.drawNavigation(ctx);
 
     // 6. Draw passengers
     this.drawPassengers(ctx, passengers, localPlayer.passengerId);
 
     // 7. Draw other players
-    for (const op of otherPlayers.values()) {
-      this.drawMotorbike(ctx, op.x, op.y, op.angle, op.username, false, op.passengerId !== null);
+    for (const [id, op] of otherPlayers) {
+      this.drawMotorbike(ctx, op.x, op.y, op.angle, op.username, false, op.passengerId !== null, id);
     }
 
     // 8. Draw local player
@@ -151,6 +197,7 @@ export class GameRenderer {
       localPlayer.username,
       true,
       localPlayer.passengerId !== null,
+      localPlayer.id,
     );
 
     const now = performance.now();
@@ -169,35 +216,17 @@ export class GameRenderer {
       this.drawChunkGrid(ctx, localPlayer.x, localPlayer.y);
     }
 
+    this.drawWeather(ctx);
     ctx.restore();
   }
 
   private generateStaticCityFeatures(): void {
-    const rng = new SeededRng(42);
-
-    for (let xi = 0; xi < STREET_LINES.length; xi++) {
-      for (let yi = 0; yi < STREET_LINES.length; yi++) {
-        const cx = STREET_LINES[xi];
-        const cy = STREET_LINES[yi];
-        const inCenter = Math.abs(cx - MAP_SIZE / 2) < 400 && Math.abs(cy - MAP_SIZE / 2) < 400;
-        const nearEdge = cx < 150 || cy < 150 || cx > MAP_SIZE - 150 || cy > MAP_SIZE - 150;
-        if (inCenter || nearEdge) continue;
-
-        const roll = rng.next();
-        if (roll < ROUNDABOUT_CHANCE) {
-          this.staticRoundabouts.push({ id: `roundabout-${xi}-${yi}`, x: cx, y: cy, radius: ROUNDABOUT_RADIUS });
-        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE) {
-          rng.next();
-        } else if (roll < ROUNDABOUT_CHANCE + TRAFFIC_LIGHT_CHANCE + CROSSWALK_CHANCE) {
-          this.staticCrosswalks.push({
-            id: `cw-${xi}-${yi}`,
-            x: cx,
-            y: cy,
-            direction: rng.next() < 0.5 ? 'horizontal' : 'vertical',
-          });
-        }
-      }
-    }
+    this.staticRoundabouts = CITY_MAP.features
+      .filter((f) => f.kind === 'roundabout')
+      .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius! }));
+    this.staticCrosswalks = CITY_MAP.features
+      .filter((f) => f.kind === 'crosswalk')
+      .map((f) => ({ id: f.id, x: f.x, y: f.y, direction: f.direction! }));
   }
 
   private drawCityFeatures(
@@ -471,8 +500,129 @@ export class GameRenderer {
     ctx.restore();
   }
 
+  private drawWeather(ctx: CanvasRenderingContext2D): void {
+    if (!this.gameplay?.city?.enabled) return;
+    const city = cityAtTick(this.tick);
+    ctx.save();
+    const left = this.camera.x - this.canvas.width / 2,
+      top = this.camera.y - this.canvas.height / 2;
+    if (city.phase !== 'day') {
+      ctx.fillStyle = city.phase === 'night' ? '#18264b80' : city.phase === 'sunset' ? '#ee936f30' : '#ecb4a425';
+      ctx.fillRect(left, top, this.canvas.width, this.canvas.height);
+      for (const landmark of LANDMARKS) {
+        const glow = ctx.createRadialGradient(landmark.x, landmark.y, 0, landmark.x, landmark.y, 65);
+        glow.addColorStop(0, '#ffde8e85');
+        glow.addColorStop(1, '#ffde8e00');
+        ctx.fillStyle = glow;
+        ctx.fillRect(landmark.x - 65, landmark.y - 65, 130, 130);
+      }
+    }
+    if (city.rain) {
+      ctx.fillStyle = '#7b99c320';
+      ctx.fillRect(left, top, this.canvas.width, this.canvas.height);
+      ctx.strokeStyle = '#cee3ff70';
+      ctx.lineWidth = 1.5;
+      const offset = this.reducedMotion || this.lowQuality ? 0 : (performance.now() / 6) % 70;
+      for (let x = left - 70; x < left + this.canvas.width; x += 70)
+        for (let y = top - 70; y < top + this.canvas.height; y += 90) {
+          ctx.beginPath();
+          ctx.moveTo(x + offset, y + offset);
+          ctx.lineTo(x + offset - 6, y + offset + 14);
+          ctx.stroke();
+        }
+    }
+    const closure = this.gameplay.city.closure;
+    if (closure) {
+      const r = closure.rect;
+      ctx.fillStyle = closure.active ? '#ecae57' : '#f6db9c';
+      ctx.strokeStyle = '#6f5637';
+      ctx.lineWidth = 3;
+      ctx.setLineDash(closure.active ? [] : [8, 6]);
+      ctx.strokeRect(r.x, r.y, r.width, r.height);
+      ctx.fillRect(r.x, r.y, r.width, r.height);
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#5b452d';
+      ctx.textAlign = 'center';
+      ctx.fillText(closure.active ? '🚧 ĐƯỜNG ĐÓNG' : '🚧 SẮP THI CÔNG', r.x + r.width / 2, r.y - 12);
+    }
+    ctx.restore();
+  }
+
+  private drawNavigation(ctx: CanvasRenderingContext2D): void {
+    const nav = this.gameplay?.navigation;
+    if (!nav) return;
+    ctx.save();
+    ctx.strokeStyle = '#ffcb68';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    nav.route.forEach((p, i) => {
+      if (i) ctx.lineTo(p.x, p.y);
+      else ctx.moveTo(p.x, p.y);
+    });
+    ctx.stroke();
+    const target = nav.target;
+    ctx.strokeStyle = this.gameplay?.trip ? '#ed735f' : '#428b68';
+    ctx.fillStyle = this.gameplay?.trip ? '#ed735f25' : '#428b6825';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, 35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#264e3d';
+    ctx.fillText(this.gameplay?.trip ? '🏁' : '🙋', target.x, target.y + 7);
+    const dx = target.x - this.camera.x,
+      dy = target.y - this.camera.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 100) {
+      const x = this.camera.x + Math.max(-this.canvas.width / 2 + 70, Math.min(this.canvas.width / 2 - 70, dx)),
+        y = this.camera.y + Math.max(-this.canvas.height / 2 + 100, Math.min(this.canvas.height / 2 - 100, dy));
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(dy, dx));
+      ctx.fillStyle = '#ffcb68';
+      ctx.strokeStyle = '#385947';
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-8, -10);
+      ctx.lineTo(-8, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawLandmarks(ctx: CanvasRenderingContext2D): void {
+    for (const landmark of LANDMARKS) {
+      if (
+        landmark.x < this.viewport.minX ||
+        landmark.x > this.viewport.maxX ||
+        landmark.y < this.viewport.minY ||
+        landmark.y > this.viewport.maxY
+      )
+        continue;
+      ctx.save();
+      ctx.fillStyle = '#fff8dc';
+      ctx.strokeStyle = '#4b6b57';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(landmark.x - 24, landmark.y - 36, 48, 48, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.font = '26px sans-serif';
+      ctx.fillText(landmark.icon, landmark.x, landmark.y - 2);
+      ctx.fillStyle = '#24473b';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(landmark.name, landmark.x, landmark.y + 32);
+      ctx.restore();
+    }
+  }
+
   private drawBuildings(ctx: CanvasRenderingContext2D): void {
-    const colors = ['#e8a58a', '#e9cb80', '#93c5b4', '#b9b0ce', '#dfbc99'];
     for (const rect of prediction.getBuildings()) {
       if (
         rect.x + rect.width < this.viewport.minX ||
@@ -481,10 +631,10 @@ export class GameRenderer {
         rect.y > this.viewport.maxY
       )
         continue;
-      const index = Math.floor(rect.x / 400 + rect.y / 400) % colors.length;
+
       ctx.fillStyle = '#52654c35';
       ctx.fillRect(rect.x + 8, rect.y + 10, rect.width, rect.height);
-      ctx.fillStyle = colors[index];
+      ctx.fillStyle = districtAt(rect).color;
       ctx.strokeStyle = '#53634e';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -494,7 +644,7 @@ export class GameRenderer {
       ctx.strokeStyle = '#ffffff55';
       ctx.lineWidth = 2;
       ctx.strokeRect(rect.x + 14, rect.y + 14, rect.width - 28, rect.height - 28);
-      for (let wx = rect.x + 35; wx < rect.x + rect.width - 25; wx += 75) {
+      for (let wx = rect.x + 35; wx < rect.x + rect.width - 25 && !this.lowQuality; wx += 75) {
         for (let wy = rect.y + 40; wy < rect.y + rect.height - 25; wy += 75) {
           ctx.fillStyle = '#3d656675';
           ctx.beginPath();
@@ -527,18 +677,20 @@ export class GameRenderer {
     for (const p of passengers) {
       if (p.isCarried) continue;
 
-      const color = ['#248566', '#bf8c27', '#8860bd'][p.tier];
-      const bob = this.reducedMotion ? 0 : Math.sin(Date.now() / 240 + p.x) * 2;
+      const reserved = this.gameplay?.reservations?.[p.id];
+      const color = reserved ? '#2563a0' : ['#248566', '#bf8c27', '#8860bd'][p.tier];
+      const bob = this.reducedMotion || this.lowQuality ? 0 : Math.sin(Date.now() / 240 + p.x) * 2;
       ctx.fillStyle = color + '35';
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 2, 22, 9, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (this.passengerArt.complete && this.passengerArt.naturalWidth) {
+      const kind = jobIndex(p.id) % 10;
+      if (kind < 6 && this.passengerArt.complete && this.passengerArt.naturalWidth) {
         ctx.drawImage(this.passengerArt, p.x - 25, p.y - 43 + bob, 50, 50);
       } else {
         ctx.font = '30px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🙋', p.x, p.y + bob);
+        ctx.fillText(kind < 6 ? '🙋' : kind < 8 ? '🥡' : '📦', p.x, p.y + bob);
       }
       ctx.fillStyle = '#fff9e7';
       ctx.strokeStyle = color;
@@ -550,11 +702,11 @@ export class GameRenderer {
       ctx.fillStyle = color;
       ctx.font = '900 10px "Be Vietnam Pro", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${p.tier === 2 ? '★ ' : ''}${(p.reward / 1000).toFixed(0)}kđ`, p.x, p.y - 46 + bob);
+      ctx.fillText(`${['○', '◆', '★'][p.tier]} ${(p.reward / 1000).toFixed(0)}kđ`, p.x, p.y - 46 + bob);
     }
 
     // If local player is carrying a passenger, draw a highlighted route to destination
-    if (localPassengerId) {
+    if (localPassengerId && !this.gameplay?.navigation) {
       const activePass = passengers.find((p) => p.id === localPassengerId);
       if (activePass) {
         // Draw destination zone
@@ -603,6 +755,7 @@ export class GameRenderer {
     username: string,
     isLocal: boolean,
     hasPassenger: boolean,
+    playerId: string,
   ): void {
     ctx.save();
     ctx.translate(x, y);
@@ -629,6 +782,20 @@ export class GameRenderer {
       ctx.arc(-2, 0, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+    const appearance = this.appearances[playerId];
+    if (appearance) {
+      const color = (slot: string) => COSMETICS.find((c) => c.id === appearance[slot])?.color ?? '#2eaa90';
+      ctx.fillStyle = color('paint');
+      ctx.fillRect(9, -8, 17, 16);
+      ctx.fillStyle = color('jacket');
+      ctx.beginPath();
+      ctx.ellipse(-2, 0, 9, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color('helmet');
+      ctx.beginPath();
+      ctx.arc(1, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
     }
     if (hasPassenger) {
       ctx.fillStyle = '#ffd666';
@@ -691,14 +858,5 @@ export class GameRenderer {
       }
     }
     ctx.restore();
-  }
-}
-
-class SeededRng {
-  constructor(private seed: number) {}
-
-  public next(): number {
-    this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
-    return this.seed / 0xffffffff;
   }
 }

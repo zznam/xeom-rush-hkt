@@ -1,0 +1,21 @@
+{
+  "name": "@xeom-rush/room-service",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && wrangler deploy --dry-run --outdir dist",
+    "dev": "wrangler dev --port 8787",
+    "test": "node tests/runtime.mjs"
+  },
+  "dependencies": {
+    "@xeom-rush/game-core": "workspace:*",
+    "@xeom-rush/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0",
+    "miniflare": "^4.0.0",
+    "@cloudflare/workers-types": "^4.20251001.0",
+    "typescript": "^5.0.0"
+  }
+}

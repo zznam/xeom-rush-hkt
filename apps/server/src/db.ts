@@ -50,6 +50,11 @@ export class DbManager {
   /**
    * Returns the database instance.
    */
+  public startSession() {
+    if (!this.client) throw new Error('Database unavailable');
+    return this.client.startSession();
+  }
+
   public getDb(): Db {
     if (!this.client) {
       throw new Error('[DB] Database is not connected. Call connect() first.');

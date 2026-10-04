@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GameWorld } from './world';
+import { SeededRandom } from '@xeom-rush/shared';
 import { PhysicsEngine } from './physics';
 import { BotManager } from './bot-ai';
 
@@ -8,7 +9,10 @@ describe('BotManager - Roundabout Navigation & Anti-Clustering', () => {
   let physics: PhysicsEngine;
   let botManager: BotManager;
 
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
+    const random = new SeededRandom(42);
+    vi.spyOn(Math, 'random').mockImplementation(() => random.next());
     world = new GameWorld();
     physics = world.getPhysics();
     botManager = new BotManager(world, physics);

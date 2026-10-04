@@ -95,3 +95,17 @@ variable "guest_identity_secret_arn" {
   default     = ""
   description = "Secret ARN with the same identity signing value in every region of this deployment; 32+ random characters. Keep legacy and AWS values separate."
 }
+variable "private_rooms_enabled" {
+  description = "Advertise private rooms on healthy routed ECS owners. Provisioning is manual."
+  type        = bool
+  default     = false
+}
+variable "max_private_rooms" {
+  description = "Private rooms per ECS owner; validate combined tick capacity before increasing."
+  type        = number
+  default     = 4
+  validation {
+    condition     = var.max_private_rooms >= 1 && var.max_private_rooms <= 20 && floor(var.max_private_rooms) == var.max_private_rooms
+    error_message = "max_private_rooms must be an integer from 1 to 20."
+  }
+}

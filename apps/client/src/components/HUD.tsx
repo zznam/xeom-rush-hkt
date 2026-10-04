@@ -1,11 +1,18 @@
+import type { GamePreferences } from '../game/preferences';
+import { TripGuide } from './TripGuide';
+import type { RoomState } from '@xeom-rush/shared';
+import type { GameplayState } from '@xeom-rush/shared';
 import React, { useMemo, useState, useEffect } from 'react';
-import { type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
+import { EMOTES, districtAt, type PlayerState, type PassengerState, TICK_RATE } from '@xeom-rush/shared';
 import { Minimap } from './Minimap';
 import { Joystick } from './Joystick';
 import { inputHandler } from '../game/input';
 import { soundEngine } from '../game/sound-engine';
 
 interface HUDProps {
+  room?: RoomState | null;
+  preferences: GamePreferences;
+  gameplay: GameplayState | null;
   localPlayer: PlayerState | null;
   players: PlayerState[];
   passengers: PassengerState[];
@@ -25,6 +32,9 @@ function getStreakMultiplier(streak: number): number {
 }
 
 export const HUD: React.FC<HUDProps> = ({
+  room,
+  preferences,
+  gameplay,
   localPlayer,
   players,
   passengers,
@@ -64,6 +74,7 @@ export const HUD: React.FC<HUDProps> = ({
       carriedPassengerId={localPlayer.passengerId}
       size={isCompact ? 110 : 150}
       className='hud-minimap'
+      navigation={gameplay?.navigation ?? null}
     />
   );
 
@@ -96,9 +107,54 @@ export const HUD: React.FC<HUDProps> = ({
 
       <div className='hud-left'>
         <section className='hud-summary glass-panel' aria-label='Chuyến xe của bạn'>
-          {cityLabel && (
+          {room?.status === 'running' && (
+            <p className='room-round-status'>
+              🤝{' '}
+              {room.mode === 'co-op'
+                ? `Co-op ${room.teamPlay?.kind === 'co-op' ? `${room.teamPlay.earned.toLocaleString('vi-VN')}/${room.teamPlay.target.toLocaleString('vi-VN')}đ` : ''}`
+                : room.mode === 'relay'
+                  ? 'Tiếp sức hai đội'
+                  : 'Vòng bạn bè'}{' '}
+              · {Math.ceil(room.remainingTicks / 20)}s
+            </p>
+          )}
+          {!!room?.emotes?.length && (
+            <p className='room-round-status' role='status'>
+              {room.players.find((p) => p.id === room.emotes!.at(-1)!.profileId)?.username}:{' '}
+              {EMOTES.find((e) => e.id === room.emotes!.at(-1)!.id)?.icon}{' '}
+              {EMOTES.find((e) => e.id === room.emotes!.at(-1)!.id)?.text}
+            </p>
+          )}
+          {localPlayer && (
             <p className='hud-city' aria-label='Thành phố hiện tại' title={cityLabel}>
-              {cityLabel}
+              {cityLabel || 'Sài Gòn'} · {districtAt(localPlayer).name}
+            </p>
+          )}
+          {gameplay?.city?.enabled && (
+            <p className='city-condition'>
+              {gameplay.city.rain
+                ? '🌦 Mưa · thưởng +15%'
+                : gameplay.city.phase === 'night'
+                  ? '🌙 Phố đêm'
+                  : gameplay.city.phase === 'sunset'
+                    ? '🌇 Chiều xuống'
+                    : gameplay.city.phase === 'dawn'
+                      ? '🌅 Bình minh'
+                      : '☀️ Ngày mới'}
+              {gameplay.city.event && (
+                <small>
+                  {gameplay.city.event.icon} {gameplay.city.event.name} ·{' '}
+                  {Math.max(0, Math.ceil((gameplay.city.event.endsAt - gameplay.tick) / 20))}s
+                </small>
+              )}
+              {gameplay.city.closure && (
+                <small>
+                  🚧{' '}
+                  {gameplay.city.closure.active
+                    ? 'Có đường đang đóng'
+                    : `Thi công sau ${Math.max(0, Math.ceil((gameplay.city.closure.startsAt - gameplay.tick) / 20))}s`}
+                </small>
+              )}
             </p>
           )}
           <span className='hud-label'>THU NHẬP ĐƯỜNG PHỐ</span>
@@ -118,15 +174,13 @@ export const HUD: React.FC<HUDProps> = ({
             <span>{isCarrying ? 'Đang chở khách' : 'Sẵn sàng đón khách'}</span>
             {carriedPassenger && <strong>+{carriedPassenger.reward.toLocaleString('vi-VN')}đ</strong>}
           </div>
-          <div className='trip-guide'>
-            <small className='hud-label'>{!tutorialDone ? 'CHUYẾN ĐẦU TIÊN' : 'CHUYẾN XE HIỆN TẠI'}</small>
-            <h3>{isCarrying ? '🏁 Đưa khách đến đích' : '🙋 Có người đang đợi!'}</h3>
-            <p>
-              {isCarrying
-                ? 'Theo dấu đỏ đến điểm trả. Lái lại gần để hoàn tất chuyến xe.'
-                : 'Lái lại gần khách đang vẫy tay để tự động đón.'}
-            </p>
-          </div>
+          <TripGuide
+            key={`${room?.roundId ?? 'public'}:${room?.status ?? ''}:${localPlayer.passengerId ?? 'pickup'}:${Boolean(gameplay?.teamNavigation)}:${Boolean(gameplay?.practice)}`}
+            state={gameplay}
+            player={localPlayer}
+            passengers={passengers}
+            tutorialDone={tutorialDone}
+          />
           <p className='trip-progress'>✦ {deliveries} chuyến hoàn thành</p>
         </section>
         {!isCompact && minimap}
@@ -155,7 +209,10 @@ export const HUD: React.FC<HUDProps> = ({
       {isCompact && (
         <>
           <div className='joystick-mobile'>
-            <Joystick onChange={({ dx, dy }) => inputHandler.setJoystickInput(dx, dy)} />
+            <Joystick
+              size={preferences.joystickSize}
+              onChange={({ dx, dy }) => inputHandler.setJoystickInput(dx, dy)}
+            />
           </div>
           <button
             className='honk-btn-mobile'

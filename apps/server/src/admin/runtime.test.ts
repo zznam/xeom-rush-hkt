@@ -12,7 +12,7 @@ function setup(failSave = false) {
     if (failSave) throw new Error('Storage unavailable');
   });
   const reset = vi.fn((config) => {
-    world = new GameWorld(config.rules);
+    world = new GameWorld({ rules: config.rules });
     bots = new BotManager(world, world.getPhysics());
     bots.configure(config.bots);
   });

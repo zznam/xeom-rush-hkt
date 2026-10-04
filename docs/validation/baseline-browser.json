@@ -1,0 +1,32 @@
+{
+  "baselineCommit": "2c41af5997de7a8c268492be6b9777a1a6e4b673",
+  "elapsedMs": 60113,
+  "publicHumans": 74,
+  "publicBots": 16,
+  "bytesPerRawPeerSecond": 95983.12183350985,
+  "render": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "fpsP05": 14.757969302039129,
+      "fpsMedian": 16.271056662304616,
+      "heapStart": 13400000,
+      "heapEnd": 13400000,
+      "samples": 60
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "fpsP05": 50.847457627118644,
+      "fpsMedian": 58.352289577344116,
+      "heapStart": 13400000,
+      "heapEnd": 13400000,
+      "samples": 60
+    }
+  ],
+  "errors": []
+}

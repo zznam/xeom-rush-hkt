@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { type PlayerState, type PassengerState, type SnapshotPacketKind } from '@xeom-rush/shared';
 
 interface DebugOverlayProps {
@@ -26,7 +26,6 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   onSpawnBots,
   serverUrl,
 }) => {
-  const [approxJsonBytes, setApproxJsonBytes] = useState(0);
   const [activeTab, setActiveTab] = useState<'stats' | 'logs'>('stats');
   const [botLogs, setBotLogs] = useState<any[]>([]);
   const [botStats, setBotStats] = useState<any>(null);
@@ -60,7 +59,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
   }, [botLogs]);
 
   // Compute equivalent JSON size in bytes to display comparative metrics
-  useEffect(() => {
+  const approxJsonBytes = useMemo(() => {
     const rawData = {
       players: players.map((p) => ({
         id: p.id,
@@ -82,7 +81,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
       })),
     };
     const jsonStr = JSON.stringify(rawData);
-    setApproxJsonBytes(new Blob([jsonStr]).size);
+    return new Blob([jsonStr]).size;
   }, [players, passengers]);
 
   const compressionRatio = lastSnapshotBytes > 0 ? (approxJsonBytes / lastSnapshotBytes).toFixed(1) : '0.0';

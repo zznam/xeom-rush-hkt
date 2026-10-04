@@ -1,0 +1,25 @@
+{
+  "peers": 64,
+  "visiblePlayers": 72,
+  "passengers": 40,
+  "ticksPerRound": 300,
+  "identicalBytes": true,
+  "samples": [
+    {
+      "previous": 8.789999583333334,
+      "cached": 1.4165902766666674
+    },
+    {
+      "cached": 1.18513611,
+      "previous": 8.630146806666668
+    },
+    {
+      "previous": 8.557935,
+      "cached": 1.1482540300000013
+    },
+    {
+      "cached": 1.1141372233333338,
+      "previous": 8.547753193333332
+    }
+  ]
+}

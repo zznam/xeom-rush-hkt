@@ -5,7 +5,7 @@ import { GameWorld } from '../world';
 
 describe('authoritative runtime physics and prediction', () => {
   it('uses the new speed on both sides and clears input recorded under old rules', () => {
-    const world = new GameWorld();
+    const world = new GameWorld({ enhanced: true });
     world.addPlayer('driver', 'Test', 2000, 2000);
     const prediction = new ClientPrediction();
     const input = { seq: 1, dx: 1, dy: 0, angle: 0, dt: 0.05 };
@@ -18,9 +18,9 @@ describe('authoritative runtime physics and prediction', () => {
     const p = world.getPlayer('driver')!;
     const predicted = prediction.predict(2000, 2000, input);
     expect(predicted.x).toBe(p.x);
-    expect(p.x).toBe(2015);
+    expect(p.x).toBe(2006);
     prediction.configure(300, true, 2);
-    expect(prediction.predict(p.x, p.y, input)).toEqual({ x: p.x, y: p.y });
+    expect(prediction.predict(p.x, p.y, input)).toEqual({ x: p.x, y: p.y, angle: input.angle });
   });
   it('changes population and collision rules without replacing a carried passenger', () => {
     const world = new GameWorld();

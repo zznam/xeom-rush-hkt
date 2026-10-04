@@ -1,3 +1,7 @@
+import { TickMetrics } from '@xeom-rush/game-core';
+import { installPrivateRooms } from './private-rooms';
+import { careerRepository } from './career-store';
+import { publicCareer } from '@xeom-rush/shared';
 import express from 'express';
 import { CityRuntime } from './admin/runtime';
 import { ControlTransport, ControlWorker, workerOptions } from './admin/worker';
@@ -8,8 +12,10 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Admission, isSessionId, verifyGuest, validRoomKey } from './admission';
+import { Admission, isSessionId, issueGuest, verifyGuest, validRoomKey } from './admission';
 import {
+  isRoadPoint,
+  parseGameCommand,
   EMessageType,
   resolveDeploymentTarget,
   TICK_INTERVAL_MS,
@@ -37,6 +43,7 @@ const region = regional ? process.env.GAME_REGION || '' : 'local';
 const roomId = regional ? process.env.ROOM_ID || '' : 'local';
 if (regional && !/^[a-z0-9-]{1,32}$/.test(region)) throw new Error('Regional rooms require GAME_REGION');
 const guestSecret = process.env.GUEST_SECRET || '';
+let identitySecret = guestSecret;
 if (production && regional && !process.env.DYNAMODB_TABLE)
   throw new Error('Production regional rooms require DYNAMODB_TABLE');
 const capacity = Number(process.env.ROOM_CAPACITY || 64);
@@ -48,7 +55,7 @@ let storageReady = false;
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://xeom-rush.vercel.app').split(',').map((s) => s.trim());
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || !production || allowedOrigins.includes(origin)) }));
 app.disable('x-powered-by');
-const smallJson = express.json({ limit: '1kb' });
+const smallJson = express.json({ limit: '16kb' });
 app.use((req, res, next) =>
   req.path.startsWith('/api/admin') || req.path.startsWith('/api/internal') ? next() : smallJson(req, res, next),
 );
@@ -71,7 +78,8 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 
 // Instantiate authoritative world state
-let world = new GameWorld();
+const contentRelease = process.env.CONTENT_RELEASE !== 'false';
+let world = new GameWorld({ enhanced: contentRelease });
 let botManager = new BotManager(world, world.getPhysics());
 
 // HTTP JSON Endpoints for Judges/Dashboard
@@ -92,6 +100,39 @@ app.get('/api/health', (_req, res) => {
     region,
     room: roomId,
   });
+});
+
+app.get('/api/profile', async (req, res) => {
+  const credential = req.headers.authorization?.replace(/^Bearer /, '');
+  const guestId = management
+    ? verifyIdentity(credential, management.deployment, process.env.GUEST_IDENTITY_SECRET!)
+    : null;
+  let id = management ? null : verifyGuest(credential, identitySecret);
+  if (guestId && transport) {
+    try {
+      const checked = await transport.admit(guestId);
+      if (!checked.banned) id = checked.profileId;
+    } catch {
+      res.status(503).json({ error: 'Profile unavailable' });
+      return;
+    }
+  }
+  if (!id) {
+    res.status(401).json({ error: 'Invalid guest' });
+    return;
+  }
+  try {
+    res.json(publicCareer(await careerRepository.profile(id)));
+  } catch {
+    res.status(503).json({ error: 'Profile unavailable' });
+  }
+});
+app.get('/api/careers', async (_req, res) => {
+  try {
+    res.json((await careerRepository.leaders()).map(publicCareer));
+  } catch {
+    res.status(503).json({ error: 'Ranking unavailable' });
+  }
 });
 
 app.get('/api/chunks', (req, res) => {
@@ -164,6 +205,9 @@ interface PlayerSocket {
   lastDeliveries: number;
   lastCityReport: number;
   lastCityRevision: number;
+  metadataPhase: number;
+  lastTripKey: string;
+  lastLifeKey: string;
 }
 
 const activeSockets = new Map<string, PlayerSocket>();
@@ -196,7 +240,7 @@ const runtime = new CityRuntime({
   world: () => world,
   bots: () => botManager,
   reset(config) {
-    world = new GameWorld(config.rules);
+    world = new GameWorld({ enhanced: contentRelease, rules: config.rules });
     botManager = new BotManager(world, world.getPhysics());
     botManager.configure(config.bots);
   },
@@ -274,7 +318,7 @@ const worker = transport
 app.get('/api/capabilities', (_req, res) => res.json({ managed: !!management, deployment: management?.deployment }));
 app.post('/api/guest', (_req, res) => {
   if (!management) {
-    res.status(404).json({ error: 'Not found' });
+    res.json({ guest: issueGuest(identitySecret) });
     return;
   }
   res.json({
@@ -351,9 +395,21 @@ async function finishSession(token: string): Promise<void> {
     }
   }
 }
+const privateRooms = installPrivateRooms(app, {
+  secret: () => identitySecret,
+  ready,
+  production,
+  regional,
+  ownerId: roomId,
+  allowedOrigins,
+});
 const FULL_SNAPSHOT_INTERVAL_TICKS = 40;
 
 server.on('upgrade', async (request, socket, head) => {
+  if ((request.url ?? '').includes('/private/')) {
+    void privateRooms.upgrade(request, socket, head).catch(() => socket.destroy());
+    return;
+  }
   if (
     !ready() ||
     wss.clients.size >= capacity + 16 ||
@@ -426,6 +482,8 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
   const token = requestedToken && /^[a-f0-9-]{36}$/.test(requestedToken) ? requestedToken : randomUUID();
   let playerId = `player-${randomUUID()}`;
   let joined = false;
+  const commandIds = new Set<string>();
+  let commandCount = 0;
   let received = 0;
   let windowStarted = Date.now();
   let lastPong = Date.now();
@@ -445,6 +503,7 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
   ws.on('message', (message: ArrayBuffer, isBinary: boolean) => {
     if (Date.now() - windowStarted >= 1000) {
       received = 0;
+      commandCount = 0;
       windowStarted = Date.now();
     }
     if (++received > 150) {
@@ -453,6 +512,41 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
     }
     if (!isBinary) {
       const text = message.toString();
+      if (joined && text.startsWith('control:')) {
+        const command = parseGameCommand(text.slice(8));
+        if (!command || ++commandCount > 10) {
+          ws.close(1008, 'Invalid game command');
+          return;
+        }
+        if (commandIds.has(command.id)) return;
+        commandIds.add(command.id);
+        if (commandIds.size > 128) commandIds.delete(commandIds.values().next().value!);
+        if (command.action === 'practice') world.beginPractice(playerId);
+        if (command.action === 'select-pickup') world.selectPickup(playerId, command.target);
+        if (['profile', 'claim', 'equip'].includes(command.action)) {
+          const session = sessions.get(token);
+          if (session?.profileId && !session.sandbox)
+            void (async () => {
+              const stats = world.getSessionStatsForPlayer(playerId);
+              if (stats) await saveSession(session.saveId, { ...stats, profileId: session.profileId });
+              const p =
+                command.action === 'claim'
+                  ? await careerRepository.claim(session.profileId!, command.target ?? '')
+                  : command.action === 'equip'
+                    ? await careerRepository.equip(session.profileId!, command.target ?? '')
+                    : await careerRepository.profile(session.profileId!);
+              world.setAppearance(playerId, p.equipped);
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(`control:${JSON.stringify({ version: 1, kind: 'career', data: publicCareer(p) })}`);
+            })().catch(() => {
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(
+                  `control:${JSON.stringify({ version: 1, kind: 'notice', data: 'Chưa thể nhận quà. Kiểm tra tiến độ và thử lại nhé.' })}`,
+                );
+            });
+        }
+        return;
+      }
       if (joined && /^ping:[0-9]{13}$/.test(text)) ws.send(`pong:${text.slice(5)}`);
       return;
     }
@@ -495,8 +589,15 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
             ws.close(1013, 'City is full');
             return;
           }
+          const requestedGuest = connectionUrl.searchParams.get('guest');
           const admittedId = regional ? admission.consume(token, requestedTicket) : undefined;
-          const profileId = managedGuest?.profileId ?? admittedId;
+          const profileId =
+            managedGuest?.profileId ??
+            (regional ? admittedId : requestedGuest ? verifyGuest(requestedGuest, identitySecret) : undefined);
+          if (requestedGuest && !profileId) {
+            ws.close(1008, 'Invalid guest credential');
+            return;
+          }
           if ((regional && !admittedId) || (managedGuest && regional && admittedId !== managedGuest.guestId)) {
             ws.close(1008, 'Reservation expired; find a new city');
             return;
@@ -513,6 +614,8 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
         }
         clearTimeout(joinTimeout);
 
+        if (connectionUrl.searchParams.get('practice') === '1') world.beginPractice(playerId);
+
         // Register socket
         activeSockets.set(playerId, {
           ws,
@@ -523,6 +626,9 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
           lastDeliveries: -1,
           lastCityReport: 0,
           lastCityRevision: -1,
+          metadataPhase: activeSockets.size % 20,
+          lastTripKey: '',
+          lastLifeKey: '',
         });
         joined = true;
 
@@ -531,6 +637,19 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
         // Send configuration back to player
         const configBuffer = encodeConfig(playerId, MAP_SIZE, CHUNK_SIZE);
         ws.send(configBuffer);
+        ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'capabilities', data: { careers: true, cityRanking: true, trips: contentRelease, practice: contentRelease, progression: contentRelease } })}`,
+        );
+        const profileId = sessions.get(token)?.profileId;
+        if (profileId)
+          void careerRepository
+            .profile(profileId)
+            .then((p) => {
+              world.setAppearance(playerId, p.equipped);
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(`control:${JSON.stringify({ version: 1, kind: 'career', data: publicCareer(p) })}`);
+            })
+            .catch(() => {});
       } else if (msgType === EMessageType.LEAVE) {
         if (joined) {
           joined = false;
@@ -573,9 +692,89 @@ wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; 
   });
 });
 
+// Deterministic authored jobs and positioning for combined local acceptance only.
+app.post('/api/test/gameplay', (req, res) => {
+  if (production || process.env.ALLOW_GAME_TESTS !== 'true') {
+    res.status(404).end();
+    return;
+  }
+  const profileId = verifyGuest(req.body.guest ?? '', identitySecret);
+  const session = [...sessions.values()].find((s) => s.profileId === profileId && !!profileId);
+  const player = session && world.getPlayer(session.playerId);
+  if (!player) {
+    res.status(404).end();
+    return;
+  }
+  const x = Number(req.body.x ?? 2050),
+    y = Number(req.body.y ?? 2200);
+  if (req.body.action === 'position' || req.body.action === 'job') {
+    if (!isRoadPoint({ x, y }, 16)) {
+      res.status(400).end();
+      return;
+    }
+    if (req.body.action === 'job') {
+      if (player.passengerId) {
+        res.status(409).json({ error: 'Finish the active trip first' });
+        return;
+      }
+      world.getPassengerMap().clear();
+      const kind = [0, 6, 8, 9].includes(Number(req.body.kind)) ? Number(req.body.kind) : 0;
+      const id = `pass-${1000000 + world.getTick() * 10 + kind}`;
+      const passenger = {
+        id,
+        x,
+        y: y + 70,
+        destX: x,
+        destY: y + 160,
+        reward: 10000,
+        tier: 0,
+        deadline: 0,
+        spawnedAt: world.getTick(),
+        isCarried: false,
+      };
+      world.getPassengerMap().set(id, passenger);
+      world.getSpatialGrid().insert(id, passenger.x, passenger.y);
+      world.selectPickup(player.id, id);
+    }
+    player.x = x;
+    player.y = y;
+    world.queueInput(player.id, { seq: 0, dx: 0, dy: 0, angle: 0 });
+  } else if (req.body.action === 'weather') {
+    // Advance the simulation clock; rewards still require real authoritative completions.
+    const tick = Number(req.body.tick);
+    if (!Number.isInteger(tick) || tick < 0 || tick > 30000) {
+      res.status(400).end();
+      return;
+    }
+    (world as any).tickCount = tick;
+  }
+  res.json({ player, gameplay: world.getGameplayState(player.id) });
+});
+
 // --- Authoritative Game Tick Loop (20 Hz) ---
 const dt = TICK_INTERVAL_MS / 1000; // 0.05 seconds
 let lastTickTime = Date.now();
+const tickMetrics = new TickMetrics();
+app.post('/api/test/metrics-reset', (_req, res) => {
+  if (production || process.env.ALLOW_ROOM_TESTS !== 'true') {
+    res.status(404).end();
+    return;
+  }
+  tickMetrics.reset();
+  res.json({ ok: true });
+});
+app.get('/api/metrics', (_req, res) => {
+  if (production) {
+    res.status(404).end();
+    return;
+  }
+  res.json({
+    public: tickMetrics.snapshot(),
+    private: privateRooms.metrics(),
+    memory: process.memoryUsage(),
+    uptime: process.uptime(),
+  });
+});
 let maxTickMs = 0;
 let totalTickMs = 0;
 let tickSamples = 0;
@@ -593,6 +792,7 @@ const gameLoop = setInterval(() => {
   // 1. Run bot AI (generates inputs for bot players)
   if (!management || !runtime.frozen) {
     if (management) botManager.reconcilePopulation(sessions.size);
+    else if (process.env.BOT_COUNT === undefined && world.getTick() % 20 === 0) botManager.balancePopulation(8, 20);
     botManager.tick();
   }
 
@@ -649,6 +849,26 @@ const gameLoop = setInterval(() => {
         playerSocket.lastCityReport = Date.now();
       }
       playerSocket.ws.send(snapshotBuffer);
+      const rider = world.getPlayer(playerId);
+      const trip = rider?.passengerId ? world.getPassengerMap().get(rider.passengerId) : undefined;
+      const tripKey = trip ? `${trip.id}:${trip.destX}:${trip.destY}` : '';
+      const life = world.getCityLife();
+      const lifeKey = `${life.phase}:${life.rain}:${life.event?.id}:${life.closure?.id}:${life.closure?.active}:${life.roadRevision}`;
+      if (
+        world.getTick() % 20 === playerSocket.metadataPhase ||
+        shouldSendFull ||
+        tripKey !== playerSocket.lastTripKey ||
+        lifeKey !== playerSocket.lastLifeKey
+      ) {
+        playerSocket.ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'gameplay', data: world.getGameplayState(playerId) })}`,
+        );
+        playerSocket.ws.send(
+          `control:${JSON.stringify({ version: 1, kind: 'appearance', data: world.getAppearances() })}`,
+        );
+        playerSocket.lastTripKey = tripKey;
+        playerSocket.lastLifeKey = lifeKey;
+      }
       playerSocket.lastDeliveries = deliveries;
       playerSocket.lastCityRevision = runtime.revision;
       playerSocket.lastSnapshot = snapshot;
@@ -657,9 +877,10 @@ const gameLoop = setInterval(() => {
       }
     }
   }
-  const tickWorkMs = performance.now() - workStarted;
-  maxTickMs = Math.max(maxTickMs, tickWorkMs);
-  totalTickMs += tickWorkMs;
+  const workMs = performance.now() - workStarted;
+  tickMetrics.record(workMs);
+  maxTickMs = Math.max(maxTickMs, workMs);
+  totalTickMs += workMs;
   tickSamples++;
   if (production && regional && world.getTick() % 100 === 0) {
     console.log(
@@ -693,7 +914,8 @@ const gameLoop = setInterval(() => {
 
 // Start only after the selected persistence service is ready.
 const PORT = process.env.PORT || 3002;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush';
+const MONGODB_URI =
+  process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush?directConnection=true&replicaSet=rs0';
 
 const startServer = async () => {
   hub = await createHubFromEnv();
@@ -711,8 +933,10 @@ const startServer = async () => {
 async function bootstrapServer() {
   try {
     await connectStorage(MONGODB_URI);
+    identitySecret = guestSecret || (await careerRepository.secret());
   } catch (error) {
     if (production) throw error;
+    identitySecret ||= randomUUID() + randomUUID();
     console.warn('⚠️ [Startup] Storage unavailable; local career stats will not persist.', error);
   }
   storageReady = true;
@@ -727,11 +951,11 @@ void bootstrapServer().catch((error) => {
 // KV records each session's previous contribution, so retries never double-count.
 let checkpointPending: Promise<void> | null = null;
 const checkpointLoop = setInterval(() => {
-  if ((!isKvStorage() && !management) || checkpointPending || runtime.frozen) return;
+  if (checkpointPending || runtime.frozen) return;
   checkpointPending = Promise.all(
     [...sessions.values()].map(async (session) => {
       const stats = world.getSessionStatsForPlayer(session.playerId);
-      if (stats && !session.sandbox)
+      if (stats && !session.sandbox && (session.profileId || isKvStorage()))
         await saveSession(session.saveId, { ...stats, ...(session.profileId ? { profileId: session.profileId } : {}) });
     }),
   )
@@ -773,6 +997,7 @@ async function shutdown(exitCode = 0): Promise<void> {
   await Promise.all([...sessions.keys()].map(finalizeSession));
   await Promise.all([...finalWrites]);
   for (const client of wss.clients) client.terminate();
+  await privateRooms.close();
   await closeStorage();
   server.close(() => process.exit(exitCode));
 }

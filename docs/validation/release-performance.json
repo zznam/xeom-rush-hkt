@@ -1,0 +1,17 @@
+{
+  "seed": 42,
+  "ticks": 7200,
+  "humans": 64,
+  "bots": 8,
+  "p95Ms": 1.7879590000000007,
+  "maxMs": 20.671707999999995,
+  "meanMs": 1.3803022413888832,
+  "fullSnapshotBytesPerPeerSecond": 27523.283506944445,
+  "memory": {
+    "rss": 142229504,
+    "heapTotal": 56246272,
+    "heapUsed": 28868048,
+    "external": 1856725,
+    "arrayBuffers": 228337
+  }
+}

@@ -5,9 +5,12 @@ COPY apps/client/package.json ./apps/client/
 COPY apps/admin/package.json ./apps/admin/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
+COPY apps/room-service/package.json ./apps/room-service/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/game-core/package.json ./packages/game-core/
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY packages/shared packages/shared
+COPY packages/game-core packages/game-core
 COPY apps/server apps/server
 COPY apps/admin apps/admin
 RUN bun run build:server && bun run build:admin
@@ -19,7 +22,9 @@ COPY apps/client/package.json ./apps/client/
 COPY apps/admin/package.json ./apps/admin/
 COPY apps/server/package.json ./apps/server/
 COPY apps/e2e/package.json ./apps/e2e/
+COPY apps/room-service/package.json ./apps/room-service/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/game-core/package.json ./packages/game-core/
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
 FROM node:22-bookworm-slim AS runtime
@@ -27,6 +32,7 @@ WORKDIR /app
 ENV NODE_ENV=production PORT=3002 DEPLOY_TARGET=legacy
 COPY --from=dependencies --chown=node:node /app /app
 COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build --chown=node:node /app/packages/game-core/dist ./packages/game-core/dist
 COPY --from=build --chown=node:node /app/apps/server/dist ./apps/server/dist
 COPY --from=build --chown=node:node /app/apps/admin/dist ./apps/admin/dist
 USER node

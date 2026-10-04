@@ -1,3 +1,10 @@
+import {
+  configureCareers,
+  KvCareerBackend,
+  MongoCareerBackend,
+  DynamoCareerBackend,
+  careerRepository,
+} from './career-store';
 import { dbManager } from './db';
 import { savePlayerSession, type ISessionStats } from './persist';
 import { resolveDeploymentTarget } from '@xeom-rush/shared';
@@ -86,15 +93,21 @@ export async function connectStorage(mongoUri: string): Promise<void> {
     const { DynamoPersistence } = await import('./dynamo-storage.js');
     dynamoPersistence = new DynamoPersistence(process.env.DYNAMODB_TABLE);
     await dynamoPersistence.health();
+    configureCareers(new DynamoCareerBackend(process.env.DYNAMODB_TABLE));
     console.log('[Storage] Connected to regional DynamoDB');
     return;
   }
   const deno = (globalThis as unknown as { Deno?: { openKv(path?: string): Promise<KvStore> } }).Deno;
   if (deno) {
-    kvPersistence = new KvPersistence(await deno.openKv(process.env.DENO_KV_PATH || undefined));
+    const kv = await deno.openKv(process.env.DENO_KV_PATH || undefined);
+    kvPersistence = new KvPersistence(kv);
+    configureCareers(new KvCareerBackend(kv));
     console.log('[Storage] Connected to Deno KV');
   } else {
     await dbManager.connect(mongoUri);
+    await dbManager.getDb().collection('career_v2').createIndex({ key: 1 }, { unique: true });
+    await dbManager.getDb().collection('career_v2').createIndex({ careerScore: -1 });
+    configureCareers(new MongoCareerBackend());
   }
 }
 export async function storageHealth(): Promise<void> {
@@ -104,6 +117,10 @@ export async function storageHealth(): Promise<void> {
 }
 const writes = new Map<string, Promise<void>>();
 export async function saveSession(id: string, stats: ISessionStats): Promise<void> {
+  if (stats.profileId) {
+    await careerRepository.save(stats.profileId, id, stats);
+    return;
+  }
   const previous = writes.get(id) ?? Promise.resolve();
   const write = previous
     .catch(() => {})
@@ -112,9 +129,7 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
         ? dynamoPersistence.save(id, stats)
         : kvPersistence
           ? kvPersistence.save(id, stats)
-          : stats.profileId
-            ? saveIdSession(id, stats)
-            : savePlayerSession(stats.username, stats),
+          : savePlayerSession(stats.username, stats),
     );
   writes.set(id, write);
   try {
@@ -124,9 +139,18 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
   }
 }
 export async function getLeaderboard(): Promise<Profile[]> {
-  if (dynamoPersistence) return dynamoPersistence.leaderboard();
-  if (kvPersistence) return kvPersistence.leaderboard(process.env.GAME_MASTER_ENABLED === '1');
-  if (process.env.GAME_MASTER_ENABLED === '1') return idLeaderboard();
+  if (process.env.GAME_MASTER_ENABLED !== '1') {
+    if (dynamoPersistence) return dynamoPersistence.leaderboard();
+    if (kvPersistence) return kvPersistence.leaderboard();
+  }
+  if (process.env.GAME_MASTER_ENABLED === '1')
+    return (await careerRepository.leaders()).map((p) => ({
+      username: p.username,
+      careerScore: p.careerScore,
+      peakScore: p.peakScore,
+      peakStreak: p.peakStreak,
+      totalDeliveries: p.totalDeliveries,
+    }));
   const rows = await dbManager.getDb().collection('players').find().sort({ careerScore: -1 }).limit(10).toArray();
   return rows.map((p) => ({
     username: p.username,
@@ -143,40 +167,4 @@ export async function closeStorage(): Promise<void> {
   if (dynamoPersistence) dynamoPersistence.close();
   else if (kvPersistence) kvPersistence.close();
   else await dbManager.close();
-}
-
-// ID-based Mongo careers derive totals from unique session contributions. This also
-// works on standalone development Mongo without requiring replica-set transactions.
-async function saveIdSession(id: string, stats: ISessionStats): Promise<void> {
-  await dbManager
-    .getDb()
-    .collection('career_sessions_v2')
-    .updateOne(
-      { _id: id as never, profileId: stats.profileId },
-      { $set: { ...stats, updatedAt: new Date() } },
-      { upsert: true },
-    );
-}
-async function idLeaderboard(): Promise<Profile[]> {
-  const rows = await dbManager
-    .getDb()
-    .collection('career_sessions_v2')
-    .aggregate<Profile>([
-      { $sort: { updatedAt: 1 } },
-      {
-        $group: {
-          _id: '$profileId',
-          username: { $last: '$username' },
-          careerScore: { $sum: '$score' },
-          totalDeliveries: { $sum: '$deliveriesCount' },
-          peakScore: { $max: '$score' },
-          peakStreak: { $max: '$peakStreak' },
-        },
-      },
-      { $sort: { careerScore: -1 } },
-      { $limit: 10 },
-      { $project: { _id: 0 } },
-    ])
-    .toArray();
-  return rows;
 }

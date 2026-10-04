@@ -68,14 +68,12 @@ const worker = new ControlWorker(
     paused: runtime.frozen,
     admissionsOpen: runtime.admissionsOpen,
     lastSeen: Date.now(),
-    players: world
-      .getPlayers()
-      .map((p) => ({
-        ...p,
-        guestId: p.id === 'player-demo' ? guestId : undefined,
-        deliveries: 2,
-        bot: p.id.startsWith('bot-'),
-      })),
+    players: world.getPlayers().map((p) => ({
+      ...p,
+      guestId: p.id === 'player-demo' ? guestId : undefined,
+      deliveries: 2,
+      bot: p.id.startsWith('bot-'),
+    })),
     ...(observe
       ? { map: { passengers: [...world.getPassengerMap().values()].map((p) => ({ x: p.x, y: p.y, tier: p.tier })) } }
       : {}),

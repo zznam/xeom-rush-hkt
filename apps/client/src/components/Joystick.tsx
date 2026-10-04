@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
 
 interface JoystickProps {
+  size?: number;
   onChange: (data: { dx: number; dy: number }) => void;
 }
 
-export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
+export const Joystick: React.FC<JoystickProps> = ({ onChange, size = 120 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [touchPos, setTouchPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -71,8 +72,8 @@ export const Joystick: React.FC<JoystickProps> = ({ onChange }) => {
       role='group'
       aria-label='Cần điều khiển lái xe'
       style={{
-        width: 120,
-        height: 120,
+        width: size,
+        height: size,
         borderRadius: '50%',
         background: 'rgba(15, 23, 42, 0.4)',
         border: '2px solid rgba(255, 255, 255, 0.08)',

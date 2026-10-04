@@ -1,5 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { type PlayerState, type PassengerState, EPassengerTier, MAP_SIZE } from '@xeom-rush/shared';
+import {
+  LANDMARKS,
+  DISTRICTS,
+  type GameplayState,
+  type PlayerState,
+  type PassengerState,
+  EPassengerTier,
+  MAP_SIZE,
+} from '@xeom-rush/shared';
 
 const TIER_COLORS: Record<EPassengerTier, string> = {
   [EPassengerTier.REGULAR]: '#22c55e', // green
@@ -8,6 +16,7 @@ const TIER_COLORS: Record<EPassengerTier, string> = {
 };
 
 interface MinimapProps {
+  navigation?: GameplayState['navigation'];
   localPlayerId: string | null;
   players: PlayerState[];
   passengers: PassengerState[];
@@ -17,6 +26,7 @@ interface MinimapProps {
 }
 
 export const Minimap: React.FC<MinimapProps> = ({
+  navigation,
   localPlayerId,
   players,
   passengers,
@@ -38,6 +48,15 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.fillStyle = 'rgba(10, 15, 30, 0.92)';
     ctx.fillRect(0, 0, size, size);
 
+    DISTRICTS.forEach((district, i) => {
+      ctx.fillStyle = district.color + '22';
+      ctx.fillRect(((i % 2) * size) / 2, (Math.floor(i / 2) * size) / 2, size / 2, size / 2);
+    });
+    for (const landmark of LANDMARKS) {
+      ctx.strokeStyle = '#fff1ae';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(landmark.x * scale - 2, landmark.y * scale - 2, 4, 4);
+    }
     // Subtle grid lines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.lineWidth = 0.5;
@@ -53,6 +72,18 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.stroke();
     }
 
+    if (navigation) {
+      ctx.strokeStyle = '#ffcf69';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      navigation.route.forEach((p, i) => {
+        if (i) ctx.lineTo(p.x * scale, p.y * scale);
+        else ctx.moveTo(p.x * scale, p.y * scale);
+      });
+      ctx.stroke();
+      ctx.strokeStyle = '#ff7967';
+      ctx.strokeRect(navigation.target.x * scale - 3, navigation.target.y * scale - 3, 6, 6);
+    }
     // Draw passengers (blips, color-coded by tier)
     for (const passenger of passengers) {
       if (passenger.isCarried) continue;
@@ -124,7 +155,7 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.lineTo(mx + Math.cos(localPlayer.angle) * dirLen, my + Math.sin(localPlayer.angle) * dirLen);
       ctx.stroke();
     }
-  }, [localPlayerId, players, passengers, carriedPassengerId, size, scale]);
+  }, [localPlayerId, players, passengers, carriedPassengerId, size, scale, navigation]);
 
   return (
     <div id='minimap-container' className={className}>

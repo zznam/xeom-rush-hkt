@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   COLLISION_RADIUS,
+  SeededRandom,
   EPassengerTier,
   RUSH_HOUR_INTERVAL_TICKS,
   RUSH_HOUR_DURATION_TICKS,
@@ -696,27 +697,33 @@ describe('Passenger Tiers', () => {
 
 describe('Bot stuck recovery produces net displacement', () => {
   it('bot makes net displacement after stuck recovery cycle', () => {
-    const world = new GameWorld();
-    const botManager = new BotManager(world, world.getPhysics());
-    const botIds = botManager.spawnBots(1);
-    const botId = botIds[0];
+    const rng = new SeededRandom(42);
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => rng.next());
+    try {
+      const world = new GameWorld();
+      const botManager = new BotManager(world, world.getPhysics());
+      const botIds = botManager.spawnBots(1);
+      const botId = botIds[0];
 
-    // Record initial position
-    const initialPlayer = world.getPlayer(botId)!;
-    const startX = initialPlayer.x;
-    const startY = initialPlayer.y;
+      // Record initial position
+      const initialPlayer = world.getPlayer(botId)!;
+      const startX = initialPlayer.x;
+      const startY = initialPlayer.y;
 
-    // Simulate ticks — bot should move around
-    for (let i = 0; i < 60; i++) {
-      botManager.tick();
-      world.tick(0.05);
+      // Simulate ticks — bot should move around
+      for (let i = 0; i < 60; i++) {
+        botManager.tick();
+        world.tick(0.05);
+      }
+
+      const afterPlayer = world.getPlayer(botId)!;
+      const displacement = Math.hypot(afterPlayer.x - startX, afterPlayer.y - startY);
+
+      // Bot should have moved at least about one full movement tick from spawn after 60 ticks (3 seconds).
+      expect(displacement).toBeGreaterThan(9.5);
+    } finally {
+      random.mockRestore();
     }
-
-    const afterPlayer = world.getPlayer(botId)!;
-    const displacement = Math.hypot(afterPlayer.x - startX, afterPlayer.y - startY);
-
-    // Bot should have moved at least about one full movement tick from spawn after 60 ticks (3 seconds).
-    expect(displacement).toBeGreaterThan(9.5);
   });
 });
 

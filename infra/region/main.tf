@@ -263,7 +263,9 @@ resource "aws_ecs_task_definition" "service" {
     portMappings    = [{ containerPort = 3002, protocol = "tcp" }],
     environment = concat(local.common_environment, each.value.role == "game" ? [
       { name = "ROOM_ID", value = each.key }, { name = "ROOM_CAPACITY", value = tostring(var.room_capacity) },
-      { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.careers.name }, { name = "BOT_COUNT", value = "8" }
+      { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.careers.name },
+      { name = "PRIVATE_ROOMS_ENABLED", value = tostring(var.private_rooms_enabled) },
+      { name = "MAX_PRIVATE_ROOMS", value = tostring(var.max_private_rooms) }
       ] : [
       { name = "ROOM_IDS", value = join(",", sort(tolist(var.room_ids))) },
       { name = "REGIONS_JSON", value = jsonencode(var.regions) }

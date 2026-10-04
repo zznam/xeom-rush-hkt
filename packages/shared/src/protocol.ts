@@ -25,10 +25,9 @@ const VIOLATION_CODE_TO_TYPE: Record<number, ViolationType> = {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder('utf-8', { fatal: true });
-// IDs and names repeat across every observer's packet. Bound this cache so a long
-// running city cannot retain every historical guest or passenger identifier.
+// IDs and names repeat across every peer's snapshot. Bound retained UTF-8 records.
 const encodedStrings = new Map<string, Uint8Array>();
-function encodedString(value: string): Uint8Array {
+function stringBytes(value: string): Uint8Array {
   const cached = encodedStrings.get(value);
   if (cached) return cached;
   const bytes = textEncoder.encode(value);
@@ -38,10 +37,10 @@ function encodedString(value: string): Uint8Array {
   }
   return bytes;
 }
-const byteLength = (value: string): number => encodedString(value).length;
+const byteLength = (value: string): number => stringBytes(value).length;
 
 function writeString(view: DataView, offset: number, str: string): number {
-  const bytes = encodedString(str);
+  const bytes = stringBytes(str);
   if (bytes.length > 255) throw new RangeError('Protocol string exceeds 255 bytes');
   view.setUint8(offset, bytes.length);
   new Uint8Array(view.buffer, view.byteOffset + offset + 1, bytes.length).set(bytes);
@@ -57,14 +56,13 @@ function readString(view: DataView, offset: number): { value: string; nextOffset
   };
 }
 
-// Compare precisely the fields on the wire, without serializing each entity to
-// temporary JSON for each connected observer. Keep the binary layout unchanged.
 function samePlayer(a: PlayerState, b: PlayerState): boolean {
   return (
+    a.id === b.id &&
+    a.username === b.username &&
     a.x === b.x &&
     a.y === b.y &&
     a.angle === b.angle &&
-    a.username === b.username &&
     a.score === b.score &&
     a.lastProcessedSeq === b.lastProcessedSeq &&
     a.passengerId === b.passengerId &&
@@ -75,6 +73,7 @@ function samePlayer(a: PlayerState, b: PlayerState): boolean {
 }
 function samePassenger(a: PassengerState, b: PassengerState): boolean {
   return (
+    a.id === b.id &&
     a.x === b.x &&
     a.y === b.y &&
     a.destX === b.destX &&
@@ -86,21 +85,21 @@ function samePassenger(a: PassengerState, b: PassengerState): boolean {
   );
 }
 function sameLight(a: TrafficLightState, b: TrafficLightState): boolean {
-  return a.x === b.x && a.y === b.y && a.isRedNS === b.isRedNS && a.isYellow === b.isYellow;
+  return a.id === b.id && a.x === b.x && a.y === b.y && a.isRedNS === b.isRedNS && a.isYellow === b.isYellow;
 }
 function samePedestrian(a: PedestrianState, b: PedestrianState): boolean {
-  return a.x === b.x && a.y === b.y && a.angle === b.angle;
+  return a.id === b.id && a.x === b.x && a.y === b.y && a.angle === b.angle;
 }
 
 function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
   return new Map(items.map((item) => [item.id, item]));
 }
 
-function getChangedItems<T extends { id: string }>(previous: T[], next: T[], same: (a: T, b: T) => boolean): T[] {
+function getChangedItems<T extends { id: string }>(previous: T[], next: T[], equal: (a: T, b: T) => boolean): T[] {
   const previousById = indexById(previous);
   return next.filter((item) => {
     const old = previousById.get(item.id);
-    return !old || !same(old, item);
+    return !old || !equal(old, item);
   });
 }
 

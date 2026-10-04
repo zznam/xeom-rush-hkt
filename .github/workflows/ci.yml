@@ -3,8 +3,7 @@ name: CI
 on:
   workflow_call:
   pull_request:
-    branches:
-      - main
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches:
       - main
@@ -19,7 +18,13 @@ concurrency:
 jobs:
   test-and-build:
     name: Test and build
+    # DynamoDB services require Docker; the optional isolated local runner has no Docker daemon.
     runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:3.1.0
+        ports:
+          - 8000:8000
 
     steps:
       - name: Checkout
@@ -46,6 +51,9 @@ jobs:
       - name: Run linter
         run: bun run lint
 
+      - name: Check formatting
+        run: bun run format:check
+
       - name: Run unit tests
         run: bun run test
 
@@ -68,6 +76,13 @@ jobs:
 
       - name: Verify human and bot capacity
         run: node tests/admin-load.mjs
+      - name: Build Cloudflare room runtime
+        run: bun run --filter '@xeom-rush/room-service' build
+
+      - name: Test Cloudflare and routed DynamoDB room owners
+        env:
+          TEST_DYNAMO_URL: http://127.0.0.1:8000
+        run: bun run --filter '@xeom-rush/room-service' test
 
       - name: Test legacy Deno deployment
         run: node tests/legacy-smoke.mjs
@@ -82,7 +97,64 @@ jobs:
         run: bun run --filter e2e install:browsers
 
       - name: Test browser flows
-        run: bun run test:e2e && bun run test:e2e:regional && bun run test:e2e:admin
+        run: bun run test:e2e && bun run test:e2e:regional && bun run test:e2e:admin && bun run --filter e2e test --config=playwright.rooms.config.ts && bun run --filter e2e test --config=playwright.rollback.config.ts
+
+      - name: Combined runtime and browser load smoke
+        env:
+          TEST_DYNAMO_URL: http://127.0.0.1:8000
+          SOAK_PUBLIC_HUMANS: 16
+          SOAK_ROOM_HUMANS: 4
+          SOAK_NODE_ROOMS: 3
+          SOAK_DURATION_MS: 10000
+          SOAK_OUTPUT: apps/e2e/test-results/load-smoke.json
+        run: node tests/release-soak.mjs
+
+      - name: Save browser and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verification
+          path: apps/e2e/test-results/
+
+  release-soak:
+    name: Thirty-minute full-capacity release soak
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'release-soak')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:3.1.0
+        ports:
+          - 8000:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: bun install --frozen-lockfile
+      - run: bun run build:server && bun run --filter '@xeom-rush/room-service' build
+      - run: bun run --filter e2e install:browsers
+      - name: Exercise the complete release at configured capacity
+        env:
+          TEST_DYNAMO_URL: http://127.0.0.1:8000
+          SOAK_PUBLIC_HUMANS: 64
+          SOAK_ROOM_HUMANS: 8
+          SOAK_NODE_ROOMS: 4
+          SOAK_DURATION_MS: 1800000
+          SOAK_OUTPUT: apps/e2e/test-results/release-soak.json
+        run: node tests/release-soak.mjs
+      - name: Save full soak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-capacity-release-soak
+          path: apps/e2e/test-results/release-soak.json
 
   deno-deploy-build:
     name: Build in Deno-only environment

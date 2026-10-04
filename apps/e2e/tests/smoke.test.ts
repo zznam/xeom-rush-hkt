@@ -1,6 +1,6 @@
 import { test, expect, request } from '@playwright/test';
 
-const SERVER_URL = 'http://localhost:3003';
+const SERVER_URL = `http://localhost:${process.env.E2E_SERVER_PORT || 3003}`;
 
 test.describe('Xeom Rush Smoke Tests', () => {
   test('1. Server health endpoint responds with ok status', async () => {
@@ -73,7 +73,7 @@ test.describe('Xeom Rush Smoke Tests', () => {
     const canvas = page.locator('canvas').first();
     await expect(canvas).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.getByText('DELTA')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('DELTA', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -101,6 +101,7 @@ test('sound and motion controls do not reconnect the game', async ({ page }) => 
   await page.locator('button[type="submit"]').click();
   await expect(page.locator('.hud-container')).toBeVisible();
   const before = connections;
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
   await page.getByRole('button', { name: 'Âm thanh', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('button', { name: 'Giảm chuyển động', exact: true }).click();
@@ -109,8 +110,10 @@ test('sound and motion controls do not reconnect the game', async ({ page }) => 
     'true',
   );
   expect(connections).toBe(before);
+  await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   await page.reload();
   await page.locator('button[type="submit"]').click();
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Âm thanh', exact: true })).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -190,5 +193,120 @@ for (const layout of [
       }
       await page.screenshot({ path: `test-results/hud-${layout.name.replaceAll(' ', '-')}.png` });
     });
+
+    test('keeps pickup selection, Close and keyboard focus inside the viewport', async ({ page, request }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('xeom:tutorial', 'done');
+        localStorage.setItem('xeom:controls', JSON.stringify({ textSize: 1.3 }));
+      });
+      await page.goto('/');
+      await page.locator('#username').fill('PickupLayout');
+      await page.locator('button[type="submit"]').click();
+      await expect(page.locator('.hud-summary')).toBeVisible();
+      await expect(page.locator('.connection-cover')).toHaveCount(0);
+      const port = process.env.E2E_SERVER_PORT || '3003';
+      const guest = await page.evaluate((key) => localStorage.getItem(key), `xeom:guest:localhost:${port}`);
+      const fixtureUrl = `http://localhost:${port}/api/test/gameplay`;
+      let response;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        response = await request.post(fixtureUrl, {
+          data: { guest, action: 'job', kind: 9, x: 2050, y: 2200 },
+        });
+        if (response.status() !== 409) break;
+        // Automatic pickup can precede fixture setup. Complete its real ordered stops first.
+        const current = await request.post(fixtureUrl, { data: { guest, action: 'inspect' } });
+        expect(current.ok()).toBe(true);
+        const target = (await current.json()).gameplay.navigation.target;
+        const positioned = await request.post(fixtureUrl, {
+          data: { guest, action: 'position', x: target.x, y: target.y },
+        });
+        expect(positioned.ok()).toBe(true);
+        await page.waitForTimeout(120); // Let the authoritative 20Hz simulation process arrival.
+      }
+      expect(response!.ok()).toBe(true);
+      const targetId = (await response!.json()).gameplay.selectedPickup;
+      await expect(page.locator('.trip-fare')).toContainText('Gốc 10.000đ');
+      await page.getByRole('button', { name: /^Chọn khách/ }).click();
+      const dialog = page.getByRole('dialog', { name: 'Chọn khách', exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.pickup-list')).toContainText('Giao kiện hàng');
+      await expect(dialog.locator('.pickup-list')).toContainText('3 điểm');
+      const box = (await dialog.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(layout.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(layout.height);
+      for (const button of [
+        dialog.getByRole('button', { name: 'Đóng', exact: true }),
+        dialog.getByRole('button', { name: 'Tự động đón khách gần', exact: true }),
+        dialog.locator(`[data-pickup-id="${targetId}"]`),
+      ]) {
+        await button.scrollIntoViewIfNeeded();
+        await expect(button).toBeInViewport();
+        const target = (await button.boundingBox())!;
+        expect(target.width).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+      }
+      await page.keyboard.press('Tab');
+      expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+      await page.screenshot({ path: `test-results/pickup-${layout.name.replaceAll(' ', '-')}.png` });
+      await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await page.getByRole('button', { name: /^Chọn khách/ }).click();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+    });
   });
 }
+
+test('custom controls save without reconnecting and dialogs retain keyboard focus', async ({ page }) => {
+  let connections = 0;
+  page.on('websocket', () => connections++);
+  await page.setViewportSize({ width: 320, height: 667 });
+  await page.goto('/');
+  await page.locator('#username').fill('CustomDriver');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.locator('.hud-summary')).toBeVisible();
+  const before = connections;
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
+  await page.getByLabel('Tay thuận').selectOption('left');
+  await page.getByLabel('Kích thước cần', { exact: true }).fill('160');
+  await page.getByLabel('Khoảng cách mép', { exact: true }).fill('40');
+  await page.getByLabel('Độ nhạy', { exact: true }).fill('1.4');
+  await page.getByLabel('Cỡ chữ').selectOption('1.3');
+  await page.getByLabel('Đồ họa').selectOption('low');
+  await page.getByLabel('Phím up').focus();
+  await page.keyboard.press('i');
+  await expect(page.getByLabel('Phím up')).toHaveValue('i');
+  for (let i = 0; i < 18; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(connections).toBe(before);
+  const stick = await page.getByRole('group', { name: 'Cần điều khiển lái xe' }).boundingBox();
+  const horn = await page.locator('.honk-btn-mobile').boundingBox();
+  expect(stick!.width).toBe(160);
+  expect(stick!.x).toBeGreaterThan(horn!.x + horn!.width);
+  expect(stick!.x + stick!.width).toBeLessThanOrEqual(320);
+  await page.reload();
+  await page.locator('button[type="submit"]').click();
+  await page.getByRole('button', { name: 'Tùy chỉnh', exact: true }).click();
+  await expect(page.getByLabel('Tay thuận')).toHaveValue('left');
+  await expect(page.getByLabel('Phím up')).toHaveValue('i');
+  await expect(page.getByLabel('Đồ họa')).toHaveValue('low');
+});
+
+test('protected practice teaches pickup and arrival without competitive rewards', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#username').fill('NewRider');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByText('TẬP LÁI RIÊNG CHO BẠN')).toBeVisible();
+  await page.keyboard.down('s');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('xeom:tutorial')), { timeout: 5000 }).toBe('done');
+  await page.keyboard.up('s');
+  await expect(page.locator('.trip-toast')).toContainText('Tập lái hoàn thành');
+  await expect(page.locator('.hud-earnings > strong')).toContainText('0');
+  await expect(page.locator('.trip-progress')).toContainText('0');
+});

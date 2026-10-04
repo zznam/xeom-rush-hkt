@@ -1,6 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { TeamPlayPanel } from './TeamPlayPanel';
+import { RoomPanel } from './RoomPanel';
+import { RoomLauncher } from './RoomHub';
+import { roomApiBase } from '../game/rooms';
+import type { RoomState } from '@xeom-rush/shared';
+import { SettingsPanel } from './SettingsPanel';
+import { useGameDialog } from './useGameDialog';
+import { DriverPanel } from './DriverPanel';
+import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { network, type ConnectionState } from '../game/network';
-import { loadPreferences, readStored, writeStored } from '../game/preferences';
+import { loadPreferences, savePreferences, readStored, writeStored } from '../game/preferences';
 import { inputHandler } from '../game/input';
 import { prediction } from '../game/prediction';
 import { interpolation } from '../game/interpolation';
@@ -14,6 +23,7 @@ import {
   type PedestrianState,
   type ConfigPayload,
   type SnapshotPacketKind,
+  districtAt,
   EPassengerTier,
   MOTORBIKE_SPEED,
 } from '@xeom-rush/shared';
@@ -26,9 +36,21 @@ interface GameCanvasProps {
   serverUrl: string;
   cityLabel?: string;
   onDisconnect: (reason?: string) => void;
+  onRoomJoin?: (url: string, name?: string) => void;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cityLabel, onDisconnect, onRoomJoin }) => {
+  const [showTeam, setShowTeam] = useState(false);
+  const [room, setRoom] = useState<RoomState | null>(null);
+  const [gameplay, setGameplay] = useState<GameplayState | null>(null);
+  const [career, setCareer] = useState<Omit<CareerProfile, 'contributions'> | null>(null);
+  const [summary, setSummary] = useState<ShiftSummary | null>(null);
+  const [cityRanking, setCityRanking] = useState<{ id: string; username: string; score: number; deliveries: number }[]>(
+    [],
+  );
+  const careerCommand = useCallback((action: string, target?: string) => network.command(action, target), []);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDriver, setShowDriver] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
@@ -55,6 +77,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   const [playMode, setPlayMode] = useState<'career' | 'sandbox'>('career');
   const [cityNotice, setCityNotice] = useState<string | null>(null);
   const pausedRef = useRef(false);
+  const resultsRef = useGameDialog(showResults, () => {
+    setShowResults(false);
+    onDisconnect();
+  });
   const [tutorialDone, setTutorialDone] = useState(() => readStored('tutorial') === 'done');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const violationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,8 +89,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     preferencesRef.current = preferences;
     soundEngine.setEnabled(preferences.sound);
     rendererRef.current?.setReducedMotion(preferences.reducedMotion);
-    writeStored('sound', String(preferences.sound));
-    writeStored('reducedMotion', String(preferences.reducedMotion));
+    inputHandler.configure(preferences);
+    rendererRef.current?.setQuality(preferences.graphics);
+    savePreferences(preferences);
   }, [preferences]);
   useEffect(() => {
     showDebugRef.current = showDebug;
@@ -104,6 +131,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     const renderer = new GameRenderer(canvas);
     rendererRef.current = renderer;
     renderer.setReducedMotion(preferencesRef.current.reducedMotion);
+    renderer.setQuality(preferencesRef.current.graphics);
     soundEngine.setEnabled(preferencesRef.current.sound);
 
     const handleResize = () => {
@@ -114,7 +142,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // H key → honk
     const handleHonk = (e: KeyboardEvent) => {
-      if (e.key === 'h' || e.key === 'H') {
+      if (
+        !inputHandler.suspended &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLSelectElement) &&
+        !e.repeat &&
+        e.key.toLowerCase() === preferencesRef.current.bindings.horn
+      ) {
         soundEngine.playHonk();
       }
     };
@@ -122,17 +156,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
     // Track config variables from server
     let myPlayerId = '';
+    let arrivalToastUntil = 0;
 
     // Register networking callbacks
     const unsubscribeConfig = network.registerConfigCallback((config: ConfigPayload) => {
       prediction.configure();
       prediction.clear();
       interpolation.clear();
-      if (myPlayerId && myPlayerId !== config.myId) {
+      arrivalToastUntil = 0;
+      if (myPlayerId) {
+        clientSeqRef.current = 0;
+        previousViolationTickRef.current = 0;
+        inputHandler.clear();
+        setViolationAlert(null);
         localPlayerStateRef.current = null;
         previousPassengerIdRef.current = null;
         setDeliveries(0);
-        setToast('Thành phố đã mở lại. Bắt đầu chuyến xe mới nhé!');
+        setToast(myPlayerId !== config.myId ? 'Thành phố đã mở lại. Bắt đầu chuyến xe mới nhé!' : null);
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToast(null), 3500);
       }
@@ -140,6 +180,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       console.log('Received config from server, my player ID is:', myPlayerId);
     });
 
+    const unsubscribeControl = network.registerControlCallback((message) => {
+      if (message.kind === 'room') setRoom(message.data);
+      if (message.kind === 'career') {
+        setCareer(message.data);
+        soundEngine.setHorn(message.data.equipped?.horn ?? 'horn-0');
+      }
+      if (message.kind === 'appearance') renderer.setAppearances(message.data);
+      if (message.kind === 'notice') {
+        setToast(message.data);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToast(null), 3500);
+      }
+      if (message.kind === 'gameplay') {
+        if (message.data.practiceCompleted) {
+          setTutorialDone(true);
+          writeStored('tutorial', 'done');
+        }
+        setGameplay(message.data);
+        renderer.setGameplay(message.data);
+        if (message.data.city) prediction.setCityLife(message.data.city);
+        setSummary(message.data.summary);
+        if (message.data.movement) prediction.setMovement(message.data.movement);
+        setCityRanking(message.data.cityRanking);
+      }
+    });
     const unsubscribeCity = network.registerCityCallback((status) => {
       rushHourEndsAtTickRef.current = status.tick + status.rushHourTicksRemaining;
       setRushHourTicksRemaining(status.rushHourTicksRemaining);
@@ -156,6 +221,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       );
     });
     const unsubscribeSnapshot = network.registerSnapshotCallback((snapshot: WorldSnapshot, meta) => {
+      prediction.setTick(snapshot.tick);
+      renderer.setTick(snapshot.tick);
+      inputHandler.setRain(prediction.raining);
       // 1. Calculate received package size
       setLastBytes(meta.bytes);
       setLastPacketKind(meta.kind);
@@ -216,14 +284,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         if (!prevPassengerId && currPassengerId) {
           soundEngine.playPickup();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'pickup');
-          setToast('🙋 À, có khách rồi!');
-          if (toastTimer.current) clearTimeout(toastTimer.current);
-          toastTimer.current = setTimeout(() => setToast(null), 1800);
+          // A nearby automatic pickup must not erase the completed trip's fare feedback.
+          if (Date.now() >= arrivalToastUntil) {
+            setToast('🙋 À, có khách rồi!');
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setToast(null), 1800);
+          }
         } else if (prevPassengerId && !currPassengerId) {
+          arrivalToastUntil = Date.now() + 2400;
           soundEngine.playDropoff();
           renderer.celebrate(localStateFromServer.x, localStateFromServer.y, 'delivery');
           const earned = Math.max(0, localStateFromServer.score - (localPlayerStateRef.current?.score ?? 0));
-          setToast(`✦ Chuyến tốt! +${earned.toLocaleString('vi-VN')}đ`);
+          setToast(
+            prevPassengerId.startsWith('pass-practice-')
+              ? '✦ Tập lái hoàn thành! Thành phố đang đợi bạn.'
+              : `✦ Chuyến tốt! +${earned.toLocaleString('vi-VN')}đ`,
+          );
 
           setTutorialDone(true);
           writeStored('tutorial', 'done');
@@ -341,6 +417,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           dy: input.dy,
           angle: input.angle,
           dt: inputDt,
+          speed: prediction.speedMultiplier,
         });
 
         // Run local prediction movement immediately (gives instant local reaction at 60fps)
@@ -350,13 +427,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           dy: input.dy,
           angle: input.angle,
           dt: inputDt,
+          speed: prediction.speedMultiplier,
         });
 
         localPlayerStateRef.current = {
           ...localPlayerStateRef.current,
           x: predictedPos.x,
           y: predictedPos.y,
-          angle: input.dx !== 0 || input.dy !== 0 ? input.angle : localPlayerStateRef.current.angle,
+          angle: predictedPos.angle,
         };
 
         // Send input payload to server
@@ -364,6 +442,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
         // Engine hum — pitch scales with movement speed
         const isMoving = input.dx !== 0 || input.dy !== 0;
+        soundEngine.ambient(districtAt(localPlayerStateRef.current).id, prediction.raining);
         soundEngine.engineHum(isMoving ? MOTORBIKE_SPEED : MOTORBIKE_SPEED * 0.15, MOTORBIKE_SPEED);
 
         // Sync React HUD state periodically
@@ -411,11 +490,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       unsubscribeConfig();
       unsubscribeSnapshot();
       unsubscribeCity();
+      unsubscribeControl();
       if (toastTimer.current) clearTimeout(toastTimer.current);
       if (violationTimer.current) clearTimeout(violationTimer.current);
       network.disconnect();
       prediction.clear();
       interpolation.clear();
+      arrivalToastUntil = 0;
       inputHandler.clear();
       soundEngine.stopEngine();
     };
@@ -438,12 +519,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   };
 
   return (
-    <div ref={containerRef} className='game-shell'>
+    <div
+      ref={containerRef}
+      className='game-shell'
+      data-handedness={preferences.handedness}
+      style={
+        {
+          '--joystick-size': `${preferences.joystickSize}px`,
+          '--joystick-offset': `${preferences.joystickOffset}px`,
+          '--text-scale': preferences.textSize,
+        } as React.CSSProperties
+      }
+    >
       {(playMode === 'sandbox' || cityNotice) && (
         <div className='city-control-notice' role='status'>
           {playMode === 'sandbox' && <strong>CHƠI THỬ · Không tính điểm sự nghiệp</strong>}
           {cityNotice && <span>{cityNotice}</span>}
         </div>
+      )}
+      {showTeam && room?.status === 'running' && (
+        <TeamPlayPanel room={room} playerId={localPlayer?.id ?? ''} onClose={() => setShowTeam(false)} />
+      )}
+      {room && (
+        <RoomPanel
+          state={room}
+          playerId={localPlayer?.id ?? ''}
+          serverUrl={serverUrl}
+          onLeave={() => {
+            network.command('room-leave');
+            network.disconnect();
+            onDisconnect();
+          }}
+        />
+      )}
+      {showSettings && (
+        <SettingsPanel preferences={preferences} onChange={setPreferences} onClose={() => setShowSettings(false)} />
+      )}
+      {showDriver && (
+        <DriverPanel
+          onCommand={careerCommand}
+          career={career}
+          summary={summary}
+          ranking={cityRanking}
+          serverUrl={roomApiBase(serverUrl)}
+          onClose={() => setShowDriver(false)}
+        />
       )}
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
 
@@ -468,22 +588,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
         </div>
         <nav className='game-toolbar' aria-label='Điều khiển trò chơi'>
-          <button
-            aria-label='Âm thanh'
-            aria-pressed={preferences.sound}
-            onClick={() => {
-              soundEngine.unlock();
-              setPreferences((p) => ({ ...p, sound: !p.sound }));
-            }}
-          >
-            <span aria-hidden='true'>♫</span> {preferences.sound ? 'Âm thanh bật' : 'Âm thanh tắt'}
+          {!room && (
+            <RoomLauncher
+              serverUrl={serverUrl}
+              username={username}
+              onJoin={(url, name) => {
+                network.disconnect();
+                onRoomJoin?.(url, name);
+              }}
+            />
+          )}
+          {room?.status === 'running' && (
+            <button onClick={() => setShowTeam(true)} aria-label='Đồng đội và biểu cảm'>
+              🤝 Đồng đội
+            </button>
+          )}
+          <button onClick={() => soundEngine.honk()} aria-label='Bấm còi'>
+            📯
           </button>
-          <button
-            aria-label='Giảm chuyển động'
-            aria-pressed={preferences.reducedMotion}
-            onClick={() => setPreferences((p) => ({ ...p, reducedMotion: !p.reducedMotion }))}
-          >
-            {preferences.reducedMotion ? 'Ít chuyển động' : 'Chuyển động'}
+          <button onClick={() => setShowDriver(true)} aria-label='Hồ sơ'>
+            🛵 Hồ sơ
+          </button>
+          <button aria-label='Tùy chỉnh' onClick={() => setShowSettings(true)}>
+            ⚙ Tùy chỉnh
           </button>
           <button
             className='end-ride-button'
@@ -516,7 +643,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       )}
       {showResults && (
         <div className='results-cover'>
-          <div className='results-card'>
+          <section ref={resultsRef} className='results-card' role='dialog' aria-modal='true' aria-label='Kết quả ca xe'>
             <span style={{ fontSize: 44 }}>✦</span>
             <h2>{playMode === 'sandbox' ? 'Kết quả chơi thử' : 'Một chuyến thật vui!'}</h2>
             {playMode === 'sandbox' && <p>Điểm lượt này không cộng vào sự nghiệp.</p>}
@@ -526,10 +653,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
               <br />
               Thành phố vẫn còn nhiều điều để khám phá.
             </p>
+            {summary && (
+              <dl className='shift-breakdown'>
+                <dt>Tiền chuyến</dt>
+                <dd>{summary.baseFares.toLocaleString('vi-VN')}đ</dd>
+                <dt>Tiền thưởng</dt>
+                <dd>{summary.bonuses.toLocaleString('vi-VN')}đ</dd>
+                <dt>Tiền boa</dt>
+                <dd>{summary.tips.toLocaleString('vi-VN')}đ</dd>
+                <dt>Vi phạm</dt>
+                <dd>{Object.values(summary.violations ?? {}).reduce((sum, n) => sum + n, 0)}</dd>
+                <dt>Tiền phạt</dt>
+                <dd>{summary.fines.toLocaleString('vi-VN')}đ</dd>
+                <dt>Quãng đường</dt>
+                <dd>{Math.round(summary.distance)}m</dd>
+                <dt>Chuyến an toàn</dt>
+                <dd>{summary.cleanTrips}</dd>
+              </dl>
+            )}
             <button className='toon-button' onClick={() => onDisconnect()}>
               Chơi tiếp ↗
             </button>
-          </div>
+          </section>
         </div>
       )}
       {/* Collision Alert Banner */}
@@ -573,6 +718,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
 
       {/* HUD Layer */}
       <HUD
+        room={room}
+        preferences={preferences}
         localPlayer={localPlayer}
         players={players}
         passengers={passengers}
@@ -581,6 +728,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
         myStreak={myStreak}
         deliveries={deliveries}
         tutorialDone={tutorialDone}
+        gameplay={gameplay}
         cityLabel={cityLabel}
       />
 
@@ -596,7 +744,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           showDebug={showDebug}
           onToggleDebug={setShowDebug}
           onSpawnBots={handleSpawnBots}
-          serverUrl={serverUrl}
+          serverUrl={roomApiBase(serverUrl)}
         />
       )}
     </div>

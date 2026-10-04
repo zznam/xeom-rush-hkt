@@ -84,6 +84,20 @@ export function startMatchmaker(): void {
   app.get('/api/latency', (_req, res) => {
     res.json({ region: region.id });
   });
+  app.get('/api/rooms/capabilities', async (_req, res) => {
+    const candidates = await Promise.all(
+      rooms.map(async (room) => {
+        try {
+          const r = await fetch(`${room.url}/api/rooms/capabilities`, { signal: AbortSignal.timeout(2000) });
+          const c = await r.json();
+          return c.available ? c : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    res.json(candidates.find(Boolean) ?? { available: false, modes: [] });
+  });
   app.get('/api/rooms', (_req, res) => {
     res.json(roomIds);
   });

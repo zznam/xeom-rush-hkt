@@ -2,6 +2,9 @@ import { dbManager } from './db';
 
 export interface ISessionStats {
   profileId?: string;
+  revision?: number;
+  summary?: import('@xeom-rush/shared').ShiftSummary;
+  progress?: Record<string, Record<string, number>>;
   username: string;
   score: number;
   peakStreak: number;
