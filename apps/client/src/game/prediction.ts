@@ -40,6 +40,16 @@ export class ClientPrediction {
   private buildings: Rectangle[] = [];
   private circles: CircleObstacle[] = [];
   private pendingInputs: PendingInput[] = [];
+  private speed = MOTORBIKE_SPEED;
+  private paused = false;
+  private revision = -1;
+  public configure(speed = MOTORBIKE_SPEED, paused = false, revision = -1): void {
+    if (!Number.isFinite(speed) || speed < 100 || speed > 400) return;
+    if (revision !== this.revision || this.paused !== paused) this.clear();
+    this.speed = speed;
+    this.paused = paused;
+    this.revision = revision;
+  }
 
   constructor() {
     this.generateMapObstacles();
@@ -148,7 +158,7 @@ export class ClientPrediction {
    * Integrates inputs locally and predicts current player position.
    */
   public predict(currentX: number, currentY: number, input: PendingInput): { x: number; y: number } {
-    if (input.dx === 0 && input.dy === 0) {
+    if (this.paused || (input.dx === 0 && input.dy === 0)) {
       return { x: currentX, y: currentY };
     }
 
@@ -157,8 +167,8 @@ export class ClientPrediction {
     const ndx = input.dx / mag;
     const ndy = input.dy / mag;
 
-    const deltaX = ndx * MOTORBIKE_SPEED * throttle * input.dt;
-    const deltaY = ndy * MOTORBIKE_SPEED * throttle * input.dt;
+    const deltaX = ndx * this.speed * throttle * input.dt;
+    const deltaY = ndy * this.speed * throttle * input.dt;
 
     return this.resolveMove(currentX, currentY, currentX + deltaX, currentY + deltaY);
   }

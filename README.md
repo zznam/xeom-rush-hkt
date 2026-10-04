@@ -2,7 +2,7 @@
 
 A cheerful Saigon motorbike taxi game with an authoritative multiplayer server. The toon release adds illustrated characters, pickup and delivery feedback, accessible controls, reconnect recovery, and Deno KV persistence.
 
-[Play the game](https://xeom-rush.vercel.app) · [16-feature roadmap](docs/roadmap.md) · [Art assets and prompts](docs/art-direction.md) · [Default Vercel/Deno deployment](docs/deno-deployment.md) · [Ad-hoc AWS deployment](docs/aws-deployment.md)
+[Play the game](https://xeom-rush.vercel.app) · [16-feature roadmap](docs/roadmap.md) · [Art assets and prompts](docs/art-direction.md) · [Default Vercel/Deno deployment](docs/deno-deployment.md) · [Ad-hoc AWS deployment](docs/aws-deployment.md) · [Game Master Portal](docs/game-master.md)
 
 ## 📌 The Pitch & Vietnamese Context
 

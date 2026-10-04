@@ -105,6 +105,13 @@ export interface WorldSnapshot {
 
 /** Low-frequency authoritative UI metadata; binary simulation packets stay compatible. */
 export interface CityStatus {
+  revision?: number;
+  effectiveTick?: number;
+  speed?: number;
+  mode?: 'career' | 'sandbox';
+  paused?: boolean;
+  announcement?: string | null;
+  countdownSeconds?: number | null;
   tick: number;
   rushHourTicksRemaining: number;
   deliveries: number;

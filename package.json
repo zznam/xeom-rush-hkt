@@ -20,8 +20,12 @@
     "test:e2e:regional": "bun run --filter e2e test --config=playwright.regional.config.ts",
     "build:client:legacy": "VITE_DEPLOY_TARGET=legacy bun run build:client",
     "build:client:regional": "VITE_DEPLOY_TARGET=regional-production bun run build:client",
-    "build:legacy": "bun run build:server && bun run build:client:legacy",
-    "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs"
+    "build:legacy": "bun run build:server && bun run build:admin && bun run build:client:legacy",
+    "test:legacy": "bun run build:server && node tests/legacy-smoke.mjs",
+    "build:admin": "bun run build:shared && bun run --filter admin build",
+    "test:e2e:admin": "bun run --filter e2e test --config=playwright.admin.config.ts",
+    "test:admin": "bun run build:server && bun run build:admin && deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/admin-kv.test.ts && node tests/admin-smoke.mjs",
+    "test:load": "bun run build:server && node tests/admin-load.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

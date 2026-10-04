@@ -1,4 +1,10 @@
-import { type TrafficLightState, type PedestrianState, MAP_SIZE } from '@xeom-rush/shared';
+import {
+  STANDARD_RULES,
+  type GameRules,
+  type TrafficLightState,
+  type PedestrianState,
+  MAP_SIZE,
+} from '@xeom-rush/shared';
 import type { PhysicsEngine } from './physics';
 
 // Street centerlines derived from the map grid layout
@@ -10,7 +16,6 @@ const TRAFFIC_LIGHT_CHANCE = 0.3; // ~30% of intersections get lights
 const CROSSWALK_CHANCE = 0.4; // ~40% of intersections get crosswalks
 const ROUNDABOUT_RADIUS = 24;
 
-const PEDESTRIANS_PER_CROSSWALK = 2;
 const PEDESTRIAN_SPEED = 30; // units per second
 const PEDESTRIAN_WALK_HALF_LENGTH = 90; // Half the length of the crosswalk corridor
 const PEDESTRIAN_RESPAWN_MIN_TICKS = 120; // 6 seconds at 20Hz (walk-off)
@@ -19,10 +24,6 @@ const PEDESTRIAN_HIT_RESPAWN_MIN_TICKS = 200; // 10 seconds at 20Hz (hit by play
 const PEDESTRIAN_HIT_RESPAWN_JITTER_TICKS = 100; // extra 0-5 seconds random
 
 // Traffic light timing (in server ticks at 20Hz)
-const TICKS_GREEN = 160; // 8 seconds
-const TICKS_YELLOW = 40; // 2 seconds
-const TICKS_DIRECTION_TOTAL = TICKS_GREEN + TICKS_YELLOW;
-const TICKS_TOTAL = TICKS_DIRECTION_TOTAL * 2;
 const STOP_LINE_DIST = 46;
 const STOP_LINE_HALF_LENGTH = 42;
 
@@ -64,8 +65,41 @@ export class CityFeatures {
   private pedestrianAgents: Map<string, PedestrianAgent> = new Map();
   private nextPedId = 0;
 
-  constructor(private physics: PhysicsEngine) {
+  constructor(
+    private physics: PhysicsEngine,
+    private rules: GameRules = structuredClone(STANDARD_RULES),
+  ) {
     this.generateFeatures();
+  }
+
+  public setRules(rules: GameRules): void {
+    const densityChanged = rules.pedestriansPerCrosswalk !== this.rules.pedestriansPerCrosswalk;
+    this.rules = structuredClone(rules);
+    if (!densityChanged) return;
+    this.pedestrianAgents.clear();
+    for (const crosswalk of this.crosswalks) {
+      for (let slotIndex = 0; slotIndex < rules.pedestriansPerCrosswalk; slotIndex++) {
+        const id = `ped-${this.nextPedId++}`;
+        const direction = slotIndex % 2 === 0 ? 1 : -1;
+        this.pedestrianAgents.set(id, {
+          state: this.createPedestrianState(
+            id,
+            crosswalk.x,
+            crosswalk.y,
+            crosswalk.direction,
+            direction,
+            slotIndex * 15,
+          ),
+          direction,
+          crosswalkDirection: crosswalk.direction,
+          originX: crosswalk.x,
+          originY: crosswalk.y,
+          slotIndex,
+          respawnTick: null,
+          wasHit: false,
+        });
+      }
+    }
   }
 
   private generateFeatures(): void {
@@ -105,7 +139,7 @@ export class CityFeatures {
   private addTrafficLight(xi: number, yi: number, cx: number, cy: number, rng: SeededRng): void {
     const id = `tl-${xi}-${yi}`;
     // Stagger offsets so not all lights turn green at the same time
-    const tickOffset = Math.floor(rng.next() * TICKS_TOTAL);
+    const tickOffset = Math.floor(rng.next() * ((this.rules.greenSeconds + this.rules.yellowSeconds) * 40));
     this.trafficLightMap.set(id, {
       id,
       x: cx,
@@ -122,7 +156,7 @@ export class CityFeatures {
     this.crosswalks.push({ id, x: cx, y: cy, direction: dir });
 
     // Spawn N pedestrians per crosswalk, staggered from both sides with random offsets.
-    for (let k = 0; k < PEDESTRIANS_PER_CROSSWALK; k++) {
+    for (let k = 0; k < this.rules.pedestriansPerCrosswalk; k++) {
       const pedId = `ped-${this.nextPedId++}`;
       const direction: 1 | -1 = k % 2 === 0 ? 1 : -1;
       // Stagger initial position: random 0-70% along the crosswalk corridor
@@ -173,17 +207,17 @@ export class CityFeatures {
 
   private tickTrafficLights(tickCount: number): void {
     for (const light of this.trafficLightMap.values()) {
-      const phase = (tickCount + light.tickOffset) % TICKS_TOTAL;
+      const phase = (tickCount + light.tickOffset) % ((this.rules.greenSeconds + this.rules.yellowSeconds) * 40);
 
-      if (phase < TICKS_GREEN) {
+      if (phase < this.rules.greenSeconds * 20) {
         // North-south may go, east-west must stop.
         light.isRedNS = false;
         light.isYellow = false;
-      } else if (phase < TICKS_GREEN + TICKS_YELLOW) {
+      } else if (phase < this.rules.greenSeconds * 20 + this.rules.yellowSeconds * 20) {
         // North-south warning before east-west gets right-of-way.
         light.isRedNS = false;
         light.isYellow = true;
-      } else if (phase < TICKS_DIRECTION_TOTAL + TICKS_GREEN) {
+      } else if (phase < (this.rules.greenSeconds + this.rules.yellowSeconds) * 20 + this.rules.greenSeconds * 20) {
         // East-west may go, north-south must stop.
         light.isRedNS = true;
         light.isYellow = false;
@@ -286,11 +320,29 @@ export class CityFeatures {
   }
 
   public getVisibleTrafficLights(x: number, y: number, radius: number): TrafficLightState[] {
-    return this.getTrafficLights().filter((light) => Math.hypot(light.x - x, light.y - y) <= radius);
+    const visible: TrafficLightState[] = [];
+    const radiusSquared = radius * radius;
+    for (const light of this.trafficLightMap.values()) {
+      const dx = light.x - x,
+        dy = light.y - y;
+      if (dx * dx + dy * dy <= radiusSquared) {
+        const { id, x, y, isRedNS, isYellow } = light;
+        visible.push({ id, x, y, isRedNS, isYellow });
+      }
+    }
+    return visible;
   }
 
   public getVisiblePedestrians(x: number, y: number, radius: number): PedestrianState[] {
-    return this.getPedestrians().filter((ped) => Math.hypot(ped.x - x, ped.y - y) <= radius);
+    const visible: PedestrianState[] = [];
+    const radiusSquared = radius * radius;
+    for (const agent of this.pedestrianAgents.values()) {
+      if (agent.respawnTick !== null) continue;
+      const dx = agent.state.x - x,
+        dy = agent.state.y - y;
+      if (dx * dx + dy * dy <= radiusSquared) visible.push(agent.state);
+    }
+    return visible;
   }
 
   public getVisibleRoundabouts(x: number, y: number, radius: number): RoundaboutData[] {

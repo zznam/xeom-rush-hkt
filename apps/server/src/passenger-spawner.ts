@@ -1,14 +1,11 @@
 import {
+  STANDARD_RULES,
+  type GameRules,
   PassengerState,
   EPassengerTier,
   MAP_SIZE,
-  MAX_PASSENGERS,
   COLLISION_RADIUS,
   TICK_RATE,
-  RUSH_HOUR_SPAWN_MULTIPLIER,
-  RUSH_HOUR_MULTIPLIER,
-  TIER_WEIGHT_BUSINESS,
-  TIER_WEIGHT_VIP,
   TIER_MULTIPLIER_BUSINESS,
   TIER_MULTIPLIER_VIP,
 } from '@xeom-rush/shared';
@@ -32,12 +29,23 @@ export class PassengerSpawner {
   private physics: PhysicsEngine;
   private pendingVIPEvents: VIPSpawnEvent[] = [];
 
-  constructor(physics: PhysicsEngine) {
+  constructor(
+    physics: PhysicsEngine,
+    private rules: GameRules = structuredClone(STANDARD_RULES),
+  ) {
     this.physics = physics;
 
     // Populate initial batch — all Regular to start
-    for (let i = 0; i < MAX_PASSENGERS; i++) {
+    for (let i = 0; i < this.rules.passengerLimit; i++) {
       this.spawnPassenger(0);
+    }
+  }
+
+  public setRules(rules: GameRules): void {
+    this.rules = structuredClone(rules);
+    for (const [id, passenger] of this.passengers) {
+      if (this.passengers.size <= rules.passengerLimit) break;
+      if (!passenger.isCarried) this.passengers.delete(id);
     }
   }
 
@@ -109,8 +117,8 @@ export class PassengerSpawner {
   /** Pick a passenger tier based on weighted probability. */
   private pickTier(): EPassengerTier {
     const roll = Math.random();
-    if (roll < TIER_WEIGHT_VIP) return EPassengerTier.VIP;
-    if (roll < TIER_WEIGHT_VIP + TIER_WEIGHT_BUSINESS) return EPassengerTier.BUSINESS;
+    if (roll < this.rules.tiers.vip / 100) return EPassengerTier.VIP;
+    if (roll < this.rules.tiers.vip / 100 + this.rules.tiers.business / 100) return EPassengerTier.BUSINESS;
     return EPassengerTier.REGULAR;
   }
 
@@ -172,8 +180,8 @@ export class PassengerSpawner {
     if (tier === EPassengerTier.BUSINESS) tierMultiplier = TIER_MULTIPLIER_BUSINESS;
     if (tier === EPassengerTier.VIP) tierMultiplier = TIER_MULTIPLIER_VIP;
 
-    const rushMultiplier = rushHourActive ? RUSH_HOUR_MULTIPLIER : 1;
-    const reward = Math.floor(baseReward * tierMultiplier * rushMultiplier);
+    const rushMultiplier = rushHourActive ? this.rules.rushFareMultiplier : 1;
+    const reward = Math.floor(baseReward * tierMultiplier * rushMultiplier * this.rules.fareMultiplier);
 
     const deadline = this.calculateDeadline(currentTick, distance, tier);
 
@@ -214,10 +222,10 @@ export class PassengerSpawner {
     this.reapExpiredPassengers(currentTick);
 
     // Respawn up to limit — double spawn count during rush hour
-    const spawnBatchSize = rushHourActive ? RUSH_HOUR_SPAWN_MULTIPLIER : 1;
+    const spawnBatchSize = rushHourActive ? this.rules.rushSpawnMultiplier : 1;
 
-    if (this.passengers.size < MAX_PASSENGERS) {
-      const needed = MAX_PASSENGERS - this.passengers.size;
+    if (this.passengers.size < this.rules.passengerLimit) {
+      const needed = this.rules.passengerLimit - this.passengers.size;
       const toSpawn = Math.min(needed, spawnBatchSize);
       for (let i = 0; i < toSpawn; i++) {
         this.spawnPassenger(currentTick, undefined, rushHourActive);

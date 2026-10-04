@@ -29,7 +29,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/client/**/*.{ts,tsx}'],
+    files: ['apps/client/**/*.{ts,tsx}', 'apps/admin/**/*.{ts,tsx}'],
     plugins: {
       react: reactPlugin,
       'react-hooks': reactHooks,

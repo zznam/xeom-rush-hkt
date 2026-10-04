@@ -60,6 +60,15 @@ jobs:
       - name: Build server
         run: bun run build:server
 
+      - name: Build admin portal
+        run: bun run build:admin
+
+      - name: Test managed cities and native command storage
+        run: deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/admin-kv.test.ts && node tests/admin-smoke.mjs
+
+      - name: Verify human and bot capacity
+        run: node tests/admin-load.mjs
+
       - name: Test legacy Deno deployment
         run: node tests/legacy-smoke.mjs
 
@@ -73,7 +82,7 @@ jobs:
         run: bun run --filter e2e install:browsers
 
       - name: Test browser flows
-        run: bun run test:e2e && bun run test:e2e:regional
+        run: bun run test:e2e && bun run test:e2e:regional && bun run test:e2e:admin
 
   deno-deploy-build:
     name: Build in Deno-only environment

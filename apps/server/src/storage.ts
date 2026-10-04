@@ -10,7 +10,7 @@ interface Entry<T> {
 }
 interface Atomic {
   check(...entries: { key: Key; versionstamp: string | null }[]): Atomic;
-  set(key: Key, value: unknown): Atomic;
+  set(key: Key, value: unknown, options?: { expireIn: number }): Atomic;
   delete(key: Key): Atomic;
   commit(): Promise<{ ok: boolean }>;
 }
@@ -34,8 +34,12 @@ export class KvPersistence {
 
   async save(sessionId: string, stats: ISessionStats): Promise<void> {
     for (let attempt = 0; attempt < 8; attempt++) {
-      const profile = await this.kv.get<Profile>(['players', stats.username]);
+      const profileKey = stats.profileId ? ['players-v2', stats.profileId] : ['players', stats.username];
+      const boardKey = stats.profileId ? 'leaderboard-v2' : 'leaderboard';
+      const identity = stats.profileId ?? stats.username;
+      const profile = await this.kv.get<Profile>(profileKey);
       const previous = await this.kv.get<ISessionStats>(['sessions', sessionId]);
+      if (previous.value && previous.value.profileId !== stats.profileId) throw new Error('Session owner mismatch');
       if (previous.value && JSON.stringify(previous.value) === JSON.stringify(stats)) return;
       const old = profile.value;
       const next: Profile = {
@@ -46,10 +50,10 @@ export class KvPersistence {
         peakStreak: Math.max(old?.peakStreak ?? 0, stats.peakStreak),
       };
       const transaction = this.kv.atomic().check(profile, previous);
-      if (old) transaction.delete(['leaderboard', -old.careerScore, stats.username]);
+      if (old) transaction.delete([boardKey, -old.careerScore, identity]);
       const result = await transaction
-        .set(['players', stats.username], next)
-        .set(['leaderboard', -next.careerScore, stats.username], next)
+        .set(profileKey, next)
+        .set([boardKey, -next.careerScore, identity], next)
         .set(['sessions', sessionId], stats)
         .commit();
       if (result.ok) return;
@@ -57,9 +61,12 @@ export class KvPersistence {
     throw new Error('Could not save score after concurrent updates');
   }
 
-  async leaderboard(): Promise<Profile[]> {
+  async leaderboard(idBased = false): Promise<Profile[]> {
     const profiles: Profile[] = [];
-    for await (const entry of this.kv.list<Profile>({ prefix: ['leaderboard'] }, { limit: 10 })) {
+    for await (const entry of this.kv.list<Profile>(
+      { prefix: [idBased ? 'leaderboard-v2' : 'leaderboard'] },
+      { limit: 10 },
+    )) {
       if (entry.value) profiles.push(entry.value);
     }
     return profiles;
@@ -105,7 +112,9 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
         ? dynamoPersistence.save(id, stats)
         : kvPersistence
           ? kvPersistence.save(id, stats)
-          : savePlayerSession(stats.username, stats),
+          : stats.profileId
+            ? saveIdSession(id, stats)
+            : savePlayerSession(stats.username, stats),
     );
   writes.set(id, write);
   try {
@@ -116,7 +125,8 @@ export async function saveSession(id: string, stats: ISessionStats): Promise<voi
 }
 export async function getLeaderboard(): Promise<Profile[]> {
   if (dynamoPersistence) return dynamoPersistence.leaderboard();
-  if (kvPersistence) return kvPersistence.leaderboard();
+  if (kvPersistence) return kvPersistence.leaderboard(process.env.GAME_MASTER_ENABLED === '1');
+  if (process.env.GAME_MASTER_ENABLED === '1') return idLeaderboard();
   const rows = await dbManager.getDb().collection('players').find().sort({ careerScore: -1 }).limit(10).toArray();
   return rows.map((p) => ({
     username: p.username,
@@ -133,4 +143,40 @@ export async function closeStorage(): Promise<void> {
   if (dynamoPersistence) dynamoPersistence.close();
   else if (kvPersistence) kvPersistence.close();
   else await dbManager.close();
+}
+
+// ID-based Mongo careers derive totals from unique session contributions. This also
+// works on standalone development Mongo without requiring replica-set transactions.
+async function saveIdSession(id: string, stats: ISessionStats): Promise<void> {
+  await dbManager
+    .getDb()
+    .collection('career_sessions_v2')
+    .updateOne(
+      { _id: id as never, profileId: stats.profileId },
+      { $set: { ...stats, updatedAt: new Date() } },
+      { upsert: true },
+    );
+}
+async function idLeaderboard(): Promise<Profile[]> {
+  const rows = await dbManager
+    .getDb()
+    .collection('career_sessions_v2')
+    .aggregate<Profile>([
+      { $sort: { updatedAt: 1 } },
+      {
+        $group: {
+          _id: '$profileId',
+          username: { $last: '$username' },
+          careerScore: { $sum: '$score' },
+          totalDeliveries: { $sum: '$deliveriesCount' },
+          peakScore: { $max: '$score' },
+          peakStreak: { $max: '$peakStreak' },
+        },
+      },
+      { $sort: { careerScore: -1 } },
+      { $limit: 10 },
+      { $project: { _id: 0 } },
+    ])
+    .toArray();
+  return rows;
 }

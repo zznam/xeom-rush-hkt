@@ -1,3 +1,4 @@
+import { managedGuest } from './guest';
 import {
   encodeJoin,
   encodeInput,
@@ -10,6 +11,11 @@ import {
   type ConfigPayload,
   type SnapshotPacketMeta,
 } from '@xeom-rush/shared';
+
+export interface ServerEnd {
+  message?: string;
+  result?: { score: number; deliveriesCount: number; mode: 'career' | 'sandbox' };
+}
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting';
 
@@ -32,7 +38,7 @@ export class GameNetwork {
     url: string,
     username: string,
     onConnect: () => void,
-    onDisconnect: () => void,
+    onDisconnect: (end?: ServerEnd) => void,
     onStatus?: (state: ConnectionState) => void,
   ): void {
     this.disconnect();
@@ -40,6 +46,8 @@ export class GameNetwork {
     const token = new URL(url).searchParams.get('session') || crypto.randomUUID();
     let failuresStarted = 0;
     let attempts = 0;
+    let preparedUrl = url;
+    let serverEnd: ServerEnd | undefined;
     const open = () => {
       if (generation !== this.generation) return;
       this.ready = false;
@@ -47,7 +55,7 @@ export class GameNetwork {
       onStatus?.(attempts ? 'reconnecting' : 'connecting');
       let socket: WebSocket;
       try {
-        const target = new URL(url);
+        const target = new URL(preparedUrl);
         target.searchParams.set('session', token);
         socket = new WebSocket(target);
       } catch {
@@ -73,6 +81,23 @@ export class GameNetwork {
         if (this.ws !== socket) return;
         lastReceived = Date.now();
         if (typeof event.data === 'string') {
+          if (event.data.startsWith('notice:') || event.data.startsWith('result:')) {
+            try {
+              const body = JSON.parse(event.data.slice(event.data.indexOf(':') + 1));
+              if (event.data.startsWith('notice:') && typeof body.message === 'string')
+                serverEnd = { message: body.message };
+              if (
+                event.data.startsWith('result:') &&
+                Number.isFinite(body.score) &&
+                Number.isFinite(body.deliveriesCount) &&
+                ['career', 'sandbox'].includes(body.mode)
+              )
+                serverEnd = { result: body };
+            } catch {
+              /* Invalid optional metadata is ignored. */
+            }
+          }
+
           if (event.data.startsWith('pong:')) this.rtt = Math.max(0, Date.now() - Number(event.data.slice(5)));
           if (event.data.startsWith('city:')) {
             try {
@@ -125,7 +150,7 @@ export class GameNetwork {
         this.heartbeat = null;
         if (!failuresStarted) failuresStarted = Date.now();
         if (event.code === 1000 || event.code === 1008 || Date.now() - failuresStarted >= 25000) {
-          onDisconnect();
+          onDisconnect(serverEnd);
           return;
         }
         attempts++;
@@ -143,7 +168,29 @@ export class GameNetwork {
         /* onclose owns retries and user feedback. */
       };
     };
-    open();
+    const prepare = async () => {
+      try {
+        const target = new URL(url);
+        if (target.searchParams.get('managed') === '1' && target.searchParams.has('guest')) {
+          preparedUrl = target.toString();
+          open();
+          return;
+        }
+        const apiUrl = `${target.protocol === 'wss:' ? 'https:' : 'http:'}//${target.host}${target.pathname.replace(/\/$/, '')}`;
+        const guest = await managedGuest(apiUrl);
+        if (generation !== this.generation) return;
+        if (guest) {
+          target.searchParams.set('guest', guest);
+          target.searchParams.set('managed', '1');
+        }
+        preparedUrl = target.toString();
+        open();
+      } catch (error) {
+        if (generation === this.generation)
+          onDisconnect({ message: error instanceof Error ? error.message : 'Chưa kết nối được thành phố.' });
+      }
+    };
+    void prepare();
   }
 
   public sendInput(seq: number, dx: number, dy: number, angle: number): void {

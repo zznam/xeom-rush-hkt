@@ -2,7 +2,7 @@ locals {
   name     = "xeom-${var.environment}"
   rooms    = { for id in var.room_ids : id => { role = "game" } }
   services = merge(local.rooms, { matchmaker = { role = "matchmaker" } })
-  common_environment = [
+  common_environment = concat([
     { name = "NODE_ENV", value = "production" },
     { name = "DEPLOY_TARGET", value = "regional-production" },
     { name = "PORT", value = "3002" },
@@ -10,7 +10,15 @@ locals {
     { name = "ALLOWED_ORIGINS", value = join(",", var.allowed_origins) },
     { name = "RELEASE_SHA", value = var.release_sha },
     { name = "DEPLOY_ENVIRONMENT", value = var.environment }
-  ]
+    ], var.game_master_enabled ? [
+    { name = "GAME_MASTER_ENABLED", value = "1" },
+    { name = "ADMIN_CONTROL_URL", value = var.admin_control_url },
+    { name = "GAME_DEPLOYMENT_ID", value = var.game_deployment_id }
+  ] : [])
+  service_secrets = concat([{ name = "GUEST_SECRET", valueFrom = var.guest_secret_arn }], var.game_master_enabled ? [
+    { name = "ADMIN_WORKER_TOKEN", valueFrom = var.admin_worker_token_arn },
+    { name = "GUEST_IDENTITY_SECRET", valueFrom = var.guest_identity_secret_arn }
+  ] : [])
 }
 data "aws_availability_zones" "available" {
   state = "available"
@@ -224,7 +232,7 @@ resource "aws_iam_role_policy_attachment" "execution" {
 }
 resource "aws_iam_role_policy" "secret" {
   role   = aws_iam_role.execution.id
-  policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = var.guest_secret_arn }] })
+  policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [for secret in local.service_secrets : secret.valueFrom] }] })
 }
 resource "aws_iam_role" "game" {
   name               = "${local.name}-${var.region}-game"
@@ -260,7 +268,7 @@ resource "aws_ecs_task_definition" "service" {
       { name = "ROOM_IDS", value = join(",", sort(tolist(var.room_ids))) },
       { name = "REGIONS_JSON", value = jsonencode(var.regions) }
     ]),
-    secrets = [{ name = "GUEST_SECRET", valueFrom = var.guest_secret_arn }],
+    secrets = local.service_secrets,
     healthCheck = {
       command  = ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3002/api/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""],
       interval = 30, timeout = 5, retries = 3, startPeriod = 30
@@ -268,6 +276,10 @@ resource "aws_ecs_task_definition" "service" {
     logConfiguration = { logDriver = "awslogs", options = { awslogs-group = aws_cloudwatch_log_group.game.name, awslogs-region = var.region, awslogs-stream-prefix = each.key } }
   }])
   lifecycle {
+    precondition {
+      condition     = !var.game_master_enabled || (can(regex("^https://[^/]+$", var.admin_control_url)) && can(regex("^[a-zA-Z0-9_-]{1,80}$", var.game_deployment_id)) && length(var.admin_worker_token_arn) > 0 && length(var.guest_identity_secret_arn) > 0)
+      error_message = "Managed cities require an HTTPS controller origin, deployment ID and both Secrets Manager ARNs."
+    }
     precondition {
       condition     = length([for r in var.regions : r if r.id == var.region && r.apiUrl == "https://${var.api_domain}"]) == 1
       error_message = "Region directory must contain this AWS region and its exact HTTPS API origin."

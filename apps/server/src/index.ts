@@ -1,4 +1,8 @@
 import express from 'express';
+import { CityRuntime } from './admin/runtime';
+import { ControlTransport, ControlWorker, workerOptions } from './admin/worker';
+import { createHubFromEnv } from './admin/router';
+import { issueIdentity, verifyIdentity } from './identity';
 import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -44,7 +48,10 @@ let storageReady = false;
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://xeom-rush.vercel.app').split(',').map((s) => s.trim());
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || !production || allowedOrigins.includes(origin)) }));
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1kb' }));
+const smallJson = express.json({ limit: '1kb' });
+app.use((req, res, next) =>
+  req.path.startsWith('/api/admin') || req.path.startsWith('/api/internal') ? next() : smallJson(req, res, next),
+);
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   const prefix = `/rooms/${roomId}`;
@@ -64,8 +71,8 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 
 // Instantiate authoritative world state
-const world = new GameWorld();
-const botManager = new BotManager(world, world.getPhysics());
+let world = new GameWorld();
+let botManager = new BotManager(world, world.getPhysics());
 
 // HTTP JSON Endpoints for Judges/Dashboard
 app.get('/api/health', (_req, res) => {
@@ -73,6 +80,9 @@ app.get('/api/health', (_req, res) => {
   const healthy = !production || database === 'connected';
   res.status(healthy ? 200 : 503).json({
     status: healthy ? 'ok' : 'degraded',
+    tickDurationMs: maxTickMs,
+    averageTickMs: tickSamples ? totalTickMs / tickSamples : 0,
+    tickLagMs: maxTickLagMs,
     deploymentTarget,
     timestamp: new Date().toISOString(),
     players: world.getPlayerCount(),
@@ -152,10 +162,14 @@ interface PlayerSocket {
   lastSnapshot: WorldSnapshot | null;
   lastFullSnapshotTick: number;
   lastDeliveries: number;
+  lastCityReport: number;
+  lastCityRevision: number;
 }
 
 const activeSockets = new Map<string, PlayerSocket>();
 interface ResumableSession {
+  guestId?: string;
+  sandbox?: boolean;
   profileId?: string;
   playerId: string;
   saveId: string;
@@ -163,8 +177,118 @@ interface ResumableSession {
   expires: number;
 }
 const sessions = new Map<string, ResumableSession>();
+const invalidatedSessions = new Map<string, number>();
+const management = workerOptions();
+const transport = management ? new ControlTransport(management) : null;
+let hub: Awaited<ReturnType<typeof createHubFromEnv>> = null;
+async function kickPlayer(playerId: string, reason: string): Promise<void> {
+  const entry = [...sessions.entries()].find(([, session]) => session.playerId === playerId);
+  if (!entry) throw new Error('Player has already left');
+  invalidatedSessions.set(entry[0], Date.now() + 120000);
+  const socket = activeSockets.get(playerId)?.ws;
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(`notice:${JSON.stringify({ message: reason })}`);
+    socket.close(1008, 'Removed by moderator');
+  }
+  await finalizeSession(entry[0]);
+}
+const runtime = new CityRuntime({
+  world: () => world,
+  bots: () => botManager,
+  reset(config) {
+    world = new GameWorld(config.rules);
+    botManager = new BotManager(world, world.getPhysics());
+    botManager.configure(config.bots);
+  },
+  async endRides() {
+    if (checkpointPending) await checkpointPending;
+    const entries = [...sessions.entries()];
+    const writes = await Promise.allSettled(
+      entries.map(async ([, session]) => {
+        const stats = world.getSessionStatsForPlayer(session.playerId);
+        if (stats && !session.sandbox) await saveSession(session.saveId, { ...stats, profileId: session.profileId });
+      }),
+    );
+    if (writes.some((write) => write.status === 'rejected'))
+      throw new Error('Không lưu được tiến trình; giữ nguyên lượt chơi hiện tại.');
+    for (const [token, session] of entries) {
+      const socket = activeSockets.get(session.playerId)?.ws;
+      const stats = world.getSessionStatsForPlayer(session.playerId);
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(`result:${JSON.stringify({ ...stats, mode: session.sandbox ? 'sandbox' : 'career' })}`);
+        socket.close(1000, 'City starting a new ride');
+      }
+      sessions.delete(token);
+      activeSockets.delete(session.playerId);
+      world.removePlayer(session.playerId);
+    }
+  },
+  kick: kickPlayer,
+});
+const worker = transport
+  ? new ControlWorker(
+      transport,
+      runtime,
+      (observe) => ({
+        revision: runtime.revision,
+        config: runtime.config,
+        tick: world.getTick(),
+        tickMs: maxTickMs,
+        humans: sessions.size,
+        bots: botManager.populationStatus(),
+        paused: runtime.frozen,
+        admissionsOpen: runtime.admissionsOpen,
+        lastSeen: Date.now(),
+        players: world.getPlayers().map((p) => {
+          const session = [...sessions.values()].find((entry) => entry.playerId === p.id);
+          return {
+            id: p.id,
+            guestId: session?.guestId,
+            username: p.username,
+            x: Math.round(p.x),
+            y: Math.round(p.y),
+            score: p.score,
+            deliveries: world.getSessionStatsForPlayer(p.id)?.deliveriesCount ?? 0,
+            connected: p.connected,
+            bot: p.id.startsWith('bot-'),
+          };
+        }),
+        ...(observe
+          ? {
+              map: {
+                passengers: [...world.getPassengerMap().values()]
+                  .filter((p) => !p.isCarried)
+                  .map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), tier: p.tier })),
+              },
+            }
+          : {}),
+      }),
+      async (bans) => {
+        const blocked = new Map(bans.map((ban) => [ban.guestId, ban.reason]));
+        for (const session of sessions.values())
+          if (session.guestId && blocked.has(session.guestId))
+            await kickPlayer(session.playerId, blocked.get(session.guestId)!);
+      },
+    )
+  : null;
+app.get('/api/capabilities', (_req, res) => res.json({ managed: !!management, deployment: management?.deployment }));
+app.post('/api/guest', (_req, res) => {
+  if (!management) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json({
+    guest: issueIdentity(management.deployment, process.env.GUEST_IDENTITY_SECRET!),
+    deployment: management.deployment,
+  });
+});
+
 const admission = new Admission(capacity, () => sessions.size);
-const ready = () => !stopping && (!production || storageReady) && Date.now() - lastTickTime < 1000;
+const ready = () =>
+  !stopping && (!production || storageReady) && (!worker || worker.initialized) && Date.now() - lastTickTime < 1000;
+const admitting = () => ready() && (!worker || (worker.healthy && runtime.admissionsOpen));
+const canReconnect = (session?: ResumableSession) =>
+  ready() && !!session && session.expires > Date.now() && !runtime.countdownEndsAt && !!worker?.healthy;
 app.get('/api/live', (_req, res) => {
   res.json({ status: 'ok' });
 });
@@ -176,7 +300,7 @@ app.get('/api/room', (_req, res) => {
     region,
     room: roomId,
     players: world.getPlayerCount(),
-    available: ready() ? admission.available : 0,
+    available: admitting() ? admission.available : 0,
     capacity,
   });
 });
@@ -185,11 +309,13 @@ app.post('/api/reservations', (req, res) => {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
-  if (!regional || !ready()) {
+  if (!regional || !admitting()) {
     res.status(503).json({ error: 'Room unavailable' });
     return;
   }
-  const profileId = verifyGuest(req.body?.guest, guestSecret);
+  const profileId = management
+    ? verifyIdentity(req.body?.guest, management.deployment, process.env.GUEST_IDENTITY_SECRET!)
+    : verifyGuest(req.body?.guest, guestSecret);
   if (!profileId || !isSessionId(req.body?.session)) {
     res.status(400).json({ error: 'Invalid guest or session' });
     return;
@@ -217,7 +343,7 @@ async function finishSession(token: string): Promise<void> {
   const stats = world.getSessionStatsForPlayer(session.playerId);
   world.removePlayer(session.playerId);
   activeSockets.delete(session.playerId);
-  if (stats) {
+  if (stats && !session.sandbox) {
     try {
       await saveSession(session.saveId, { ...stats, ...(session.profileId ? { profileId: session.profileId } : {}) });
     } catch (error) {
@@ -227,7 +353,7 @@ async function finishSession(token: string): Promise<void> {
 }
 const FULL_SNAPSHOT_INTERVAL_TICKS = 40;
 
-server.on('upgrade', (request, socket, head) => {
+server.on('upgrade', async (request, socket, head) => {
   if (
     !ready() ||
     wss.clients.size >= capacity + 16 ||
@@ -236,6 +362,42 @@ server.on('upgrade', (request, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
+  }
+  const requestedSession = new URL(request.url || '/', 'http://localhost').searchParams.get('session') || '';
+  for (const [token, expires] of invalidatedSessions) if (expires <= Date.now()) invalidatedSessions.delete(token);
+  if (invalidatedSessions.has(requestedSession)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  let managedGuest: { guestId: string; profileId: string } | undefined;
+  if (management && transport) {
+    const url = new URL(request.url || '/', 'http://localhost');
+    const guestId = verifyIdentity(
+      url.searchParams.get('guest'),
+      management.deployment,
+      process.env.GUEST_IDENTITY_SECRET!,
+    );
+    const previous = sessions.get(url.searchParams.get('session') || '');
+    if (
+      !guestId ||
+      url.searchParams.get('managed') !== '1' ||
+      (previous && previous.guestId !== guestId) ||
+      (!admitting() && !canReconnect(previous))
+    ) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    try {
+      const admission = await transport.admit(guestId);
+      if (admission.banned || (!admitting() && !canReconnect(previous))) throw new Error('Admission unavailable');
+      managedGuest = { guestId, profileId: admission.profileId };
+    } catch {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
   }
   if (regional) {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -253,11 +415,11 @@ server.on('upgrade', (request, socket, head) => {
     }
   }
   wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
+    wss.emit('connection', ws, request, managedGuest);
   });
 });
 
-wss.on('connection', (ws: WebSocket, request) => {
+wss.on('connection', (ws: WebSocket, request, managedGuest?: { guestId: string; profileId: string }) => {
   const connectionUrl = new URL(request.url || '/', 'http://localhost');
   const requestedToken = connectionUrl.searchParams.get('session');
   const requestedTicket = connectionUrl.searchParams.get('ticket') || '';
@@ -310,6 +472,10 @@ wss.on('connection', (ws: WebSocket, request) => {
           return;
         }
         const previous = sessions.get(token);
+        if (invalidatedSessions.has(token) || (management && !admitting() && !canReconnect(previous))) {
+          ws.close(1008, 'City is unavailable');
+          return;
+        }
         if (previous && activeSockets.has(previous.playerId)) {
           ws.close(1013, 'Previous connection is closing');
           return;
@@ -329,8 +495,9 @@ wss.on('connection', (ws: WebSocket, request) => {
             ws.close(1013, 'City is full');
             return;
           }
-          const profileId = regional ? admission.consume(token, requestedTicket) : undefined;
-          if (regional && !profileId) {
+          const admittedId = regional ? admission.consume(token, requestedTicket) : undefined;
+          const profileId = managedGuest?.profileId ?? admittedId;
+          if ((regional && !admittedId) || (managedGuest && regional && admittedId !== managedGuest.guestId)) {
             ws.close(1008, 'Reservation expired; find a new city');
             return;
           }
@@ -341,6 +508,7 @@ wss.on('connection', (ws: WebSocket, request) => {
             username,
             expires: Infinity,
             ...(profileId ? { profileId } : {}),
+            ...(managedGuest ? { guestId: managedGuest.guestId, sandbox: runtime.config.mode === 'sandbox' } : {}),
           });
         }
         clearTimeout(joinTimeout);
@@ -353,6 +521,8 @@ wss.on('connection', (ws: WebSocket, request) => {
           lastSnapshot: null,
           lastFullSnapshotTick: 0,
           lastDeliveries: -1,
+          lastCityReport: 0,
+          lastCityRevision: -1,
         });
         joined = true;
 
@@ -369,6 +539,7 @@ wss.on('connection', (ws: WebSocket, request) => {
         }
       } else if (msgType === EMessageType.INPUT) {
         if (!joined) return;
+        if (management && runtime.frozen) return;
         if (message.byteLength !== 17) {
           ws.close(1008, 'Invalid input');
           return;
@@ -406,6 +577,8 @@ wss.on('connection', (ws: WebSocket, request) => {
 const dt = TICK_INTERVAL_MS / 1000; // 0.05 seconds
 let lastTickTime = Date.now();
 let maxTickMs = 0;
+let totalTickMs = 0;
+let tickSamples = 0;
 let maxTickLagMs = 0;
 
 const gameLoop = setInterval(() => {
@@ -414,13 +587,17 @@ const gameLoop = setInterval(() => {
   maxTickLagMs = Math.max(maxTickLagMs, now - lastTickTime - TICK_INTERVAL_MS);
   const actualDt = (now - lastTickTime) / 1000;
   lastTickTime = now;
-  for (const [token, session] of sessions) if (session.expires <= now) void finalizeSession(token);
+  if (management) runtime.beforeTick();
+  if (!runtime.frozen) for (const [token, session] of sessions) if (session.expires <= now) void finalizeSession(token);
 
   // 1. Run bot AI (generates inputs for bot players)
-  botManager.tick();
+  if (!management || !runtime.frozen) {
+    if (management) botManager.reconcilePopulation(sessions.size);
+    botManager.tick();
+  }
 
   // 2. Tick the world simulation
-  world.tick(Math.min(Math.max(actualDt, 0), 0.1));
+  if (!management || !runtime.frozen) world.tick(Math.min(Math.max(actualDt, 0), 0.1));
 
   // 3. Broadcast filtered snapshots to each player based on their chunk position
   for (const [playerId, playerSocket] of activeSockets.entries()) {
@@ -459,21 +636,31 @@ const gameLoop = setInterval(() => {
             )
           : encodeDeltaSnapshot(playerSocket.lastSnapshot, snapshot);
 
-      playerSocket.ws.send(snapshotBuffer);
       const deliveries = world.getSessionStatsForPlayer(playerId)?.deliveriesCount ?? 0;
-      if (shouldSendFull || world.getTick() % 20 === 0 || deliveries !== playerSocket.lastDeliveries) {
+      if (
+        shouldSendFull ||
+        Date.now() - playerSocket.lastCityReport >= 1000 ||
+        playerSocket.lastCityRevision !== runtime.revision ||
+        deliveries !== playerSocket.lastDeliveries
+      ) {
         playerSocket.ws.send(
-          `city:${JSON.stringify({ tick: world.getTick(), rushHourTicksRemaining: world.getRushHourTicksRemaining(), deliveries })}`,
+          `city:${JSON.stringify({ tick: world.getTick(), rushHourTicksRemaining: world.getRushHourTicksRemaining(), deliveries, ...(management ? { revision: runtime.revision, effectiveTick: runtime.effectiveTick, speed: runtime.config.rules.speed, mode: runtime.config.mode, paused: runtime.frozen, announcement: runtime.announcement && runtime.announcement.expiresAt > Date.now() ? runtime.announcement.message : null, countdownSeconds: runtime.countdownEndsAt ? Math.max(0, Math.ceil((runtime.countdownEndsAt - Date.now()) / 1000)) : null } : {}) })}`,
         );
+        playerSocket.lastCityReport = Date.now();
       }
+      playerSocket.ws.send(snapshotBuffer);
       playerSocket.lastDeliveries = deliveries;
+      playerSocket.lastCityRevision = runtime.revision;
       playerSocket.lastSnapshot = snapshot;
       if (shouldSendFull) {
         playerSocket.lastFullSnapshotTick = world.getTick();
       }
     }
   }
-  maxTickMs = Math.max(maxTickMs, performance.now() - workStarted);
+  const tickWorkMs = performance.now() - workStarted;
+  maxTickMs = Math.max(maxTickMs, tickWorkMs);
+  totalTickMs += tickWorkMs;
+  tickSamples++;
   if (production && regional && world.getTick() % 100 === 0) {
     console.log(
       JSON.stringify({
@@ -508,43 +695,43 @@ const gameLoop = setInterval(() => {
 const PORT = process.env.PORT || 3002;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27018/xeom_rush';
 
-const startServer = () => {
+const startServer = async () => {
+  hub = await createHubFromEnv();
+  if (hub) app.use(hub.router);
   const bots = Number(process.env.BOT_COUNT ?? 8);
-  botManager.spawnBots(Number.isFinite(bots) ? Math.max(0, Math.min(20, Math.floor(bots))) : 8);
+  if (!management) botManager.spawnBots(Number.isFinite(bots) ? Math.max(0, Math.min(20, Math.floor(bots))) : 8);
   server.listen(PORT, () => {
     console.log(`🚀 Authoritative Server running on port ${PORT}`);
     console.log(`Tick rate: 20Hz (Interval: ${TICK_INTERVAL_MS}ms)`);
     console.log(`Map Dimensions: ${MAP_SIZE}x${MAP_SIZE} units`);
+    worker?.start();
   });
 };
 
-connectStorage(MONGODB_URI)
-  .then(() => {
-    storageReady = true;
-    startServer();
-  })
-  .catch((err) => {
-    console.warn('⚠️ [Startup] Storage connection failed.', err);
-    if (production) {
-      clearInterval(gameLoop);
-      clearInterval(healthLoop);
-      process.exitCode = 1;
-      return;
-    }
-    console.warn('⚠️ [Startup] Server starting in MEMORY-ONLY mode. Career stats will not be persistent.');
-    storageReady = true;
-    startServer();
-  });
+async function bootstrapServer() {
+  try {
+    await connectStorage(MONGODB_URI);
+  } catch (error) {
+    if (production) throw error;
+    console.warn('⚠️ [Startup] Storage unavailable; local career stats will not persist.', error);
+  }
+  storageReady = true;
+  await startServer();
+}
+void bootstrapServer().catch((error) => {
+  console.error('[Startup] Server configuration or storage failed', error);
+  void shutdown(1);
+});
 
 // Low-frequency checkpoints protect career progress during serverless eviction.
 // KV records each session's previous contribution, so retries never double-count.
 let checkpointPending: Promise<void> | null = null;
 const checkpointLoop = setInterval(() => {
-  if (!isKvStorage() || checkpointPending) return;
+  if ((!isKvStorage() && !management) || checkpointPending || runtime.frozen) return;
   checkpointPending = Promise.all(
     [...sessions.values()].map(async (session) => {
       const stats = world.getSessionStatsForPlayer(session.playerId);
-      if (stats)
+      if (stats && !session.sandbox)
         await saveSession(session.saveId, { ...stats, ...(session.profileId ? { profileId: session.profileId } : {}) });
     }),
   )
@@ -571,9 +758,11 @@ const healthLoop = setInterval(async () => {
 }, 5000);
 healthLoop.unref();
 
-async function shutdown(): Promise<void> {
+async function shutdown(exitCode = 0): Promise<void> {
   if (stopping) return;
   stopping = true;
+  worker?.stop();
+  hub?.close();
   clearInterval(gameLoop);
   clearInterval(checkpointLoop);
   clearInterval(healthLoop);
@@ -585,7 +774,7 @@ async function shutdown(): Promise<void> {
   await Promise.all([...finalWrites]);
   for (const client of wss.clients) client.terminate();
   await closeStorage();
-  server.close(() => process.exit(0));
+  server.close(() => process.exit(exitCode));
 }
 process.once('SIGTERM', () => void shutdown());
 process.once('SIGINT', () => void shutdown());

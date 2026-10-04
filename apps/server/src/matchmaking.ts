@@ -1,3 +1,5 @@
+import { ControlTransport, workerOptions } from './admin/worker';
+import { issueIdentity, verifyIdentity } from './identity';
 import express from 'express';
 import cors from 'cors';
 import { issueGuest, isSessionId, verifyGuest, roomKey } from './admission';
@@ -53,6 +55,8 @@ export async function findMatch(rooms: Room[], session: string, guest: string, k
 export function startMatchmaker(): void {
   if (resolveDeploymentTarget(process.env.DEPLOY_TARGET) !== 'regional-production')
     throw new Error('Matchmaking requires DEPLOY_TARGET=regional-production');
+  const management = workerOptions();
+  const transport = management ? new ControlTransport(management) : null;
   const regions = regionsFromEnv();
   const region = regions.find((r) => r.id === process.env.GAME_REGION);
   const secret = process.env.GUEST_SECRET || '';
@@ -86,12 +90,41 @@ export function startMatchmaker(): void {
   app.get('/api/regions', (_req, res) => {
     res.json(regions);
   });
+  app.get('/api/capabilities', (_req, res) => res.json({ managed: !!management, deployment: management?.deployment }));
   app.post('/api/guest', (_req, res) => {
-    res.json({ guest: issueGuest(secret) });
+    res.json(
+      management
+        ? {
+            guest: issueIdentity(management.deployment, process.env.GUEST_IDENTITY_SECRET!),
+            deployment: management.deployment,
+          }
+        : { guest: issueGuest(secret) },
+    );
+  });
+  app.post('/api/guest/link', async (req, res) => {
+    if (!management || !transport) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    const guestId = verifyIdentity(req.body?.guest, management.deployment, process.env.GUEST_IDENTITY_SECRET!);
+    const legacyId = verifyGuest(req.body?.legacy, secret);
+    if (!guestId || !legacyId) {
+      res.status(403).json({ error: 'Identity proof required' });
+      return;
+    }
+    try {
+      await transport.link(guestId, legacyId);
+      res.json({ ok: true });
+    } catch {
+      res.status(503).json({ error: 'Career linking unavailable; keep your existing identity data and retry' });
+    }
   });
   let pending = 0;
   app.post('/api/match', async (req, res) => {
-    if (req.body?.region !== region.id || !isSessionId(req.body?.session) || !verifyGuest(req.body?.guest, secret)) {
+    const guestId = management
+      ? verifyIdentity(req.body?.guest, management.deployment, process.env.GUEST_IDENTITY_SECRET!)
+      : verifyGuest(req.body?.guest, secret);
+    if (req.body?.region !== region.id || !isSessionId(req.body?.session) || !guestId) {
       res.status(400).json({ error: 'Invalid region, session or guest' });
       return;
     }
@@ -101,10 +134,16 @@ export function startMatchmaker(): void {
     }
     pending++;
     try {
+      if (transport && (await transport.admit(guestId)).banned) {
+        res.status(403).json({ error: 'Guest identity is banned' });
+        return;
+      }
       const match = await findMatch(rooms, req.body.session, req.body.guest, roomKey(secret));
       res
         .status(match ? 200 : 503)
         .json(match ? { ...match, region: region.id } : { error: 'Region full or unavailable' });
+    } catch {
+      res.status(503).json({ error: 'Admission verification unavailable' });
     } finally {
       pending--;
     }

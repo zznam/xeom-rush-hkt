@@ -504,3 +504,21 @@
     max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom));
   }
 }
+
+.city-control-notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  display: grid;
+  gap: 6px;
+  max-width: min(80vw, 480px);
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: #163e3aeb;
+  color: white;
+  text-align: center;
+  pointer-events: none;
+  font-size: 13px;
+}

@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: 'regional.test.ts',
+  testIgnore: ['regional.test.ts', 'admin.test.ts'],
   workers: 1,
   timeout: 30_000,
   retries: 1,
