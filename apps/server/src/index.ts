@@ -327,6 +327,26 @@ app.post('/api/guest', (_req, res) => {
   });
 });
 
+// Existing signed legacy credentials may link ID careers; a nickname is never proof.
+app.post('/api/guest/link', async (req, res) => {
+  if (!management || !transport || regional) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  const guestId = verifyIdentity(req.body?.guest, management.deployment, process.env.GUEST_IDENTITY_SECRET!);
+  const previousId = verifyGuest(req.body?.legacy, identitySecret);
+  if (!guestId || !previousId) {
+    res.status(403).json({ error: 'Identity proof required' });
+    return;
+  }
+  try {
+    await transport.link(guestId, previousId);
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ error: 'Career linking unavailable; retain your existing identity and retry' });
+  }
+});
+
 const admission = new Admission(capacity, () => sessions.size);
 const ready = () =>
   !stopping && (!production || storageReady) && (!worker || worker.initialized) && Date.now() - lastTickTime < 1000;

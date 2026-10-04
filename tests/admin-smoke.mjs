@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { until, connect, post } from './regional-live.mjs';
 const require = createRequire(new URL('../apps/server/package.json', import.meta.url));
-const { roomKey } = require('./dist/admission.js');
+const { roomKey, issueGuest, verifyGuest } = require('./dist/admission.js');
 const dir = await mkdtemp(join(tmpdir(), 'xeom-admin-'));
 const origin = 'http://127.0.0.1:3200';
 const workers = [];
@@ -31,6 +31,7 @@ function start(file, port, extra = {}) {
         GAME_DEPLOYMENT_ID: 'legacy',
         ADMIN_WORKER_TOKEN: 'test-worker-credential-at-least-32-characters',
         GUEST_IDENTITY_SECRET: secret,
+        GUEST_SECRET: secret,
         DEPLOY_TARGET: 'legacy',
         BOT_COUNT: '0',
         ...extra,
@@ -142,6 +143,24 @@ try {
   const sg = cities.find((c) => c.ref.region === 'test-sg');
   const hk = cities.find((c) => c.ref.region === 'test-hk');
   assert.equal(legacy.length, 2);
+  const legacyIdentity = (await (await post('http://127.0.0.1:3201', '/api/guest')).json()).guest;
+  const previousCredential = issueGuest(secret);
+  assert.equal(
+    (await post('http://127.0.0.1:3201', '/api/guest/link', { guest: legacyIdentity, legacy: previousCredential }))
+      .status,
+    200,
+  );
+  const linked = await fetch('http://127.0.0.1:3201/api/profile', {
+    headers: { Authorization: `Bearer ${legacyIdentity}` },
+  });
+  assert.equal(linked.status, 200);
+  assert.equal((await linked.json()).id, verifyGuest(previousCredential, secret));
+  assert.equal(
+    (await post('http://127.0.0.1:3201', '/api/guest/link', { guest: legacyIdentity, legacy: 'matching-nickname' }))
+      .status,
+    403,
+  );
+
   assert.notEqual(legacy[0].key, legacy[1].key);
   const initial = await detail(legacy[0]);
   const config = structuredClone(initial.config.config);

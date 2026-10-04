@@ -20,7 +20,7 @@ export async function managedGuest(apiUrl: string, region?: string): Promise<str
     guest = body.guest;
     writeStored(key, guest);
   }
-  const legacy = region ? readStored(`guest:${region}`) : '';
+  const legacy = readStored(`guest:${region ?? new URL(apiUrl).host}`);
   if (legacy) {
     const linked = await fetch(`${apiUrl}/api/guest/link`, {
       method: 'POST',

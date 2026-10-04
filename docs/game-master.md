@@ -82,9 +82,9 @@ Controller calls stay outside the simulation tick. Existing rides keep their app
 
 ## Guest careers and migration
 
-The client stores one signed guest identity under `guest:deployment:DEPLOYMENT_ID`. AWS regions share it. The matchmaker proves ownership of an old regional guest token before creating a one-to-one career alias. Both the old profile and its new identity are protected against relinking to another account. Keep browser storage until migration succeeds; the client stops matchmaking when a required link cannot be verified.
+The client stores one signed guest identity under `guest:deployment:DEPLOYMENT_ID`. AWS regions share it. Legacy workers and regional matchmakers prove ownership of an existing signed guest token before creating a one-to-one career alias. Both the old profile and its new identity are protected against relinking to another account. Keep browser storage until migration succeeds; the client stops matchmaking when a required link cannot be verified.
 
-Legacy ID-based careers use separate KV/Mongo records. Historical name-based scores remain stored, but entering the same nickname grants none of those earnings. Duplicate nicknames belong to independent identities. Career persistence, bans, staff, presets and audit history survive city reset. Guest bans can be bypassed by clearing browser identity; this is an accepted guest-play limitation.
+Existing signed legacy credentials can retain their ID careers through the same verified link. Legacy ID-based careers use separate KV/Mongo records. Historical name-based scores remain stored, but entering the same nickname grants none of those earnings. Duplicate nicknames belong to independent identities. Career persistence, bans, staff, presets and audit history survive city reset. Guest bans can be bypassed by clearing browser identity; this is an accepted guest-play limitation.
 
 ## Verification and release gate
 

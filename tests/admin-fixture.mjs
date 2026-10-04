@@ -45,7 +45,7 @@ const runtime = new CityRuntime({
   world: () => world,
   bots: () => bots,
   reset(config) {
-    world = new GameWorld(config.rules);
+    world = new GameWorld({ rules: config.rules });
     bots = new BotManager(world, world.getPhysics());
     bots.configure(config.bots);
     addDriver();
