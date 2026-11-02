@@ -23,9 +23,18 @@ export function RoomLauncher({
     [open, setOpen] = useState(!!initialInvite);
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`${roomApiBase(serverUrl)}/api/rooms/capabilities`, { signal: controller.signal })
+    setCap(null);
+    // The development address is editable: incomplete URLs must not crash the lobby.
+    void Promise.resolve()
+      .then(() => {
+        const api = roomApiBase(serverUrl);
+        if (!['http:', 'https:'].includes(new URL(api).protocol)) throw new Error('Unsupported server protocol');
+        return fetch(`${api}/api/rooms/capabilities`, { signal: controller.signal });
+      })
       .then((r) => r.json())
-      .then(setCap)
+      .then((capabilities) => {
+        if (!controller.signal.aborted) setCap(capabilities);
+      })
       .catch(() => {});
     return () => controller.abort();
   }, [serverUrl]);

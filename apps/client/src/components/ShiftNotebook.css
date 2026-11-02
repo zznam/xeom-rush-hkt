@@ -1,0 +1,47 @@
+.shift-notebook {
+  border-top: 1px solid #577067;
+  margin-top: 24px;
+  padding-top: 12px;
+}
+.shift-goal-progress progress {
+  width: 100%;
+  accent-color: #16947e;
+}
+.shift-history {
+  padding-left: 22px;
+}
+.shift-history li {
+  display: grid;
+  gap: 5px;
+  margin-block: 14px;
+}
+.shift-history span {
+  font-size: 12px;
+}
+.shift-result {
+  border-top: 1px solid #a7bbb0;
+  margin-top: 16px;
+  text-align: left;
+}
+.shift-result ul {
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.results-card {
+  box-sizing: border-box;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.results-cover {
+  box-sizing: border-box;
+  min-height: 0;
+}
+@media (max-width: 400px) {
+  .results-card {
+    padding: 18px;
+  }
+  .results-cover {
+    padding: 12px;
+  }
+}

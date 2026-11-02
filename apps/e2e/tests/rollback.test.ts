@@ -29,9 +29,19 @@ test('content rollback advertises its supported modes and quotes the actual pass
   await expect(page.locator('.pickup-list')).toContainText('1 điểm');
   await page.getByRole('button', { name: 'Đóng', exact: true }).click();
   await page.keyboard.down('s');
-  await expect.poll(async () => (await fixture({ action: 'state' })).gameplay.trip, { timeout: 7000 }).not.toBeNull();
+  let trip: Awaited<ReturnType<typeof fixture>>['gameplay']['trip'];
+  await expect
+    .poll(
+      async () => {
+        trip = (await fixture({ action: 'state' })).gameplay.trip;
+        // Capture the pickup before another read can observe this short trip's completion.
+        if (trip) await page.keyboard.up('s');
+        return trip;
+      },
+      { timeout: 7000, intervals: [50, 100, 100] },
+    )
+    .not.toBeNull();
   await page.keyboard.up('s');
-  const trip = (await fixture({ action: 'state' })).gameplay.trip;
   expect(trip).toMatchObject({ kind: 'passenger', fare: { total: 10000, clean: 0, tip: 0 } });
   expect(trip.stops).toHaveLength(1);
   await expect(page.locator('.passenger-story')).toHaveCount(0);

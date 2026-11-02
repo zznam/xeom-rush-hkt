@@ -1,18 +1,18 @@
 import { defineConfig } from '@playwright/test';
+import { evidence } from './evidence';
+const artifacts = evidence('public');
 
 const serverPort = Number(process.env.E2E_SERVER_PORT || 3003);
 const clientPort = Number(process.env.E2E_CLIENT_PORT || 5174);
 export default defineConfig({
+  ...artifacts,
   testDir: './tests',
   outputDir: './test-results/public',
   testIgnore: ['regional.test.ts', 'rooms.test.ts', 'rollback.test.ts', 'admin.test.ts'],
   workers: 1,
   timeout: 30_000,
   retries: 1,
-  use: {
-    baseURL: `http://localhost:${clientPort}`,
-    headless: true,
-  },
+  use: { ...artifacts.use, baseURL: `http://localhost:${clientPort}`, headless: true },
   projects: [
     {
       name: 'chromium',

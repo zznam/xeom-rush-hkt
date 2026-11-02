@@ -58,13 +58,21 @@ test('combined practice, authored jobs, clean fare, objective claim, wardrobe, c
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     });
     await page.keyboard.down('s');
+    let state: Awaited<ReturnType<typeof fixture>>;
     await expect
-      .poll(async () => (await fixture({ action: 'state' })).gameplay.trip?.kind, { timeout: 7000 })
+      .poll(
+        async () => {
+          state = await fixture({ action: 'state' });
+          // Stop as soon as the server reports pickup; a second request can arrive after a short trip ends.
+          if (state.gameplay.trip) await page.keyboard.up('s');
+          return state.gameplay.trip?.kind;
+        },
+        { timeout: 7000, intervals: [50, 100, 100] },
+      )
       .toBe(kind < 6 ? 'passenger' : kind < 8 ? 'food' : 'parcel');
     await page.keyboard.up('s');
-    let state = await fixture({ action: 'state' });
-    const tripId = state.gameplay.trip.passenger.id;
-    const stops = state.gameplay.trip.stops;
+    const tripId = state!.gameplay.trip.passenger.id;
+    const stops = state!.gameplay.trip.stops;
     expect(stops.length).toBe(kind === 9 ? 3 : kind === 8 ? 2 : 1);
     await expect(page.locator('.passenger-story')).toBeVisible();
     for (let i = 0; i < stops.length; i++) {

@@ -11,11 +11,49 @@ import {
   type CityStatus,
   type ConfigPayload,
   type SnapshotPacketMeta,
+  type ShiftSummary,
 } from '@xeom-rush/shared';
 
 export interface ServerEnd {
   message?: string;
-  result?: { score: number; deliveriesCount: number; mode: 'career' | 'sandbox' };
+  result?: { score: number; deliveriesCount: number; mode: 'career' | 'sandbox'; summary?: ShiftSummary };
+}
+
+// Older backends omit the final summary. Ignore malformed optional metadata while
+// retaining the valid score and delivery result and the last gameplay summary.
+function readFinalSummary(value: unknown): ShiftSummary | undefined {
+  if (typeof value !== 'object' || value === null) return;
+  const summary = value as ShiftSummary;
+  if (
+    ![
+      summary.distance,
+      summary.cleanTrips,
+      summary.baseFares,
+      summary.bonuses,
+      summary.tips,
+      summary.fines,
+      summary.fastestTripTicks,
+    ].every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0) ||
+    !Array.isArray(summary.visited) ||
+    !summary.visited.every((place) => typeof place === 'string')
+  )
+    return;
+  return {
+    distance: summary.distance,
+    cleanTrips: summary.cleanTrips,
+    baseFares: summary.baseFares,
+    bonuses: summary.bonuses,
+    tips: summary.tips,
+    fines: summary.fines,
+    fastestTripTicks: summary.fastestTripTicks,
+    visited: summary.visited,
+    ...(summary.violations &&
+    [summary.violations.redLights, summary.violations.pedestrianHits, summary.violations.driverCollisions].every(
+      (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0,
+    )
+      ? { violations: summary.violations }
+      : {}),
+  };
 }
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting';
@@ -96,7 +134,14 @@ export class GameNetwork {
                 Number.isFinite(body.deliveriesCount) &&
                 ['career', 'sandbox'].includes(body.mode)
               )
-                serverEnd = { result: body };
+                serverEnd = {
+                  result: {
+                    score: body.score,
+                    deliveriesCount: body.deliveriesCount,
+                    mode: body.mode,
+                    summary: readFinalSummary(body.summary),
+                  },
+                };
             } catch {
               /* Invalid optional metadata is ignored. */
             }

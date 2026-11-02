@@ -1,14 +1,32 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { inputHandler } from '../game/input';
 export function useGameDialog(open: boolean, onClose: () => void) {
   const ref = useRef<HTMLElement | null>(null),
     close = useRef(onClose);
+  // Capture the trigger before React autoFocus moves focus into a newly mounted dialog.
+  const previousFocus = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
   close.current = onClose;
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
+  useLayoutEffect(() => {
+    if (!open) {
+      const rememberFocus = () => {
+        const target = document.activeElement;
+        if (target instanceof HTMLElement && target !== document.body && !ref.current?.contains(target))
+          previousFocus.current = target;
+      };
+      rememberFocus();
+      document.addEventListener('focusin', rememberFocus);
+      // Layout cleanup runs before autoFocus when an always-mounted dialog opens.
+      return () => document.removeEventListener('focusin', rememberFocus);
+    }
+    const previous = previousFocus.current;
     inputHandler.suspend();
     const dialog = ref.current;
+    if (dialog && !dialog.contains(document.activeElement))
+      dialog
+        .querySelector<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')
+        ?.focus();
     const key = (e: KeyboardEvent) => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== dialog) return;
@@ -38,7 +56,7 @@ export function useGameDialog(open: boolean, onClose: () => void) {
     return () => {
       document.removeEventListener('keydown', key, true);
       inputHandler.resume();
-      previous?.focus();
+      if (previous?.isConnected) previous.focus();
     };
   }, [open]);
   return ref;

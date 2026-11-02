@@ -19,6 +19,7 @@ import {
   EMessageType,
   resolveDeploymentTarget,
   TICK_INTERVAL_MS,
+  STANDARD_RULES,
   MAP_SIZE,
   CHUNK_SIZE,
   decodeInput,
@@ -727,7 +728,36 @@ app.post('/api/test/gameplay', (req, res) => {
   }
   const x = Number(req.body.x ?? 2050),
     y = Number(req.body.y ?? 2200);
-  if (req.body.action === 'position' || req.body.action === 'job') {
+  if (req.body.action === 'offers') {
+    if (player.passengerId) {
+      res.status(409).json({ error: 'Finish the active trip first' });
+      return;
+    }
+    for (const id of world.getPassengerMap().keys()) world.getSpatialGrid().remove(id);
+    world.getPassengerMap().clear();
+    player.x = 2050;
+    player.y = 2200;
+    world.queueInput(player.id, { seq: 0, dx: 0, dy: 0, angle: 0 });
+    world.selectPickup(player.id);
+    // Fill the world outside the visible area so ambient spawning cannot change picker assertions.
+    for (let i = 0; i < STANDARD_RULES.passengerLimit + 16; i++) {
+      const nearby = i < 3;
+      const passenger = {
+        id: `pass-${2000000 + i * 10 + (i === 1 ? 6 : i === 2 ? 8 : 0)}`,
+        x: nearby ? 2050 : 50,
+        y: nearby ? 2300 + i * 100 : 50,
+        destX: 2050,
+        destY: 2700,
+        reward: nearby ? (i + 1) * 10000 : 1000,
+        tier: nearby ? i : 0,
+        deadline: nearby && i > 0 ? world.getTick() + (i === 1 ? 2400 : 1200) : 0,
+        spawnedAt: world.getTick(),
+        isCarried: false,
+      };
+      world.getPassengerMap().set(passenger.id, passenger);
+      world.getSpatialGrid().insert(passenger.id, passenger.x, passenger.y);
+    }
+  } else if (req.body.action === 'position' || req.body.action === 'job') {
     if (!isRoadPoint({ x, y }, 16)) {
       res.status(400).end();
       return;
@@ -737,6 +767,7 @@ app.post('/api/test/gameplay', (req, res) => {
         res.status(409).json({ error: 'Finish the active trip first' });
         return;
       }
+      for (const id of world.getPassengerMap().keys()) world.getSpatialGrid().remove(id);
       world.getPassengerMap().clear();
       const kind = [0, 6, 8, 9].includes(Number(req.body.kind)) ? Number(req.body.kind) : 0;
       const id = `pass-${1000000 + world.getTick() * 10 + kind}`;
@@ -745,7 +776,9 @@ app.post('/api/test/gameplay', (req, res) => {
         x,
         y: y + 70,
         destX: x,
-        destY: y + 160,
+        // Keep pickup and arrival zones well separated. A 90m gap allowed
+        // normal braking inertia to finish a ride before its story was observable.
+        destY: y + 360,
         reward: 10000,
         tier: 0,
         deadline: 0,

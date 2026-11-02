@@ -27,7 +27,10 @@
     "test:admin": "bun run build:server && bun run build:admin && deno test --no-check --allow-read --allow-write --allow-env --allow-sys --unstable-kv tests/admin-kv.test.ts && node tests/admin-smoke.mjs",
     "test:load": "bun run build:server && node tests/admin-load.mjs",
     "build:core": "bun run build:shared && bun run --filter '@xeom-rush/game-core' build",
-    "test:soak": "node tests/release-soak.mjs"
+    "test:soak": "node tests/release-soak.mjs",
+    "test:e2e:all": "node tests/e2e-all.mjs",
+    "test:e2e:rooms": "bun run --filter e2e test --config=playwright.rooms.config.ts",
+    "test:e2e:rollback": "bun run --filter e2e test --config=playwright.rollback.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

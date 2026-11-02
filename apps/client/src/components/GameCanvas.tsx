@@ -6,9 +6,11 @@ import type { RoomState } from '@xeom-rush/shared';
 import { SettingsPanel } from './SettingsPanel';
 import { useGameDialog } from './useGameDialog';
 import { DriverPanel } from './DriverPanel';
+import { ShiftResult } from './ShiftNotebook';
+import { shiftMetrics, type ShiftRecord, type ShiftMode } from '../game/shift-notebook';
 import type { CareerProfile, ShiftSummary, GameplayState } from '@xeom-rush/shared';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { network, type ConnectionState } from '../game/network';
+import { network, type ConnectionState, type ServerEnd } from '../game/network';
 import { loadPreferences, savePreferences, readStored, writeStored } from '../game/preferences';
 import { inputHandler } from '../game/input';
 import { prediction } from '../game/prediction';
@@ -75,6 +77,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
   const [toast, setToast] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [playMode, setPlayMode] = useState<'career' | 'sandbox'>('career');
+  const [finishedShift, setFinishedShift] = useState<ShiftRecord | null>(null);
+  const shiftRef = useRef({
+    score: 0,
+    deliveries: 0,
+    summary: null as ShiftSummary | null,
+    mode: 'career' as ShiftMode,
+  });
+  shiftRef.current = {
+    score: localPlayer?.score ?? 0,
+    deliveries,
+    summary,
+    mode: room ? 'friends' : playMode,
+  };
+  const recordShift = useCallback((result?: ServerEnd['result']) => {
+    const latest = shiftRef.current;
+    setFinishedShift({
+      id: crypto.randomUUID(),
+      endedAt: Date.now(),
+      mode: latest.mode === 'friends' ? 'friends' : (result?.mode ?? latest.mode),
+      ...shiftMetrics(
+        result?.score ?? latest.score,
+        result?.deliveriesCount ?? latest.deliveries,
+        result?.summary ?? latest.summary,
+      ),
+    });
+  }, []);
   const [cityNotice, setCityNotice] = useState<string | null>(null);
   const pausedRef = useRef(false);
   const resultsRef = useGameDialog(showResults, () => {
@@ -373,6 +401,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       },
       (end) => {
         if (end?.result) {
+          recordShift(end.result);
+          if (end.result.summary) setSummary(end.result.summary);
+          setShowSettings(false);
+          setShowDriver(false);
+          setShowTeam(false);
           setDeliveries(end.result.deliveriesCount);
           setPlayMode(end.result.mode);
           setLocalPlayer((player) => (player ? { ...player, score: end.result!.score } : player));
@@ -500,7 +533,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       inputHandler.clear();
       soundEngine.stopEngine();
     };
-  }, [username, serverUrl, onDisconnect]);
+  }, [username, serverUrl, onDisconnect, recordShift]);
 
   const handleSpawnBots = async () => {
     // Spawn server-side AI bots that navigate, pick up passengers, and compete with players
@@ -562,6 +595,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           summary={summary}
           ranking={cityRanking}
           serverUrl={roomApiBase(serverUrl)}
+          score={localPlayer?.score ?? 0}
+          deliveries={deliveries}
           onClose={() => setShowDriver(false)}
         />
       )}
@@ -575,7 +610,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
       <footer className='game-dock glass-panel'>
         <div className='keyboard-hints' aria-label='Hướng dẫn lái xe'>
           <span>
-            <kbd>WASD</kbd>
+            <kbd>
+              {(['up', 'left', 'down', 'right'] as const).map((key) => keyLabel(preferences.bindings[key])).join('')}
+            </kbd>
             <span className='arrow-keys'>
               {' '}
               / <kbd>↑ ← ↓ →</kbd>
@@ -583,7 +620,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
             Lái xe
           </span>
           <span>
-            <kbd>H</kbd> Bấm còi
+            <kbd>{keyLabel(preferences.bindings.horn)}</kbd> Bấm còi
           </span>
           <span className='delivery-hint'>🏁 Theo dấu đỏ để trả khách</span>
         </div>
@@ -615,6 +652,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
           <button
             className='end-ride-button'
             onClick={() => {
+              if (localPlayer) recordShift();
               network.disconnect();
               soundEngine.stopEngine();
               inputHandler.clear();
@@ -671,6 +709,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
                 <dd>{summary.cleanTrips}</dd>
               </dl>
             )}
+            {finishedShift && <ShiftResult record={finishedShift} />}
             <button className='toon-button' onClick={() => onDisconnect()}>
               Chơi tiếp ↗
             </button>
@@ -750,6 +789,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ username, serverUrl, cit
     </div>
   );
 };
+
+function keyLabel(key: string): string {
+  return (
+    ({ arrowup: '↑', arrowdown: '↓', arrowleft: '←', arrowright: '→' } as Record<string, string>)[key] ??
+    key.toUpperCase()
+  );
+}
 
 function getViolationMessage(violation: NonNullable<PlayerState['lastViolation']>): string {
   switch (violation.type) {
