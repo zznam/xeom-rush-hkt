@@ -69,3 +69,37 @@ test('guest credential survives a nickname change and reload', async ({ page }) 
   expect(issued).toBe(1);
   expect(guests).toEqual(['same-credential', 'same-credential']);
 });
+
+test('automatic selection explains when every region is unreachable', async ({ page }) => {
+  await page.route('**/api/latency', (route) => route.fulfill({ status: 503, json: {} }));
+  let matches = 0;
+  await page.route('**/api/match', (route) => {
+    matches++;
+    return route.fulfill({ status: 503, json: {} });
+  });
+  await page.goto('/');
+  await page.locator('#username').fill('OfflineRegion');
+  await page.locator('button[type=submit]').click();
+  await expect(page.getByRole('alert')).toContainText('Chưa kết nối được khu vực');
+  await expect(page.locator('#region')).toBeEnabled();
+  await expect(page.locator('button[type=submit]')).toBeEnabled();
+  expect(matches).toBe(0);
+});
+
+test('matchmaking rejects an unexpected server host without opening a game socket', async ({ page }) => {
+  let sockets = 0;
+  page.on('websocket', (socket) => {
+    // Vite's own hot-reload socket is independent of matchmaking.
+    if (new URL(socket.url()).port !== '5175') sockets++;
+  });
+  await page.route('**/api/match', (route) =>
+    route.fulfill({ json: { room: 'wrong-city', wsUrl: 'ws://unexpected.example/room' } }),
+  );
+  await page.goto('/');
+  await page.locator('#region').selectOption('sg');
+  await page.locator('#username').fill('SafeRegion');
+  await page.locator('button[type=submit]').click();
+  await expect(page.getByRole('alert')).toContainText('Địa chỉ thành phố chưa hợp lệ');
+  await expect(page.locator('button[type=submit]')).toBeEnabled();
+  expect(sockets).toBe(0);
+});

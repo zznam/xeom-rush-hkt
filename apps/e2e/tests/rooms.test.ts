@@ -5,6 +5,8 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     browser,
     request,
   }) => {
+    // This covers two browser contexts and several complete room lifecycles, including cleanup.
+    test.setTimeout(90000);
     const base = adapter === 'cloudflare' ? 'http://localhost:3028' : 'http://localhost:3027';
     const aContext = await browser.newContext(),
       bContext = await browser.newContext();
@@ -50,13 +52,21 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
     await a.keyboard.down('s');
     await expect(a.locator('.trip-toast')).toContainText('Chuyến tốt! +12.500đ', { timeout: 15000 });
     await a.keyboard.up('s');
+    // Stop away from intersections before checking checkpoint idempotence.
+    await request.post(`${endpoint}/test`, { data: { action: 'position', profileId, x: 2050, y: 2200 } });
     await request.post(`${endpoint}/test`, { data: { action: 'checkpoint' } });
     const profile = async () =>
       await (
         await request.get('http://localhost:3027/api/profile', { headers: { Authorization: `Bearer ${credential}` } })
       ).json();
     const saved = await profile();
-    expect(saved.careerScore).toBeGreaterThanOrEqual(11000);
+    // A real red-light fine can occur between arrival and the browser observing
+    // its toast. Verify the credited fare and ledger, rather than ignoring fines.
+    expect(saved.summary.baseFares).toBe(10000);
+    expect(saved.careerScore + saved.summary.fines).toBe(
+      saved.summary.baseFares + saved.summary.bonuses + saved.summary.tips,
+    );
+    expect(saved.careerScore + saved.summary.fines).toBeGreaterThanOrEqual(11000);
     await request.post(`${endpoint}/test`, { data: { action: 'checkpoint' } });
     expect((await profile()).careerScore).toBe(saved.careerScore);
     await a.getByRole('button', { name: /^Chọn khách/ }).click();
@@ -88,6 +98,8 @@ for (const adapter of ['ecs-compatible', 'cloudflare']) {
 
 for (const adapter of ['ecs-compatible', 'cloudflare']) {
   test(`${adapter}: co-op dispatch, catalog emotes and ordered two-team relay`, async ({ browser, request }) => {
+    // Four independent browser contexts exercise both co-op and all relay legs before cleanup.
+    test.setTimeout(90000);
     const base = adapter === 'cloudflare' ? 'http://localhost:3028' : 'http://localhost:3027';
     const guest = (await (await request.post('http://localhost:3027/api/guest', { data: {} })).json()).guest;
     const room = await (await request.post(`${base}/api/rooms`, { data: { guest } })).json();

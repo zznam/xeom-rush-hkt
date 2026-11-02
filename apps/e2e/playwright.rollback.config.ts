@@ -1,10 +1,13 @@
 import { defineConfig } from '@playwright/test';
+import { evidence } from './evidence';
+const artifacts = evidence('rollback');
 export default defineConfig({
+  ...artifacts,
   testDir: './tests',
   outputDir: './test-results/rollback',
   testMatch: 'rollback.test.ts',
   workers: 1,
-  use: { baseURL: 'http://localhost:5186', headless: true },
+  use: { ...artifacts.use, baseURL: 'http://localhost:5186', headless: true },
   webServer: [
     {
       command:

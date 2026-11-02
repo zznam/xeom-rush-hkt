@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { JOB_LABELS, PERSONAS, type GameplayState, type PassengerState, type PlayerState } from '@xeom-rush/shared';
 import { network } from '../game/network';
 import { inputHandler } from '../game/input';
+import './PickupFilters.css';
 const TIERS = ['Thường', 'Công việc', 'VIP'];
 export function TripGuide({
   state,
@@ -17,6 +18,9 @@ export function TripGuide({
   tutorialDone: boolean;
 }) {
   const [choosing, setChoosing] = useState(false);
+  const [jobFilter, setJobFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all');
+  const [sort, setSort] = useState('distance');
   const dialogRef = useGameDialog(choosing, () => setChoosing(false));
   if (state?.teamNavigation)
     return (
@@ -32,10 +36,29 @@ export function TripGuide({
     );
   const nav = state?.navigation,
     trip = state?.trip;
-  const nearby = passengers
-    .filter((p) => !p.isCarried)
-    .sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))
-    .slice(0, 8);
+  const offers = new Map(state?.offers?.map((offer) => [offer.id, offer]));
+  const available = passengers
+    .filter((p) => !p.isCarried && (p.deadline === 0 || p.deadline > (state?.tick ?? 0)))
+    .flatMap((passenger) => {
+      const offer = offers.get(passenger.id);
+      return offer ? [{ passenger, offer, distance: Math.hypot(passenger.x - player.x, passenger.y - player.y) }] : [];
+    });
+  const nearby = available
+    .filter(
+      ({ passenger, offer }) =>
+        (jobFilter === 'all' || offer.kind === jobFilter) &&
+        (tierFilter === 'all' || passenger.tier === Number(tierFilter)),
+    )
+    .sort((a, b) => {
+      if (sort === 'fare' && a.offer.fare.total !== b.offer.fare.total) return b.offer.fare.total - a.offer.fare.total;
+      if (sort === 'expiry') {
+        const expiryA = a.passenger.deadline || Infinity;
+        const expiryB = b.passenger.deadline || Infinity;
+        if (expiryA !== expiryB) return expiryA - expiryB;
+      }
+      return a.distance - b.distance || a.passenger.id.localeCompare(b.passenger.id);
+    });
+  const filtered = jobFilter !== 'all' || tierFilter !== 'all';
   return (
     <div className='trip-guide'>
       <small className='hud-label'>
@@ -113,6 +136,51 @@ export function TripGuide({
                 </button>
               </header>
               <p>Chọn một khách để chỉ đón người đó. Khách vẫn có thể được tài xế khác đón.</p>
+              <div className='pickup-filters'>
+                <label>
+                  Loại chuyến
+                  <select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)}>
+                    <option value='all'>Tất cả loại chuyến</option>
+                    {Object.entries(JOB_LABELS).map(([kind, label]) => (
+                      <option key={kind} value={kind}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Hạng khách
+                  <select value={tierFilter} onChange={(event) => setTierFilter(event.target.value)}>
+                    <option value='all'>Tất cả hạng khách</option>
+                    {TIERS.map((tier, index) => (
+                      <option key={tier} value={index}>
+                        {tier}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Sắp xếp chuyến
+                  <select value={sort} onChange={(event) => setSort(event.target.value)}>
+                    <option value='distance'>Gần nhất</option>
+                    <option value='fare'>Cước cao nhất</option>
+                    <option value='expiry'>Sắp hết giờ chờ</option>
+                  </select>
+                </label>
+              </div>
+              <p className='pickup-result-count' role='status'>
+                {nearby.length}/{available.length} chuyến phù hợp trong các đề nghị gần bạn.
+              </p>
+              {filtered && (
+                <button
+                  onClick={() => {
+                    setJobFilter('all');
+                    setTierFilter('all');
+                  }}
+                >
+                  Xóa bộ lọc
+                </button>
+              )}{' '}
               <button
                 onClick={() => {
                   network.command('select-pickup');
@@ -122,14 +190,12 @@ export function TripGuide({
                 Tự động đón khách gần
               </button>
               <div className='pickup-list'>
-                {nearby.map((p) => {
-                  const offer = state?.offers?.find((o) => o.id === p.id);
-                  const fare = offer?.fare;
+                {nearby.map(({ passenger: p, offer, distance }) => {
+                  const fare = offer.fare;
                   return (
                     <button
                       key={p.id}
                       data-pickup-id={p.id}
-                      disabled={!offer}
                       aria-pressed={state?.selectedPickup === p.id}
                       onClick={() => {
                         network.command('select-pickup', p.id);
@@ -137,13 +203,11 @@ export function TripGuide({
                       }}
                     >
                       <strong>
-                        {offer ? JOB_LABELS[offer.kind] : TIERS[p.tier]} ·{' '}
-                        {fare ? `${fare.total.toLocaleString('vi-VN')}đ` : 'Đang cập nhật cước…'}
+                        {JOB_LABELS[offer.kind]} · {fare.total.toLocaleString('vi-VN')}đ
                       </strong>
                       <small>
-                        {offer ? `${offer.stops} điểm · ${offer.goalLabel} · ` : ''}Gốc{' '}
-                        {p.reward.toLocaleString('vi-VN')}đ · Cách{' '}
-                        {Math.ceil(Math.hypot(p.x - player.x, p.y - player.y))}m
+                        {TIERS[p.tier]} · {offer.stops} điểm · {offer.goalLabel} · Gốc{' '}
+                        {p.reward.toLocaleString('vi-VN')}đ · Cách {Math.ceil(distance)}m
                         {p.deadline > 0 && state
                           ? ` · Chờ ${Math.max(0, Math.ceil((p.deadline - state.tick) / 20))}s`
                           : ''}
@@ -152,7 +216,13 @@ export function TripGuide({
                   );
                 })}
               </div>
-              {!nearby.length && <p>Chưa có khách quanh đây. Lái tới khu chợ nhé.</p>}
+              {!nearby.length && (
+                <p>
+                  {available.length
+                    ? 'Không có chuyến phù hợp. Xóa bộ lọc để xem các đề nghị khác.'
+                    : 'Chưa có đề nghị quanh đây. Lái tới khu chợ hoặc đợi khách mới nhé.'}
+                </p>
+              )}
             </section>
           </div>,
           document.querySelector('.game-shell') ?? document.body,

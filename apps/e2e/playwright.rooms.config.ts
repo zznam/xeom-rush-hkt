@@ -1,12 +1,15 @@
 import { defineConfig } from '@playwright/test';
+import { evidence } from './evidence';
+const artifacts = evidence('rooms');
 export default defineConfig({
+  ...artifacts,
   testDir: './tests',
   outputDir: './test-results/rooms',
   testMatch: 'rooms.test.ts',
   workers: 1,
   timeout: 45000,
   retries: 0,
-  use: { baseURL: 'http://localhost:5185', headless: true, browserName: 'chromium' },
+  use: { ...artifacts.use, baseURL: 'http://localhost:5185', headless: true, browserName: 'chromium' },
   webServer: [
     {
       command: 'node apps/room-service/tests/serve.mjs',

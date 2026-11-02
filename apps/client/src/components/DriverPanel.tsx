@@ -12,6 +12,8 @@ import {
 import { useGameDialog } from './useGameDialog';
 import { inputHandler } from '../game/input';
 import { roomApiBase } from '../game/rooms';
+import { ShiftNotebook } from './ShiftNotebook';
+import { shiftMetrics } from '../game/shift-notebook';
 
 type PublicCareer = Omit<CareerProfile, 'contributions'>;
 export function DriverPanel({
@@ -19,6 +21,8 @@ export function DriverPanel({
   summary,
   ranking,
   serverUrl,
+  score,
+  deliveries,
   onCommand,
   onClose,
 }: {
@@ -26,6 +30,8 @@ export function DriverPanel({
   summary: ShiftSummary | null;
   ranking: { id: string; username: string; score: number; deliveries: number }[];
   serverUrl: string;
+  score: number;
+  deliveries: number;
   onClose: () => void;
   onCommand: (action: string, target?: string) => void;
 }) {
@@ -56,6 +62,7 @@ export function DriverPanel({
             Đóng
           </button>
         </header>
+        <ShiftNotebook metrics={shiftMetrics(score, deliveries, summary)} />
         <h3>Nghề nghiệp của bạn</h3>
         {career ? (
           <p>

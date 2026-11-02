@@ -1,0 +1,36 @@
+.settings-preset {
+  display: grid;
+  gap: 6px;
+}
+.settings-preset select {
+  width: 100%;
+}
+.settings-backup {
+  margin-top: 20px;
+  border-top: 1px solid #d9e2d8;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-reset {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f2f6ed;
+}
+.settings-feedback {
+  position: sticky;
+  bottom: 0;
+  padding: 10px;
+  border: 1px solid #b4cbb1;
+  border-radius: 10px;
+  background: #eef6e9;
+  color: #173c2d;
+}
+.settings-feedback.is-error {
+  border-color: #d4a7a2;
+  background: #fff0ec;
+  color: #8b2525;
+}

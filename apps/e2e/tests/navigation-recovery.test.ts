@@ -40,24 +40,67 @@ test('GPS recovers after real steering clips a legal building corner and finishe
   }
   expect(seeded).toBe(true);
   await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
-  await page.keyboard.down('s');
-  await expect.poll(async () => !!(await state()).gameplay.trip).toBe(true);
-  await page.keyboard.up('s');
-  const tripId = (await state()).gameplay.trip.passenger.id;
+  // Set up the carried passenger through a real authoritative pickup tick.
+  // Pickup driving is covered in release.test.ts; this case exercises the corner
+  // recovery itself, so network latency must not drive past this short setup trip.
   await position(2050, 2850);
+  let tripId = '';
+  await expect
+    .poll(async () => {
+      tripId = (await state()).gameplay.trip?.passenger.id ?? '';
+      return !!tripId;
+    })
+    .toBe(true);
   await page.keyboard.down('d');
   await page.keyboard.down('s');
-  await expect.poll(async () => !isRoadPoint((await state()).player, 16), { timeout: 5000 }).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const clippedCorner = !isRoadPoint((await state()).player, 16);
+        // The rounded corner is traversed in a few ticks. Stop on that observation
+        // instead of letting exponential polling miss it and drive down the next street.
+        if (clippedCorner) {
+          await page.keyboard.up('d');
+          await page.keyboard.up('s');
+        }
+        return clippedCorner;
+      },
+      { timeout: 5000, intervals: [25] },
+    )
+    .toBe(true);
   await page.keyboard.up('d');
   await page.keyboard.up('s');
   await expect.poll(async () => (await state()).gameplay.navigation.route.length).toBeGreaterThan(1);
   await expect.poll(async () => (await state()).gameplay.navigation.distance).toBeGreaterThan(0);
-  await page.keyboard.down('a');
-  await page.keyboard.down('s');
+  // Follow the recovered GPS route with real keys. A fixed diagonal key hold can
+  // overshoot the destination on a slow browser even when recovery is correct.
+  let held = new Set<string>();
   await expect
-    .poll(async () => (await state()).gameplay.summary.recentTrips.some((r: { id: string }) => r.id === tripId))
+    .poll(
+      async () => {
+        const current = await state();
+        const finished = current.gameplay.summary.recentTrips.some((r: { id: string }) => r.id === tripId);
+        const next =
+          current.gameplay.navigation?.route
+            .slice(1)
+            .find(
+              (point: { x: number; y: number }) =>
+                Math.hypot(point.x - current.player.x, point.y - current.player.y) > 12,
+            ) ?? current.gameplay.navigation?.target;
+        const wanted = new Set<string>();
+        if (!finished && next) {
+          if (next.x - current.player.x > 8) wanted.add('d');
+          if (next.x - current.player.x < -8) wanted.add('a');
+          if (next.y - current.player.y > 8) wanted.add('s');
+          if (next.y - current.player.y < -8) wanted.add('w');
+        }
+        for (const key of held) if (!wanted.has(key)) await page.keyboard.up(key);
+        for (const key of wanted) if (!held.has(key)) await page.keyboard.down(key);
+        held = wanted;
+        return finished;
+      },
+      { timeout: 10000, intervals: [50] },
+    )
     .toBe(true);
-  await page.keyboard.up('a');
-  await page.keyboard.up('s');
   expect(errors).toEqual([]);
 });

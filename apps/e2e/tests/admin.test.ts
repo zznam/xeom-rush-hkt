@@ -5,6 +5,17 @@ test('portal login is private and offers GitHub sign-in', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Continue with GitHub' })).toBeVisible();
   await expect(page.getByRole('heading', { name: /good city/ })).toBeVisible();
 });
+test('signing out revokes the staff session and survives a reload', async ({ page }) => {
+  await page.request.get('/test/login?role=moderator');
+  await page.goto('/admin/');
+  await expect(page.getByRole('heading', { name: 'city-01', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Continue with GitHub' })).toBeVisible();
+  expect((await page.request.get('/api/admin/me')).status()).toBe(401);
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Continue with GitHub' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'city-01', exact: true })).toHaveCount(0);
+});
 test('owner reviews and applies a bot change through the actual controller and worker', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

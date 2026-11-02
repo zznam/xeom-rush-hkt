@@ -1,10 +1,13 @@
 import { defineConfig } from '@playwright/test';
+import { evidence } from './evidence';
+const artifacts = evidence('regional');
 export default defineConfig({
+  ...artifacts,
   testDir: './tests',
   outputDir: './test-results/regional',
   testMatch: 'regional.test.ts',
   workers: 1,
-  use: { baseURL: 'http://localhost:5175', headless: true },
+  use: { ...artifacts.use, baseURL: 'http://localhost:5175', headless: true },
   webServer: [
     {
       command:

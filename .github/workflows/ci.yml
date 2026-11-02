@@ -97,7 +97,7 @@ jobs:
         run: bun run --filter e2e install:browsers
 
       - name: Test browser flows
-        run: bun run test:e2e && bun run test:e2e:regional && bun run test:e2e:admin && bun run --filter e2e test --config=playwright.rooms.config.ts && bun run --filter e2e test --config=playwright.rollback.config.ts
+        run: bun run test:e2e:all --skip-build
 
       - name: Combined runtime and browser load smoke
         env:
