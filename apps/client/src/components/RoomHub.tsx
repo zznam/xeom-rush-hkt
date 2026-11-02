@@ -2,6 +2,7 @@ import { readStored, writeStored } from '../game/preferences';
 import { useEffect, useState } from 'react';
 import { roomApiBase, roomGuest } from '../game/rooms';
 import { useGameDialog } from './useGameDialog';
+import { fetchCapabilities } from '../game/capabilities';
 interface Capabilities {
   available: boolean;
   apiUrl: string;
@@ -29,7 +30,7 @@ export function RoomLauncher({
       .then(() => {
         const api = roomApiBase(serverUrl);
         if (!['http:', 'https:'].includes(new URL(api).protocol)) throw new Error('Unsupported server protocol');
-        return fetch(`${api}/api/rooms/capabilities`, { signal: controller.signal });
+        return fetchCapabilities(`${api}/api/rooms/capabilities`, controller.signal);
       })
       .then((r) => r.json())
       .then((capabilities) => {

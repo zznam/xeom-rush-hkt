@@ -116,3 +116,51 @@ test('opening a dialog clears held steering and movement resumes only after a fr
   await expect.poll(async () => (await fixture({ action: 'state' })).player.y).toBeGreaterThan(620);
   await page.keyboard.up('s');
 });
+
+for (const failure of ['network', '503']) {
+  test(`one transient capability ${failure} failure recovers without another join`, async ({ page }) => {
+    let requests = 0;
+    await page.route('**/api/capabilities', (route) => {
+      requests++;
+      // Vite development renders under StrictMode: both mount preparations fail once.
+      if (requests > 2) return route.continue();
+      return failure === 'network' ? route.abort('failed') : route.fulfill({ status: 503, json: {} });
+    });
+    await page.goto('/');
+    await page.locator('#username').fill('TransientRetry');
+    await page.locator('button[type="submit"]').click();
+    await expect(page.locator('.hud-summary')).toBeVisible();
+    await expect(page.locator('.connection-cover')).toHaveCount(0);
+    expect(requests).toBeGreaterThanOrEqual(3);
+    expect(requests).toBeLessThanOrEqual(4);
+  });
+}
+
+test('exhausted network retries show localized recovery guidance', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/capabilities', (route) => {
+    requests++;
+    return route.abort('failed');
+  });
+  await page.goto('/');
+  await page.locator('#username').fill('OfflineRetry');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole('alert')).toContainText('Kiểm tra kết nối và thử lại');
+  await expect(page.getByRole('alert')).not.toContainText('Failed to fetch');
+  // Two StrictMode preparations, each bounded to two attempts.
+  expect(requests).toBe(4);
+});
+
+test('capability authorization failures are not retried', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/capabilities', (route) => {
+    requests++;
+    return route.fulfill({ status: 401, json: {} });
+  });
+  await page.goto('/');
+  await page.locator('#username').fill('AuthRetry');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole('alert')).toContainText('Chưa xác minh được thành phố');
+  // StrictMode mounts twice; neither 401 response causes another attempt.
+  expect(requests).toBe(2);
+});

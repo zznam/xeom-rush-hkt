@@ -4,7 +4,7 @@ import type { Duplex } from 'stream';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { RoomOwner, type RoomTransport } from '@xeom-rush/game-core';
-import { parseRoomCheckpoint, publicCareer } from '@xeom-rush/shared';
+import { parseRoomCheckpoint, publicCareer, STANDARD_RULES } from '@xeom-rush/shared';
 import { careerRepository } from './career-store';
 import { verifyGuest, issueGuest } from './admission';
 
@@ -296,6 +296,19 @@ export function installPrivateRooms(
         fresh.x = 2050;
         fresh.y = 2200;
         owner.world.selectPickup(playerId, id);
+      }
+      // Keep the authored ride isolated from incidental automatic pickups. Distant
+      // waiting passengers fill capacity so ambient spawning stays deterministic.
+      for (const [waitingId, waiting] of owner.world.getPassengerMap()) {
+        if (waitingId !== id && !waiting.isCarried) {
+          owner.world.getSpatialGrid().remove(waitingId);
+          owner.world.getPassengerMap().delete(waitingId);
+        }
+      }
+      for (let i = 0; i <= STANDARD_RULES.passengerLimit; i++) {
+        const distant = { ...passenger, id: `fixture-distant-${i}`, x: 50, y: 50 };
+        owner.world.getPassengerMap().set(distant.id, distant);
+        owner.world.getSpatialGrid().insert(distant.id, distant.x, distant.y);
       }
     } else if (req.body.action === 'position') {
       const p = owner.world.getPlayer(`room-${req.body.profileId}`);

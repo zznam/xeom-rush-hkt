@@ -30,7 +30,8 @@
     "test:soak": "node tests/release-soak.mjs",
     "test:e2e:all": "node tests/e2e-all.mjs",
     "test:e2e:rooms": "bun run --filter e2e test --config=playwright.rooms.config.ts",
-    "test:e2e:rollback": "bun run --filter e2e test --config=playwright.rollback.config.ts"
+    "test:e2e:rollback": "bun run --filter e2e test --config=playwright.rollback.config.ts",
+    "test:production": "bun run build:shared && node tests/production-driver-tools.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

@@ -114,3 +114,22 @@ VITE_REGIONS_JSON='[{"id":"sg","label":"Singapore","apiUrl":"https://sg.example.
 Local browser checks do not prove live deployment configuration, external OAuth
 provider availability, or long-duration production capacity. Those remain separate
 deployment and release gates in the existing operations guides.
+
+## Live production checks
+
+`bun run test:production` opens a fresh Chromium context against the public
+production URL and exercises all ten tools using live offers, real keyboard
+movement, a completed delivery, and ended shifts. It creates only test-guest game
+activity and clears only that fresh context's local history. It does not use test
+endpoints, inject gameplay, or reuse the user's browser profile.
+
+Install the project's matching Chromium first with
+`bun run --filter e2e install:browsers`; use the same
+`PLAYWRIGHT_BROWSERS_PATH` for installation and execution when isolating caches.
+Screenshots and the machine-readable report are written under
+`apps/e2e/test-results/production/`. The run can take several minutes because it
+follows live GPS routes and competes with normal bots for available passengers.
+
+Capability discovery retries a network or server failure once, with a short
+backoff. Authorization failures are returned immediately. If both attempts fail,
+the lobby shows Vietnamese recovery guidance instead of a raw browser fetch error.
