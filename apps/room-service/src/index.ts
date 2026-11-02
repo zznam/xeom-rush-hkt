@@ -1,5 +1,5 @@
 import { RoomOwner, type RoomTransport } from '@xeom-rush/game-core';
-import { encodeJoin, type DurableRoom } from '@xeom-rush/shared';
+import { encodeJoin, STANDARD_RULES, type DurableRoom } from '@xeom-rush/shared';
 import { guestId } from './auth';
 interface Env {
   ROOMS: DurableObjectNamespace;
@@ -282,6 +282,19 @@ export class PrivateRoom {
           fresh.x = 2050;
           fresh.y = 2200;
           this.owner.world.selectPickup(playerId, id);
+        }
+        // Keep the authored ride isolated from incidental automatic pickups. Distant
+        // waiting passengers fill capacity so ambient spawning stays deterministic.
+        for (const [waitingId, waiting] of this.owner.world.getPassengerMap()) {
+          if (waitingId !== id && !waiting.isCarried) {
+            this.owner.world.getSpatialGrid().remove(waitingId);
+            this.owner.world.getPassengerMap().delete(waitingId);
+          }
+        }
+        for (let i = 0; i <= STANDARD_RULES.passengerLimit; i++) {
+          const distant = { ...passenger, id: `fixture-distant-${i}`, x: 50, y: 50 };
+          this.owner.world.getPassengerMap().set(distant.id, distant);
+          this.owner.world.getSpatialGrid().insert(distant.id, distant.x, distant.y);
         }
       } else if (body.action === 'position') {
         const p = this.owner.world.getPlayer(`room-${body.profileId}`);
