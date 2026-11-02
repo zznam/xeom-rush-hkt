@@ -1,8 +1,14 @@
 import { readStored, writeStored } from './preferences';
+import { fetchCapabilities } from './capabilities';
 
 /** A deployment-wide browser identity; regional credentials are proof for career migration only. */
 export async function managedGuest(apiUrl: string, region?: string): Promise<string | null> {
-  const response = await fetch(`${apiUrl}/api/capabilities`, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
+  let response: Response;
+  try {
+    response = await fetchCapabilities(`${apiUrl}/api/capabilities`);
+  } catch {
+    throw new Error('Chưa xác minh được thành phố. Kiểm tra kết nối và thử lại nhé.');
+  }
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('Chưa xác minh được thành phố. Vui lòng thử lại.');
   const capabilities = await response.json();
